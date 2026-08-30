@@ -1,0 +1,16 @@
+{
+  "name": "program",
+  "version": "1.0.0",
+  "description": "IRCIS program model: variable-size grid, editable working copy, revertible against its baseline",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "ircis": "*",
+    "pack": "*"
+  },
+  "build": {
+    "flags": [
+      "-std=gnu++17"
+    ]
+  }
+}

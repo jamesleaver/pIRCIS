@@ -1,0 +1,12 @@
+{
+  "name": "pack",
+  "version": "1.0.0",
+  "description": "Encrypted content pack: SHA-256, TEA-CBC, and the key derivation that opens it",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "flags": [
+      "-std=gnu++17"
+    ]
+  }
+}

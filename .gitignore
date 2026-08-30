@@ -1,0 +1,28 @@
+# PlatformIO. build_dir is set to ~/.cache/pircis/build in
+# platformio.ini -- deliberately outside any cloud-synced folder, because the
+# macOS file provider will happily swap a stale build artifact underneath a
+# running build. Only libdeps and metadata land here now.
+.pio/
+
+# Dropbox conflicted copies. These have already caused one corrupted build;
+# never let them into the repository.
+* 2/
+*conflicted copy*
+* [0-9].checksum
+
+# Host build products (plain Makefile, no build dir)
+host/sk_emu
+host/test_golden
+host/test_crypto
+host/test_pack
+*.o
+
+# UI regression: the goldens are tracked, failure output is not
+tests/ui_actual_*.ppm
+
+# Emulator runtime state
+emulator_nvs.txt
+sdcard/
+
+# macOS
+.DS_Store
