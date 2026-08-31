@@ -45,6 +45,17 @@ stays dark or the colours look inverted, flash the `ili9488` archive instead.
 The device says which build is on it: `SYS > ABOUT THIS DEVICE`, last page,
 gives the version, the build stamp and the panel the binary drives.
 
+**The `ili9488` build has never been run on hardware.** Everything here was
+developed against an ST7796 board, which is the only one I have. The two
+builds differ by one line — which LovyanGFX panel driver is instantiated — and
+the driver handles the part of ILI9488 that usually catches people out, since
+that controller cannot do 16-bit colour over SPI and the library switches to
+three-byte pixels on its own. What is *not* verified is the panel
+configuration around it: `invert` and `rgb_order` are set for the ST7796 and
+carried across unchanged, and those are exactly the settings that produce
+inverted or colour-swapped output when they are wrong. If you have an ILI9488
+board, I would be glad to hear whether it works.
+
 Releases are built by GitHub Actions from the tag, not from anyone's laptop,
 so the hashes are worth checking — `tools/release.sh` reproduces them locally.
 
@@ -73,7 +84,8 @@ that once. Nothing else has to be generated: a plain clone builds and runs as
 it stands.
 
 If the display stays dark or the colours look inverted, that board has the
-other panel controller — use `-e ili9488`. If `upload` cannot find the board,
+other panel controller — use `-e ili9488`, bearing in mind that build is
+untested on real hardware (see above). If `upload` cannot find the board,
 check `pio device list`: if the port is not there at all, the USB-serial driver
 is missing rather than anything being wrong with PlatformIO.
 

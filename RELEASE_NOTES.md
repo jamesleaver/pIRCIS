@@ -26,6 +26,14 @@ binary drives. The 4" boards ship with either an ST7796 or an ILI9488, and the
 wrong build shows a dark screen — now you can read which one you flashed
 instead of guessing.
 
+One caveat on that: the `ili9488` archive has never been run on hardware.
+Development was on an ST7796, the only board I have. The two builds differ by
+which panel driver is instantiated, and the library handles ILI9488's inability
+to do 16-bit colour over SPI by itself — but the panel configuration around it
+is carried across unchanged, so `invert` and `rgb_order` are untested there.
+Those are the settings that give inverted or colour-swapped output when wrong.
+Reports welcome.
+
 ## Programs live on the device
 
 The board has 896 KB of flash that nothing was using. It is a filesystem now,
