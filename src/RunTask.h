@@ -26,11 +26,11 @@ namespace run {
   // couple of hundred thousand steps and were far too quick for an ordinary
   // one, which is a few hundred: hello_world finished in 142 steps before you
   // could see a runner move. SLOW and FAST are now slow enough to follow a
-  // single runner by eye; RAPID is for the long ones.
+  // single runner by eye; QUICK is for the long ones.
   enum class Speed : uint8_t {
     Slow  = 0,   // ~3 steps/sec    -- watch each move land
-    Fast  = 1,   // ~25 steps/sec   -- follow a runner without losing it
-    Rapid = 2,   // ~2000 steps/sec -- a long program in a minute or two
+    Medium = 1,   // ~25 steps/sec   -- follow a runner without losing it
+    Quick = 2,   // ~2000 steps/sec -- a long program in a minute or two
     Full  = 3    // unthrottled
   };
 
@@ -114,6 +114,8 @@ namespace run {
   // the UI can tell whether it needs to redraw without copying the string.
   std::string output();
   uint32_t outputVersion();
+  // Changes when the machine is rebuilt, not when it prints.
+  uint32_t buildVersion();
 
   // A copy of the grid the machine is actually running (taken at load time).
   // Copies the grid the interpreter is running INTO the caller's object.

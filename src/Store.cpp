@@ -36,6 +36,12 @@ void begin() {
     // the settings say it should be.
     setUnlocked(false);
     setDayMode(true);
+    // New firmware ships new versions of the built-in programs, and the copies
+    // already in the device's own storage would otherwise stay as they were --
+    // which is how a program kept a tag row that this build no longer writes.
+    // Clearing the flag has them written out again on the next look; anything
+    // the owner made themselves is untouched.
+    plat::kv::remove("seeded");
   }
 
   // A device that was unlocked once does not have to be told again: the key
@@ -150,13 +156,13 @@ void setOutputColour(bool on) { plat::kv::putBool("outcol", on); }
 void factoryReset() { plat::kv::clearAll(); }
 
 // NVS key stays "adv" so the setting survives the rename.
-// Nothing by default: an ordinary program is small enough that the screen is
-// better spent showing more of it. Unlocking switches this to the output.
-int  runView() { int v = plat::kv::getInt("runview", 2); return (v < 0 || v > 2) ? 2 : v; }
+// The output by default: a program you have just run is a program whose
+// output you want to see, and it costs three rows.
+int  runView() { int v = plat::kv::getInt("runview", 0); return (v < 0 || v > 1) ? 0 : v; }
 void setRunView(int v) { plat::kv::putInt("runview", v); }
 
-bool stepButtons() { return plat::kv::getBool("stepbtn", false); }
-void setStepButtons(bool on) { plat::kv::putBool("stepbtn", on); }
+bool debugMode() { return plat::kv::getBool("dbg", false); }
+void setDebugMode(bool on) { plat::kv::putBool("dbg", on); }
 
 // Day is the default: a white ground is the easier read on a TN panel.
 bool dayMode() { return plat::kv::getBool("day", true); }

@@ -10,6 +10,7 @@
 #include "Display.h"
 #include "Store.h"
 #include "Theme.h"
+#include <math.h>
 
 CydDisplay gfx;
 
@@ -90,6 +91,44 @@ bool CydDisplay::beginTouch(bool force_recalibrate) {
   calibrateTouch(params, theme::accent, theme::bg, 20);
   Store::saveTouchCalibration(params);
   return true;
+}
+
+// Three targets, well inside the panel where a fingertip actually sits -- the
+// calibration's own points are the extreme corners, which are the hardest
+// place to be accurate and where any bias gets amplified across the screen.
+// Returns the worst miss in pixels.
+int CydDisplay::checkTouch() {
+  const int32_t pts[3][2] = {
+    { width() / 6,     height() / 4 },
+    { width() / 2,     height() * 3 / 4 },
+    { width() * 5 / 6, height() / 4 },
+  };
+  int worst = 0;
+  for (int i = 0; i < 3; ++i) {
+    fillScreen(theme::bg);
+    setTextColor(theme::text, theme::bg);
+    setTextDatum(textdatum_t::middle_center);
+    setFont(&fonts::Font2);
+    drawString("Tap the centre of each ring", width() / 2, 24);
+    char n[24];
+    snprintf(n, sizeof(n), "%d of 3", i + 1);
+    drawString(n, width() / 2, height() - 24);
+
+    const int32_t px = pts[i][0], py = pts[i][1];
+    drawCircle(px, py, 14, theme::accent);
+    drawCircle(px, py, 2, theme::accent);
+
+    // Wait for a clean press, then for it to lift, so one tap is one point.
+    int32_t tx = 0, ty = 0;
+    while (!getTouch(&tx, &ty)) delay(5);
+    int32_t hx = tx, hy = ty;
+    while (getTouch(&tx, &ty)) delay(5);
+
+    const int dx = (int)(hx - px), dy = (int)(hy - py);
+    int d = (int)(sqrtf((float)(dx * dx + dy * dy)) + 0.5f);
+    if (d > worst) worst = d;
+  }
+  return worst;
 }
 
 #endif

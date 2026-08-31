@@ -33,6 +33,11 @@ int main() {
   check(prog::programAt(prog::kFirstExample).name[0] != '\0',
         "the first always-available program has a name");
 
+  // Dice keeps its runners orbiting on purpose, so that it stays on screen to
+  // be counted. It still has to load at its declared shape and read nothing
+  // out of bounds -- it just never finishes, and that is the point of it.
+  auto endless = [](const char* name) { return std::string(name) == "Dice Roll"; };
+
   for (int i = 1; i < prog::programCount(); ++i) {
     const prog::ProgramDef& def = prog::programAt(i);
     prog::Program p;
@@ -55,7 +60,7 @@ int main() {
     bool ran = true;
     while (em.update()) if (++eguard > 2000000) { ran = false; break; }
 
-    check(shape && ran && em.out_of_bounds_reads() == 0, what);
+    check(shape && (ran || endless(def.name)) && em.out_of_bounds_reads() == 0, what);
   }
 
   {   // hello_world is the one example whose output is worth pinning

@@ -15,6 +15,7 @@
 #include <esp_random.h>
 #include <esp_sleep.h>
 #include <SD.h>
+#include <LittleFS.h>
 #include <vector>
 #include <algorithm>
 #include <SPI.h>
@@ -253,31 +254,37 @@ namespace {
     return ok;
   }
 
-  std::string progPath(const std::string& name) {
-    return std::string(kProgDir) + "/" + name + ".txt";
+  std::string progPath(const char* dir, const std::string& name) {
+    return std::string(dir) + "/" + name + ".txt";
+  }
+
+  // The board's own flash: LittleFS on the data partition the build already
+  // reserves and nothing else uses. Unlike the card it shares no bus with the
+  // display, so it is mounted once and left mounted -- there is nothing to
+  // hand back. begin(true) formats it the first time.
+  const char* kDevProgDir = "/programs";
+  bool devFsReady() {
+    static bool tried = false, ok = false;
+    if (!tried) {
+      tried = true;
+      ok = LittleFS.begin(true);
+      if (ok && !LittleFS.exists(kDevProgDir)) LittleFS.mkdir(kDevProgDir);
+    }
+    return ok;
+  }
+
+  // One job against whichever store was asked for, so the four operations
+  // below are written once rather than twice.
+  template <typename F>
+  bool withStore(Where w, F&& job) {
+    if (w == Where::Device)
+      return devFsReady() && job((fs::FS&)LittleFS, kDevProgDir);
+    return withSd([&] { return job((fs::FS&)SD, kProgDir); });
   }
 }
 
-bool progList(std::vector<std::string>& namesOut) {
-  namesOut.clear();
-  return withSd([&] {
-    File dir = SD.open(kProgDir);
-    if (!dir) return false;
-    while (File e = dir.openNextFile()) {
-      std::string n = e.name();
-      std::size_t slash = n.find_last_of('/');
-      if (slash != std::string::npos) n = n.substr(slash + 1);
-      if (n.size() > 4 && n.compare(n.size() - 4, 4, ".txt") == 0)
-        namesOut.push_back(n.substr(0, n.size() - 4));
-      e.close();
-    }
-    dir.close();
-    std::sort(namesOut.begin(), namesOut.end());
-    return true;
-  });
-}
+bool progStoreReady(Where w) { return w == Where::Device ? devFsReady() : sdPresent(); }
 
-// Saved run reports live in the card's top directory rather than in programs/.
 bool runList(std::vector<std::string>& namesOut) {
   namesOut.clear();
   return withSd([&] {
@@ -309,10 +316,28 @@ bool runRead(const std::string& name, std::string& textOut) {
   });
 }
 
-bool progRead(const std::string& name, std::string& textOut) {
+bool progList(Where w, std::vector<std::string>& namesOut) {
+  namesOut.clear();
+  return withStore(w, [&](fs::FS& fs, const char* dir) {
+    File d = fs.open(dir);
+    if (!d) return false;
+    while (File e = d.openNextFile()) {
+      std::string n = e.name();
+      std::size_t slash = n.find_last_of('/');
+      if (slash != std::string::npos) n = n.substr(slash + 1);
+      if (n.size() > 4 && n.compare(n.size() - 4, 4, ".txt") == 0)
+        namesOut.push_back(n.substr(0, n.size() - 4));
+      e.close();
+    }
+    d.close();
+    std::sort(namesOut.begin(), namesOut.end());
+    return true;
+  });
+}
+bool progRead(Where w, const std::string& name, std::string& textOut) {
   if (!safeName(name)) return false;
-  return withSd([&] {
-    File f = SD.open(progPath(name).c_str(), FILE_READ);
+  return withStore(w, [&](fs::FS& fs, const char* dir) {
+    File f = fs.open(progPath(dir, name).c_str(), FILE_READ);
     if (!f) return false;
     textOut.clear();
     textOut.reserve(f.size());
@@ -321,21 +346,21 @@ bool progRead(const std::string& name, std::string& textOut) {
     return true;
   });
 }
-
-bool progWrite(const std::string& name, const std::string& text) {
+bool progWrite(Where w, const std::string& name, const std::string& text) {
   if (!safeName(name)) return false;
-  return withSd([&] {
-    File f = SD.open(progPath(name).c_str(), FILE_WRITE);
+  return withStore(w, [&](fs::FS& fs, const char* dir) {
+    File f = fs.open(progPath(dir, name).c_str(), FILE_WRITE);
     if (!f) return false;
     f.write(reinterpret_cast<const uint8_t*>(text.data()), text.size());
     f.close();
     return true;
   });
 }
-
-bool progDelete(const std::string& name) {
+bool progDelete(Where w, const std::string& name) {
   if (!safeName(name)) return false;
-  return withSd([&] { return SD.remove(progPath(name).c_str()); });
+  return withStore(w, [&](fs::FS& fs, const char* dir) {
+    return fs.remove(progPath(dir, name).c_str());
+  });
 }
 
 
@@ -357,6 +382,11 @@ std::string firmwareId() {
   return buf;
 }
 
+
+std::string firmwareBuilt() {
+  const esp_app_desc_t* d = esp_ota_get_app_description();
+  return std::string(d->date) + " " + d->time;
+}
 
 uint32_t randomSeed() { return esp_random(); }   // hardware RNG
 

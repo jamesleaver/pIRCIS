@@ -26,3 +26,12 @@ sdcard/
 
 # macOS
 .DS_Store
+dist/
+
+# Emulator device-storage sandbox (the on-board filesystem, when run on a Mac)
+device/
+
+# The reference IRCIS interpreter writes these into whatever directory it is
+# run from. They are not ours and must never ship.
+debug.log
+output.html

@@ -101,8 +101,13 @@ namespace prog {
     // Editor shape operations. All refuse on a packed program, whose edits
     // must stay length-preserving (see Slot above).
     bool resize(int rows, int cols);
-    bool insertRow(int at);
-    bool deleteRow(int at);
+    // Add or take away a row or a column at a given edge, moving the cells
+    // that are already there. resize() only ever grows or trims the bottom
+    // right corner, so it cannot make room at the top or on the left. The
+    // baseline moves with the cells: "what this was before you edited it"
+    // would otherwise start naming a different cell after every insertion.
+    bool insertRow(int at);      // at in [0, rows()]
+    bool deleteRow(int at);      // at in [0, rows())
     bool insertCol(int at);
     bool deleteCol(int at);
 

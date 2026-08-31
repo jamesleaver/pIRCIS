@@ -13,14 +13,42 @@ told to turn, and can split into several runners at once.
 
 | | |
 |---|---|
-| ![run](shots/run.png) | ![output](shots/output.png) |
-| A program part-way through, with the runners listed underneath. | Its output, a page at a time, above the run's own numbers. |
-| ![zoom](shots/zoom.png) | ![editor](shots/editor.png) |
-| `ZOOM` for a program too wide to read whole. | The editor, with the characters IRCIS accepts. |
-| ![programs](shots/programs.png) | ![system](shots/system.png) |
-| The bundled examples, and a new program at any size. | Settings and diagnostics. |
+| ![hello running](shots/hello.gif) | ![spiral running](shots/spiral.gif) |
+| Hello World, whole on screen at the large font. The `~` on the bottom row is its view tag: the runner never goes there, so IRCIS steps over it. | Spiral, one runner over every cell. Both open slowly enough to see the runner set off, whatever speed is set. |
+| ![hello output](shots/hello_out.png) | ![programs](shots/programs.png) |
+| What it printed, centred, with how the run went. | Every program on the device in one list: a chip mark for its own storage, a notched card for the SD slot. |
+| ![editor](shots/editor.png) | ![letters](shots/editor_abc.png) |
+| The editor. Everything you write IRCIS with, on keys set in the same face as the grid, so a key looks like what lands in the cell. | Tapping `EDIT` again cycles to the capitals and then the lower case. The tab names the keyboard you are looking at. `~` and `,` live here, for writing a tag. |
+| ![system](shots/system.png) | |
+| Settings, with the About pages and the two irreversible ones anchored at the foot. `UNDER GRID` chooses what the RUN page shows beneath the program. | |
 
 ## Getting started
+
+There are two ways on: flash a build from
+[Releases](https://github.com/jamesleaver/pIRCIS/releases), or build it
+yourself.
+
+### From a release
+
+Download the archive for your panel, check it against the published hashes,
+and flash it. Nothing to install but [esptool](https://pypi.org/project/esptool/).
+
+```bash
+shasum -a 256 -c SHA256SUMS          # or sha256sum -c on Linux
+unzip pircis-1.1.0-st7796.zip
+cd pircis-1.1.0-st7796
+./flash.sh /dev/cu.usbserial-XXXX    # pio device list, if you are not sure
+```
+
+The 4" Freenove boards ship with one of two display controllers. If the screen
+stays dark or the colours look inverted, flash the `ili9488` archive instead.
+The device says which build is on it: `SYS > ABOUT THIS DEVICE`, last page,
+gives the version, the build stamp and the panel the binary drives.
+
+Releases are built by GitHub Actions from the tag, not from anyone's laptop,
+so the hashes are worth checking — `tools/release.sh` reproduces them locally.
+
+### From source
 
 ```bash
 git clone https://github.com/jamesleaver/pIRCIS.git
@@ -51,36 +79,50 @@ is missing rather than anything being wrong with PlatformIO.
 
 ## Using it
 
-Six tabs along the bottom: **RUN**, **OUT**, **EDIT**, **PROG**, **SAVE**,
-**SYS**.
+Five tabs along the bottom: **RUN**, **OUT**, **EDIT**, **PROG**, **SYS**.
 
 ### Load a program
 
-**PROG** lists the seven bundled examples — Hello World, Binary, Factors,
-Calculator, FizzBuzz, Racetrack, Options — with the size of each. Tap one and it
+**PROG** lists every program on the device, and scrolls. Twenty-two are
+bundled, including Arjun Nair's own `racetrack` from IRCIS: three runners go
+round a track and the output is the order they finish in, which is different
+every time.
+There are counting and arithmetic ones, four that use the random opcodes -- a
+die roll, an invented clock time, a coin, six lottery numbers -- and four worth
+watching rather than reading. The same files are in [`programs/`](programs/),
+along with a few more GIFs of them in [`shots/gifs/`](shots/gifs/). Tap one and it
 loads; its name then appears as the title of the RUN page. **New program...**
 at the bottom gives you a blank grid at any size up to 32 x 96, every cell a `.`
 (the blank).
 
 ### Run it
 
-**RUN** shows the grid and the transport, right-aligned in the status bar:
+**RUN** shows the grid. Play is the **RUN** tab itself: while you are on that
+page the tab draws `▶`, or `\|\|` once a run is going, and tapping it starts or
+pauses. It is the biggest target on the screen, which is the point — from any
+other tab the same tab still says RUN and still navigates.
+
+The rest of the transport is right-aligned in the status bar:
 
 | | |
 |---|---|
-| `\|◀` | reload the program and start again |
-| `▶` / `\|\|` | play, or pause |
+| `\|◀` | reset: back to the top, output and timer cleared |
 | `▶\|` | run to the end as fast as it will go |
 
-Three big targets, because those are the ones you reach for at speed. Two more
-— step back and step forward, one step at a time — can be added with
-**SYS > STEP BUTTONS**; the five then share the same strip and each is smaller.
+Two more — step back and step forward — appear when **SYS > UNDER GRID** is set
+to `RUNNERS`; the four then share the strip and each is smaller.
 
-Tapping the **RUN** tab while you are already on it plays, or pauses if it is
-already going — the tab reads `PAUSE` while a run is in progress to say so.
+What sits under the grid is **SYS > UNDER GRID**: the output as it is printed,
+the per-runner readout, or nothing at all if you would rather have the rows.
 
-The speed button cycles **SLOW** (about 3 steps a second), **FAST** (about 25),
-**RAPID** (about 2000) and **FULL**. At SLOW each runner leaves a fading trail,
+However fast you set it, a run always opens slowly enough to see the runners
+set off, then gets out of the way after a second or so. At `QUICK` a short
+program is otherwise over before you have found the first runner. `FULL` skips
+the lead-in entirely — asking for FULL is asking for the answer, not for the
+performance.
+
+The speed button cycles **SLOW** (about 3 steps a second), **MED** (about 25),
+**QUICK** (about 2000) and **FULL**. At SLOW each runner leaves a fading trail,
 which is what makes its path visible; at the faster settings a runner crosses
 hundreds of cells between frames and trails are skipped.
 
@@ -88,50 +130,141 @@ A program too wide to read gets a **ZOOM** button. Zoomed in you see 34 columns
 at four times the area; drag to pan, and the view follows the active runner —
 across and down — until you drag it, after which it stays where you put it.
 
-Under the grid sits either nothing, the runner list, or the output as it is
-printed — **SYS > RUN VIEW** chooses, and `NONE` is the default. Both readouts
-scroll with the `^` and `v` buttons when there is more than fits.
+Zoomed out, a cell is six pixels across, so tapping the grid aims rather than
+selects: the first tap zooms to what you touched, and the second — on a cell
+four times the area — is the one that opens the character inspector or a
+parameter. A program small enough to be shown large already skips that, having
+nothing to zoom into.
+
+Both readouts scroll with the `^` and `v` buttons when there is more than fits.
 
 ### Read the output
 
-When a run finishes the device goes to **OUT** on its own. The heading gives the
+When a run finishes the device stays where it is: being thrown onto another
+page takes the grid away at exactly the moment you were watching it. The
+**OUT** tab wears a dot to say there is something to look at, and the **RUN**
+tab's glyph becomes a go-again arrow. The heading gives the
 program's name and size, and underneath it how the run went: steps, runners,
 how many died, and how long it took. If the output is longer than the page,
 arrows on the right page through it and the footer says which lines you are
-looking at. **SAVE SD** writes the whole run to the card.
+looking at. **SAVE SD**, in the status bar, writes the whole run to the card;
+it only appears when there is a card in the slot.
 
 ### Edit it
 
 **EDIT** is a text editor for the loaded program. Tap a cell to put the cursor
-there, or use the arrows the cursor carries, then type: the keyboard is the
-characters IRCIS accepts, and the cursor advances as you go. `.` is the blank,
-so it doubles as delete. Every edit re-runs immediately.
+there, then type. `.` is the blank, so it doubles as delete. Every edit re-runs
+immediately.
 
-Keys that are not base64 digits take a lighter face. Seven letters —
-`v V + / r R p` — are *also* IRCIS commands, so they keep the base64 face and
-only their glyph changes colour: the key is still a digit, it just does two
-jobs.
+The keyboard is the thirty-three characters you actually write IRCIS with —
+movement, the blank, arithmetic, the digits, and the commands — at a size worth
+aiming at. Tapping **EDIT** while you are already on it cycles to the capitals
+and then the lower case, the way tapping **RUN** plays and pauses; the tab
+names the keyboard you are looking at. Commands are in the accent colour,
+so `V`, `R`, `v`, `r` and `p` read as commands on the letter pages too — they
+are base64 digits that also do a job.
 
-The status bar carries the program's name, its size, a `ZOOM` toggle and
-**SAVE**. The name and size are buttons — one renames the program, the other
-reshapes it — and SAVE writes it to the SD card under that name, so renaming
-and saving sit next to each other. Saving over the file the program came from
-just saves; saving over a different one asks first.
+The status bar carries the program's name, its size, a `ZOOM` toggle, **SAVE**
+and **UNDO**/**REDO**. The name and size are buttons — one renames the program,
+the other reshapes it — and SAVE writes it back where it came from under that
+name, so renaming and saving sit next to each other. Saving over the file the
+program came from just saves; saving over a different one asks first, and once
+saved nothing in the program counts as an unsaved edit any more.
+
+UNDO and REDO go back through the last 128 cell edits, which a panel that
+occasionally reads a tap one key sideways makes more useful than it sounds.
+The history is cleared when the program changes, since its cells would no
+longer mean anything.
+
+The size button asks which **side** to add to or take from — top, bottom, left
+or right — rather than just how many rows and columns. "Eleven rows" never
+said whether the new one lands above the program or below it, and for a
+program whose runner starts at 0,0 that is the whole question. All four edges
+apply together when you accept, so cancelling really does leave the program
+alone.
+
+**PROG** grows a **Discard changes** row whenever there is something to
+discard, which puts the program back to the last version saved.
+
+### Ask for a view
+
+A program can say how it wants to be shown, in one short tag written anywhere
+in the grid. A tilde, then single letters:
+
+```
+under the grid   n  nothing        d  the runner readout
+speed            s  slow   m  med   q  quick   f  full
+start            <col>,<row> and one of N E S W
+```
+
+So `~nm3,1N` is: nothing underneath, medium, start at column 3 row 1 heading
+north. Order does not matter -- `~3,1Nfn` is the same tag. Without a compass
+letter a start heads east. The comma is what marks a coordinate, and either
+side of it can be left off, so `~,2` starts at column 0 row 2.
+
+Anything a tag leaves out takes the default: the output under the grid, med,
+no runner readout, and starting at 0,0 heading east. **A program with no tag
+gets all of those** — it opens the same way every time rather than inheriting
+whatever the last program set. So only a program wanting something unusual
+needs a tag at all, which is why most of the bundled ones have none.
+
+One setting per group. If a tag names two — `~sq`, both slow and quick — the
+first is used, so reading left to right always gives the answer.
+
+None of the tag characters is an IRCIS command, so a runner that crosses one
+steps straight over it. That is why a tag needs no room of its own: it can sit
+on any blank cell in the middle of a program, which is where the three bundled
+programs that use one keep theirs. The speed letters read `s m q f` in order;
+`r` would have been the obvious one for the third, but `r` *is* an IRCIS
+command — push a random number — and on a cell a runner reaches it would be
+executed.
+
+The tilde and the comma sit on the letter pages of the keyboard, since a tag
+is text rather than code. Tags set the ordinary settings, so what a program
+asked for is visible on `SYS` afterwards rather than being an invisible state.
 
 ### Keep it
 
-**SAVE** lists the programs on the card. Tap one to load it, or **SAVE AS** to
-write the current program under a new name. They are plain `.txt`, one row per
-line, so they move on and off with any computer.
+Programs live in two places, and **PROG** lists both together in one
+alphabetical list. A small mark down the left says which is which: a chip for
+the device's own storage, a notched card for the SD slot. Tap one to load it,
+`X` to delete it, or one of the two **Save** rows at the top to write the
+current program to either store under the name in the status bar.
+
+The device's own storage is a LittleFS filesystem on the board's spare flash,
+so it works with no card in the slot. The programs that ship with pIRCIS are
+copied into it the first time it starts, which makes them ordinary files:
+edit one, save over it, rename it, delete it. The originals stay in the
+firmware — `SYS > RESTORE BUILT-INS` writes them back, leaving anything you
+made yourself alone.
+
+Both stores hold plain `.txt`, one grid row per line, so a program is the same
+file either side and moves on and off with any computer.
 
 ### Settings
 
-**SYS** has WiFi, SD logging (when on, every completed run is written to the
-card), touch recalibration, a day/night palette, the entry point, whether the
-transport carries its step buttons, the About
-pages, and a live diagnostics panel — free heap, largest allocatable block,
-steps per second, and whether the run read anything out of bounds. **RESET ALL
-DATA** returns the device to how it shipped.
+**SYS** is a page of settings — WiFi, what sits under the grid, the entry
+point, SD logging (when on, every completed run is written to the card), touch
+recalibration, a day/night palette, and restoring the built-in programs — with
+the About pages and the two things you cannot undo anchored at the foot of it,
+under a rule.
+
+Recalibrating touch ends by asking you to tap three rings and telling you how
+far out the worst one landed. A key is about 43 px wide, so within six pixels
+is comfortable and much beyond fourteen is worth doing again — the four corner
+markers are the hardest place on the panel to be accurate, and a bias there
+carries across the whole screen.
+
+**DIAGNOSTICS** is a live panel: free heap, largest allocatable block, steps
+per second, and whether the run read anything out of bounds. **DUMP GRID**,
+inside it, writes the loaded program and every edit to the serial console.
+
+**ABOUT THIS DEVICE** ends on a page saying which firmware is on the board —
+version, build stamp, image id and panel — so a device in your hand can be
+matched to a release without guessing.
+
+**RESET ALL DATA** returns the device to how it shipped, built-in programs
+included.
 
 **START POINT** decides where execution begins. On `FIXED` it is always row 0,
 column 0, heading east. Set it `FREE` and tapping a character on RUN starts the
@@ -156,7 +289,7 @@ long run can be watched from a laptop.
 
 `SYS > WIFI` serves the device over the local network: the last run, an
 editable copy of the loaded program (paste one in and it runs on the device),
-the programs on the SD card, the saved outputs, and the preset slots. Programs
+the programs in both stores, the saved outputs, and the preset slots. Programs
 and presets can be loaded onto the device from there as well as read.
 
 ## On your Mac, without hardware

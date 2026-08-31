@@ -326,16 +326,26 @@ namespace prog {
 
   bool Program::insertRow(int at) {
     if (isPacked() || rows_ >= kMaxRows || at < 0 || at > rows_) return false;
-    for (int r = rows_; r > at; --r) std::memcpy(cells_[r], cells_[r - 1], kMaxCols);
+    // The baseline moves with the cells, or "what this was before you edited
+    // it" starts naming a different cell after every insertion.
+    for (int r = rows_; r > at; --r) {
+      std::memcpy(cells_[r], cells_[r - 1], kMaxCols);
+      std::memcpy(base_[r],  base_[r - 1],  kMaxCols);
+    }
     std::memset(cells_[at], '.', kMaxCols);
+    std::memset(base_[at],  '.', kMaxCols);
     ++rows_;
     return true;
   }
 
   bool Program::deleteRow(int at) {
     if (isPacked() || rows_ <= 1 || at < 0 || at >= rows_) return false;
-    for (int r = at; r < rows_ - 1; ++r) std::memcpy(cells_[r], cells_[r + 1], kMaxCols);
+    for (int r = at; r < rows_ - 1; ++r) {
+      std::memcpy(cells_[r], cells_[r + 1], kMaxCols);
+      std::memcpy(base_[r],  base_[r + 1],  kMaxCols);
+    }
     std::memset(cells_[rows_ - 1], '.', kMaxCols);
+    std::memset(base_[rows_ - 1],  '.', kMaxCols);
     --rows_;
     return true;
   }
@@ -343,8 +353,12 @@ namespace prog {
   bool Program::insertCol(int at) {
     if (isPacked() || cols_ >= kMaxCols || at < 0 || at > cols_) return false;
     for (int r = 0; r < rows_; ++r) {
-      for (int c = cols_; c > at; --c) cells_[r][c] = cells_[r][c - 1];
+      for (int c = cols_; c > at; --c) {
+        cells_[r][c] = cells_[r][c - 1];
+        base_[r][c]  = base_[r][c - 1];
+      }
       cells_[r][at] = '.';
+      base_[r][at]  = '.';
     }
     ++cols_;
     return true;
@@ -353,8 +367,12 @@ namespace prog {
   bool Program::deleteCol(int at) {
     if (isPacked() || cols_ <= 1 || at < 0 || at >= cols_) return false;
     for (int r = 0; r < rows_; ++r) {
-      for (int c = at; c < cols_ - 1; ++c) cells_[r][c] = cells_[r][c + 1];
+      for (int c = at; c < cols_ - 1; ++c) {
+        cells_[r][c] = cells_[r][c + 1];
+        base_[r][c]  = base_[r][c + 1];
+      }
       cells_[r][cols_ - 1] = '.';
+      base_[r][cols_ - 1]  = '.';
     }
     --cols_;
     return true;

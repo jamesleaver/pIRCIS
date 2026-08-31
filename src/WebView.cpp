@@ -190,12 +190,38 @@ namespace {
     return p;
   }
 
+  // Programs live in two stores. The name alone is ambiguous, so every link
+  // and form carries the store with it.
+  plat::Where whereFrom(const std::string& v) {
+    return v == "card" ? plat::Where::Card : plat::Where::Device;
+  }
+  const char* whereTag(plat::Where w) {
+    return w == plat::Where::Device ? "device" : "card";
+  }
+
+  void listStore(std::string& p, plat::Where w, const char* heading) {
+    std::vector<std::string> names;
+    if (!plat::progList(w, names) || names.empty()) return;
+    p += "<h2>" + std::string(heading) + "</h2>";
+    p += "<table><tr><th>Program</th><th></th></tr>";
+    for (const std::string& n : names)
+      p += "<tr><td><a href='/program?where=" + std::string(whereTag(w))
+             + "&name=" + esc(n) + "'>" + esc(n) + ".txt</a></td>"
+           "<td>" + action("/programs", "load",
+                           std::string(whereTag(w)) + ":" + n, "load") + "</td></tr>";
+    p += "</table>";
+  }
+
   std::string pagePrograms(const std::string& body, bool post) {
     std::string p = chrome("Saved programs", "/programs");
     if (post) {
-      const std::string name = field(body, "load");
+      std::string sel = field(body, "load");
+      const std::size_t colon = sel.find(':');
+      plat::Where w = plat::Where::Device;
+      if (colon != std::string::npos) { w = whereFrom(sel.substr(0, colon)); sel = sel.substr(colon + 1); }
+      const std::string name = sel;
       std::string text;
-      if (name.empty() || !plat::progRead(name, text))
+      if (name.empty() || !plat::progRead(w, name, text))
         p += "<p class='msg bad'>Could not read that file.</p>";
       else if (!ui::loadProgramTextPublic(text))
         p += "<p class='msg bad'>That file is not a usable program.</p>";
@@ -206,29 +232,26 @@ namespace {
         p += "<p class=msg>Loaded " + esc(name) + " onto the device.</p>";
       }
     }
-    std::vector<std::string> names;
-    if (!plat::progList(names) || names.empty()) {
-      p += "<p class=none>No card, or nothing saved on it.</p>";
-      return p;
-    }
-    p += "<table><tr><th>Program</th><th></th></tr>";
-    for (const std::string& n : names)
-      p += "<tr><td><a href='/program?name=" + esc(n) + "'>" + esc(n) + ".txt</a></td>"
-           "<td>" + action("/programs", "load", n, "load") + "</td></tr>";
-    p += "</table>";
+    const std::size_t before = p.size();
+    listStore(p, plat::Where::Device, "On this device");
+    if (plat::sdPresent()) listStore(p, plat::Where::Card, "On the SD card");
+    if (p.size() == before) p += "<p class=none>Nothing saved yet.</p>";
     return p;
   }
 
   std::string pageProgram(const std::string& query) {
     const std::string name = field(query, "name");
+    const plat::Where w = whereFrom(field(query, "where"));
     std::string p = chrome("Saved program", "/programs");
     std::string text;
-    p += "<p class=none>" + esc(name) + ".txt</p>";
-    if (name.empty() || !plat::progRead(name, text) || text.empty())
+    p += "<p class=none>" + esc(name) + ".txt on the " + whereTag(w) + "</p>";
+    if (name.empty() || !plat::progRead(w, name, text) || text.empty())
       p += "<p class=none>Not found, or empty.</p>";
     else {
       p += "<pre>" + esc(text) + "</pre>";
-      p += "<p>" + action("/programs", "load", name, "load onto device") + "</p>";
+      p += "<p>" + action("/programs", "load",
+                          std::string(whereTag(w)) + ":" + name,
+                          "load onto device") + "</p>";
     }
     return p;
   }

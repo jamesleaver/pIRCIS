@@ -7,6 +7,7 @@
 
 #include "Ui.h"
 
+#include <algorithm>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -22,6 +23,7 @@
 #include "Sinks.h"
 #include "Store.h"
 #include "Theme.h"
+#include "Version.h"
 #include "WebView.h"
 
 namespace ui {
@@ -42,18 +44,23 @@ bool hit(const Btn& b, int x, int y) {
   return x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h;
 }
 
-void drawBtn(const Btn& b, bool on = false, bool enabled = true) {
+// `big` sets the label in Font2, the face the tab bar and the status-bar
+// title use. Compact controls stay on the small face; pages of labelled
+// settings read better in the larger one.
+void drawBtn(const Btn& b, bool on = false, bool enabled = true, bool big = false) {
   // A disabled button loses its fill as well as its text colour, so a green
   // "LOAD+RUN" does not still read as available when there is nothing to load.
   uint16_t bg = !enabled ? theme::panel : (on ? b.fg : b.bg);
   uint16_t fg = !enabled ? theme::dim : (on ? theme::bg : b.fg);
   gfx.fillRoundRect(b.x, b.y, b.w, b.h, 3, bg);
   gfx.drawRoundRect(b.x, b.y, b.w, b.h, 3, enabled ? theme::line : theme::panel);
-  gfx.setFont(&fonts::Font0);
+  gfx.setFont(big ? (const lgfx::IFont*)&fonts::Font2
+                  : (const lgfx::IFont*)&fonts::Font0);
   gfx.setTextDatum(textdatum_t::middle_center);
   gfx.setTextColor(fg, bg);
   gfx.drawString(b.label, b.x + b.w / 2, b.y + b.h / 2);
   gfx.setTextDatum(textdatum_t::top_left);
+  gfx.setFont(&fonts::Font0);
 }
 
 void label(int x, int y, const char* s, uint16_t fg = theme::text, uint16_t bg = theme::bg) {
@@ -107,6 +114,8 @@ void clabel(int x, int yTop, const char* s, uint16_t fg = theme::text,
 
 enum class Tab : uint8_t { Run, Out, Prog, Edit, Keys, Save, Sys, COUNT };
 const char* kTabNames[] = { "RUN", "OUT", "PROG", "EDIT", "SETS", "SAVE", "SYS" };
+// Defined with the editor keyboards, below: which one a tap on EDIT brings up.
+const char* edCurKb();
 
 // Which tabs exist depends on whether the pack has been unlocked. Locked,
 // this is an ordinary IRCIS interpreter: you pick a program, edit it and run
@@ -116,8 +125,12 @@ const char* kTabNames[] = { "RUN", "OUT", "PROG", "EDIT", "SETS", "SAVE", "SYS" 
 // 40, 120, 200, 280, 360, 440. EDIT and SAVE mean different things in the two
 // modes -- a program editor and SD program files while locked, the packed
 // program's parameters and presets once unlocked. PROG and SETS swap places.
+// Plain mode has five tabs, not six: PROGRAMS lists the built-ins and your
+// saved files together, so there is nothing left for a SAVE tab to hold. The
+// unlocked build keeps six -- its SAVE tab is parameter presets, which is a
+// different thing that happens to have shared a name.
 const Tab kTabsLocked[]   = { Tab::Run, Tab::Out, Tab::Edit, Tab::Prog,
-                              Tab::Save, Tab::Sys };
+                              Tab::Sys };
 const Tab kTabsUnlocked[] = { Tab::Run, Tab::Out, Tab::Edit, Tab::Keys,
                               Tab::Save, Tab::Sys };
 
@@ -155,11 +168,45 @@ bool  g_headerOnly = false;
 bool  g_bodyOnly = false;
 // Narrower still: only the readout band under the program on RUN.
 bool  g_bandOnly = false;
+// The tab bar, drawn on top of whichever of the three above was asked for.
+// The RUN tab carries the play/pause glyph and the EDIT tab names the next
+// keyboard, so both change without the grid changing.
+bool  g_tabsOnly = false;
+// Narrower again: the editor's grid, without its keyboard. Moving the cursor
+// or typing a character changes two cells and the readout; the thirty-three
+// keys underneath are identical either way.
+bool  g_edGridOnly = false;
+// The program on RUN and the arrows under it, without the readout below them.
+// Scrolling the grid does not change what a program has printed, and clearing
+// the output to redraw it identically is just a flicker.
+bool  g_runGridOnly = false;
+// Narrower still: the handful of cells a keystroke or a cursor move actually
+// touched. Up to three -- the character replaced, the cell the cursor left,
+// the cell it arrived on. If the window scrolls under the cursor the whole
+// grid has to go anyway, and edFollow says so.
+struct EdCell { int16_t row, col; };
+EdCell g_edCells[3];
+int    g_edCellCount = 0;
+// And the two things on the editor's status bar that change as you type --
+// the cursor readout and whether undo and redo are live. Repainting the whole
+// bar for a keystroke made it flicker on every press.
+bool  g_edHeadOnly = false;
+// Set whenever something has painted over the tab bar -- a full repaint, a
+// modal closing, a palette change. drawTabs() skips a tab whose appearance is
+// unchanged, which is only safe while what is on the panel is still there.
+bool  g_tabsStale = true;
+// Set by markEdited: something has asked the machine to rebuild, so a repaint
+// is already on its way and whoever asked need not queue another.
+bool  g_rebuildPending = false;
+// Set by the reset button: the machine is going back to the top, but the grid
+// it runs on is the same grid. Every other rebuild -- an edit, a different
+// program -- changes the characters and needs the whole body.
+bool  g_resetSameGrid = false;
 // Whether the device was open last time the lock state was looked at, so the
-// reveal is announced once rather than on every repaint.
+// unlock is announced once rather than on every repaint.
 bool  g_wasUnlocked = false;
 
-// The RUN tab repaints at most this often while a program is moving. At RAPID
+// The RUN tab repaints at most this often while a program is moving. At QUICK
 // the step count changes over a thousand times a second, and repainting on
 // every change makes the runners strobe and leaves little for anything else.
 // A paused, finished or restarted run always gets its frame.
@@ -184,9 +231,11 @@ void confirm(const std::string& title, const std::string& body,
              std::function<void()> yes);
 // Write the loaded program to the card under the name the editor shows.
 void saveCurrentProgram();
-// The card file this program came from, or was last saved to. Saving over
-// that one is what you meant; saving over any other is worth a question.
+// The file this program came from, or was last saved to, and which of the two
+// stores it lives in. Saving over that one is what you meant; saving over any
+// other is worth a question.
 std::string g_progFile;
+plat::Where g_progWhere = plat::Where::Device;
 
 // A run has finished and its output has not been looked at yet.
 bool g_outputUnseen = false;
@@ -218,6 +267,15 @@ Modal g_pickerBack = Modal::None;
 std::string g_msgTitle, g_msgBody;
 std::function<void()> g_confirmYes;
 
+// Every cell edit, so it can be taken back. A resistive panel mis-reads taps
+// often enough that typing into the wrong cell is routine, and without this
+// the only way back is remembering what was there. Bounded: one edit is four
+// bytes, and 128 of them is further back than anyone reaches.
+struct CellEdit { int16_t row, col; char was, now; };
+std::vector<CellEdit> g_undo;      // oldest first
+std::size_t g_undoAt = 0;          // how many of them are currently applied
+constexpr std::size_t kUndoMax = 128;
+
 // runner cells drawn last frame, so they can be restored without a full repaint
 struct DrawnCell { int row, col; };
 std::vector<DrawnCell> g_prevRunners;
@@ -248,9 +306,31 @@ int  g_scrollCol = 0;         // ZOOM: leftmost visible column
 // the program gets everything down to the scroll-button row; with one, it
 // stops at eleven rows and the readout takes the rest.
 constexpr int kVisRows = 11;
-constexpr int kBandLines = 4;            // readout lines, when there is one
+// Readout lines under the program. The runner list wants four; the output
+// only ever shows a tail, so it gives a row back to the program.
+constexpr int kBandLines       = 4;
+constexpr int kBandLinesOutput = 3;
 
-inline bool runViewNone() { return Store::runView() == 2; }
+// What sits under the program on RUN: the output, the runners, or nothing.
+// One setting with three values. It used to be two toggles that disagreed --
+// DEBUG silently beat RUN VIEW, which went on reading OUTPUT while the
+// runners were on screen. Still kept in the two NVS keys it always used, so a
+// device coming from an older build keeps whatever it was set to.
+//
+// RUNNERS also brings up the single-step buttons: looking at the runners and
+// stepping through them are the same job, which is why they were one switch.
+inline bool bandRunners() { return Store::debugMode(); }
+inline bool bandOutput()  { return !Store::debugMode() && Store::runView() == 0; }
+inline bool runViewNone() { return !bandRunners() && !bandOutput(); }
+
+enum { kBandOutput = 0, kBandRunners = 1, kBandNothing = 2 };
+int bandMode() {
+  return bandRunners() ? kBandRunners : bandOutput() ? kBandOutput : kBandNothing;
+}
+void setBandMode(int m) {
+  Store::setDebugMode(m == kBandRunners);
+  Store::setRunView(m == kBandNothing ? 1 : 0);
+}
 
 // The row carrying the scroll arrows, and the grid height above it.
 int shiftRowH() { return kContentH + 2; }
@@ -261,14 +341,23 @@ int gridRows() {
   return n < 1 ? 1 : n;
 }
 
-// How many rows the current view actually shows. ZOOM always draws kVisRows of
-// its own taller cells; only WIDE sizes itself to what is left under the
-// program. Everything that scrolls or follows has to ask this rather than
-// gridRows(), or it works to the wrong window in ZOOM.
+// How many rows the current view actually shows. Both views size themselves
+// to what is left under the program. Everything that scrolls, follows or
+// clips has to ask this rather than gridRows(), or it works to the wrong
+// window in ZOOM.
 int gridRowsShown();
 int maxGridRow();
 int gridBandH() { return gridRows() * kWideCellH; }
-int shiftRowY() { return kWideY + gridBandH() + 3; }
+// Under the program, wherever the program actually ends. This was always the
+// WIDE calculation, so in ZOOM the scroll row -- and the fill that clears the
+// band under it -- sat where the WIDE grid would have finished and cut into
+// the zoomed one, taking the bottom rows off it.
+int zoomOriginY();
+int zoomHeight();
+int shiftRowY() {
+  if (g_view == View::Zoom) return zoomOriginY() + zoomHeight() + 3;
+  return kWideY + gridBandH() + 3;
+}
 
 // Centre the program when it is narrower than the window: a 25-column program
 // sat against the left edge with half the screen empty beside it.
@@ -305,8 +394,34 @@ bool zoomOnly() {
 
 // A program that fits entirely leaves room underneath for the runner list,
 // which ZOOM otherwise gives up in exchange for the whole body.
-constexpr int kZoomListH = 4 * kContentH + 6;
-int zoomBottom() { return zoomOnly() ? kTabY - kZoomListH : kTabY; }
+int runnerListY();          // the top of the readout band, defined with it
+
+// Where the zoomed grid has to stop. A readout is only drawn under a program
+// small enough to be shown large, and it is three lines for the output and
+// four for the runners -- so ask what is actually there rather than reserving
+// a fixed four lines for it.
+int zoomBottom() {
+  // The scroll row lives between the grid and the readout, so its height has
+  // to come off the grid's. Without that the grid ran right down to the
+  // readout and the arrows were drawn on top of it -- which is why scrolling
+  // wiped "no output yet", and why the readout repainting afterwards looked
+  // like the program being redrawn.
+  if (!zoomOnly() || runViewNone()) return kTabY - shiftRowH();
+  return runnerListY() - 2 - shiftRowH();
+}
+
+// And how many rows of it fit above that. This used to be flatly kVisRows,
+// which is where the two worst display bugs came from: a ten- or eleven-row
+// program does not fit beside a readout at 23 px a row, so the grid was
+// centred, clamped to the top and drawn straight through the readout -- the
+// runner and the characters it crossed showing through the output. The same
+// assumption told maxGridRow() there was nothing to scroll to, which is why
+// the scroll chevrons never appeared on exactly those programs.
+int zoomRows() {
+  int n = (zoomBottom() - kHeaderH) / kZoomCellH;
+  if (n > kVisRows) n = kVisRows;
+  return n < 1 ? 1 : n;
+}
 
 // Centre on the PROGRAM when it is narrower or shorter than the window, so a
 // small program sits in the middle of the screen rather than up in a corner.
@@ -316,12 +431,12 @@ int zoomOriginX() {
   return x > 0 ? x : 0;
 }
 int zoomOriginY() {
-  int h = g_edit.rows() < kVisRows ? g_edit.rows() : kVisRows;
+  int h = g_edit.rows() < zoomRows() ? g_edit.rows() : zoomRows();
   int y = kHeaderH + (zoomBottom() - kHeaderH - h * kZoomCellH) / 2;
   return y > kHeaderH ? y : kHeaderH;
 }
 int zoomHeight() {
-  int h = g_edit.rows() < kVisRows ? g_edit.rows() : kVisRows;
+  int h = g_edit.rows() < zoomRows() ? g_edit.rows() : zoomRows();
   return h * kZoomCellH;
 }
 
@@ -388,6 +503,26 @@ void setScroll(int col) {
   g_scrollCol = col;
 }
 
+// Put the tapped cell in the middle of the ZOOM window and stay there: the
+// point of aiming is that the view does not then wander off following a
+// runner somewhere else.
+void zoomToCell(int row, int col) {
+  Store::setGridView((int)View::Zoom);
+  g_view = View::Zoom;
+  setScroll(col - kZoomCols / 2);
+  int maxRow = g_edit.rows() - zoomRows();
+  if (maxRow < 0) maxRow = 0;
+  int want = row - zoomRows() / 2;
+  if (want < 0) want = 0;
+  if (want > maxRow) want = maxRow;
+  g_gridRow = want;
+  g_follow = false;
+  g_prevRunners.clear();            // stale coordinates from the other layout
+  g_bodyOnly = true;
+  g_headerOnly = true;              // the ZOOM button changes state
+  g_dirty = true;
+}
+
 void panByPixels(int dx) {
   if (dx == 0) return;
   if (g_edit.cols() <= kZoomCols) return;    // nothing off screen to reach
@@ -413,7 +548,7 @@ bool cellPos(int row, int col, int& x, int& y) {
   if (g_view == View::Zoom) {
     if (col < g_scrollCol || col >= g_scrollCol + kZoomCols) return false;
     int zr = row - g_gridRow;
-    if (zr < 0 || zr >= kVisRows) return false;
+    if (zr < 0 || zr >= zoomRows()) return false;
     x = zoomOriginX() + (col - g_scrollCol) * kZoomCellW;
     y = zoomOriginY() + zr * kZoomCellH;
     return true;
@@ -471,6 +606,7 @@ void drawCell(int row, int col, uint16_t fg, uint16_t bg) {
 
 #if defined(SK_HOST)
 unsigned long g_gridPaints = 0;   // instrumentation, host only
+unsigned long g_fullPaints = 0;   // whole-screen repaints, host only
 #endif
 
 void drawGrid() {
@@ -486,6 +622,18 @@ void drawGrid() {
   int to   = (g_view == View::Zoom) ? g_scrollCol + kZoomCols : g_wideShift + kWideCols;
   if (to > g_edit.cols()) to = g_edit.cols();
   char ch[2] = { 0, 0 };
+  // The visible window grows when the readout is switched off or the view
+  // changes, and an offset left over from the shorter window would strand the
+  // program part-scrolled with no way back: maxGridRow() has dropped to zero,
+  // so the chevrons that would scroll it are not drawn at all.
+  {
+    const int m = maxGridRow();
+    if (g_gridRow > m) g_gridRow = m;
+    if (g_gridRow < 0) g_gridRow = 0;
+    const int mc = g_edit.cols() - kWideCols;
+    if (g_wideShift > mc) g_wideShift = mc > 0 ? mc : 0;
+    if (g_wideShift < 0) g_wideShift = 0;
+  }
   int rowTo = g_gridRow + gridRowsShown();
   if (rowTo > g_edit.rows()) rowTo = g_edit.rows();
   for (int r = g_gridRow; r < rowTo; ++r) {
@@ -636,34 +784,50 @@ void drawRunners(const run::Snapshot& snap) {
 const char* speedName(run::Speed s) {
   switch (s) {
     case run::Speed::Slow:  return "SLOW";
-    case run::Speed::Fast:  return "FAST";
-    case run::Speed::Rapid: return "RAPID";
+    case run::Speed::Medium:  return "MED";
+    case run::Speed::Quick: return "QUICK";
     case run::Speed::Full:  return "FULL";
   }
   return "?";
 }
 
-// Transport, right-anchored, in a fixed 140 px strip so the speed and view
-// buttons to its left never move:  |<   <   play/pause   >   >|
+// Transport, right-anchored, in a fixed 142 px strip so the speed and view
+// buttons to its left never move:  |<   <   >   >|
 //
-// The two single-step buttons are optional (SYS > STEP BUTTONS). With five
-// buttons in the strip each is 26 px wide, which is easy to mis-hit on a
-// resistive panel; with three they are 44 px, and restart / play / run-to-end
-// are the ones you reach for at speed.
+// Play and pause are not here. Tapping the RUN tab while RUN is open has
+// always been the play/pause shortcut, and the tab is the biggest target on
+// the screen; the tab draws the triangle or the bars to say so. That leaves
+// the strip to the four buttons that have nowhere else to live, and they get
+// the freed width -- 68 px each normally, 34 with the single-step buttons on
+// (SYS > DEBUG), against 44 and 26 before.
 constexpr int kTransportX = kScreenW - 142;
-inline bool steps() { return Store::stepButtons(); }
-Btn btnEnd()   { return steps() ? Btn{ kScreenW -  28, 2, 26, 18, "", theme::text,   theme::panel }
-                                : Btn{ kScreenW -  46, 2, 44, 18, "", theme::text,   theme::panel }; }
-Btn btnFwd()   { return { kScreenW -  56, 2, 26, 18, "", theme::text,   theme::panel }; }
-Btn btnRun()   { return steps() ? Btn{ kScreenW -  86, 2, 28, 18, "", theme::accent, theme::panel }
-                                : Btn{ kScreenW -  94, 2, 44, 18, "", theme::accent, theme::panel }; }
-Btn btnBack()  { return { kScreenW - 114, 2, 26, 18, "", theme::text,   theme::panel }; }
-Btn btnStart() { return { kTransportX, 2, steps() ? 26 : 44, 18, "", theme::text, theme::panel }; }
+inline bool steps() { return Store::debugMode(); }
+Btn btnEnd()   { return steps() ? Btn{ kScreenW -  34, 2, 34, 18, "", theme::text, theme::panel }
+                                : Btn{ kScreenW -  70, 2, 68, 18, "", theme::text, theme::panel }; }
+Btn btnFwd()   { return { kScreenW -  70, 2, 34, 18, "", theme::text, theme::panel }; }
+Btn btnBack()  { return { kScreenW - 106, 2, 34, 18, "", theme::text, theme::panel }; }
+Btn btnStart() { return { kTransportX, 2, steps() ? 34 : 68, 18, "", theme::text, theme::panel }; }
 Btn btnSpeed()  { return { kScreenW - 178, 2, 34, 18, "FAST", theme::good, theme::panel }; }
+
+// OUT's two controls live in the status bar with every other tab's, rather
+// than floating over the top of the output itself. SAVE SD is drawn only when
+// there is a card to save to -- a permanently greyed button is a question the
+// device already knows the answer to -- so COLOUR slides right into its place
+// when there is not.
+constexpr int kOutBtnW = 62;
+Btn btnOutSd()     { return { kScreenW - kOutBtnW - 4, 2, kOutBtnW, 18, "SAVE SD" }; }
+Btn btnOutColour() {
+  const int x = plat::sdPresent() ? kScreenW - 2 * kOutBtnW - 8 : kScreenW - kOutBtnW - 4;
+  return { x, 2, kOutBtnW, 18, "COLOUR", theme::good };
+}
 Btn btnView()   { return { kScreenW - 232, 2, 52, 18, "ZOOM", theme::edited, theme::panel }; }
 
 // Transport symbols, drawn rather than lettered.
 enum class Glyph : uint8_t { Start, Back, Play, Pause, Fwd, End };
+// Play, from a bar: the run is over and this starts it again from the top.
+// The same weight as the other transport glyphs, which a curved arrow at this
+// size was not.
+void drawAgain(const Btn& b, uint16_t c);
 
 void drawGlyph(const Btn& b, Glyph g, bool on) {
   int cx = b.x + b.w / 2, cy = b.y + b.h / 2;
@@ -693,6 +857,12 @@ void drawGlyph(const Btn& b, Glyph g, bool on) {
   }
 }
 
+void drawAgain(const Btn& b, uint16_t c) {
+  const int cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  gfx.fillRect(cx - 7, cy - 5, 2, 10, c);
+  gfx.fillTriangle(cx - 3, cy - 5, cx - 3, cy + 5, cx + 6, cy, c);
+}
+
 // The editor's status bar carries two controls: the program's name, and its
 // size. Both open a dialog. They live up here because the body is entirely
 // spoken for -- grid above, keyboard below.
@@ -700,10 +870,18 @@ void drawGlyph(const Btn& b, Glyph g, bool on) {
 // its size, the zoom toggle, SAVE, and then the cursor readout at the right
 // edge. Saving belongs where the editing and the renaming happen, not two tabs
 // away, so the name field gives up the width for it.
-Btn btnEdName() { return { 118, 2, 116, 18, "", theme::text, theme::panel }; }
-Btn btnEdSize() { return { 238, 2,  62, 18, "", theme::text, theme::panel }; }
-Btn btnEdZoom() { return { 304, 2,  50, 18, "ZOOM", theme::edited, theme::panel }; }
-Btn btnEdSave() { return { 358, 2,  50, 18, "SAVE", theme::good,  theme::panel }; }
+bool canUndo();
+bool canRedo();
+void clearUndo();
+
+// The title shrank to "EDIT" -- the tab bar already says which page this is --
+// which is what makes room for UNDO and REDO on the same row.
+Btn btnEdName() { return {  42, 2, 116, 18, "", theme::text, theme::panel }; }
+Btn btnEdSize() { return { 162, 2,  62, 18, "", theme::text, theme::panel }; }
+Btn btnEdZoom() { return { 228, 2,  50, 18, "ZOOM", theme::edited, theme::panel }; }
+Btn btnEdSave() { return { 282, 2,  50, 18, "SAVE", theme::good,  theme::panel }; }
+Btn btnEdUndo() { return { 336, 2,  34, 18, "UNDO", theme::text,  theme::panel }; }
+Btn btnEdRedo() { return { 374, 2,  34, 18, "REDO", theme::text,  theme::panel }; }
 bool editorTab() { return g_tab == Tab::Edit && !Store::unlocked(); }
 
 // Everything in the header EXCEPT the step counter.
@@ -723,16 +901,47 @@ uint32_t headerSignature(const run::Snapshot& snap) {
 }
 
 // Just the counter, on its own strip between the title and the ZOOM button.
+// "step" does not change; the number after it does, several times a second.
+// They used to be one right-aligned string, so every new digit shifted the
+// word and the word had to be repainted with it. The word is anchored and the
+// number runs rightwards from a fixed point, leaving only the digits to
+// clear -- six or seven characters' worth instead of the whole readout.
+constexpr int kStepWordX = 156;
+constexpr int kStepNumX  = kStepWordX + 5 * 6;   // just past "step "
+
+void drawHeaderStepWord() {
+  gfx.setFont(&fonts::Font0);
+  gfx.setTextDatum(textdatum_t::middle_left);
+  gfx.setTextColor(theme::dim, theme::panel);
+  gfx.drawString("step", kStepWordX, kHeaderH / 2);
+  gfx.setTextDatum(textdatum_t::top_left);
+}
+
 void drawHeaderStep(const run::Snapshot& snap) {
-  char buf[32];
-  snprintf(buf, sizeof(buf), "step %u", (unsigned)snap.step);
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%u", (unsigned)snap.step);
   const int right = btnView().x - 8;
-  const int left  = 156;
-  gfx.fillRect(left, 1, right - left, kHeaderH - 2, theme::panel);
+  gfx.fillRect(kStepNumX, 1, right - kStepNumX, kHeaderH - 2, theme::panel);
+  gfx.setFont(&fonts::Font0);
+  gfx.setTextDatum(textdatum_t::middle_left);
+  gfx.setTextColor(snap.finished ? theme::good : theme::text, theme::panel);
+  gfx.drawString(buf, kStepNumX, kHeaderH / 2);
+  gfx.setTextDatum(textdatum_t::top_left);
+}
+
+// The parts of the editor's status bar that a keystroke changes, and nothing
+// else: the two history buttons and the cursor readout to the right of them.
+void drawEdHeadBits() {
+  drawBtn(btnEdUndo(), false, canUndo());
+  drawBtn(btnEdRedo(), false, canRedo());
+  const int x0 = btnEdRedo().x + btnEdRedo().w + 2;
+  gfx.fillRect(x0, 1, kScreenW - x0, kHeaderH - 2, theme::panel);
+  char buf[24];
+  snprintf(buf, sizeof(buf), "r%d c%d", g_curRow, g_curCol);
   gfx.setFont(&fonts::Font0);
   gfx.setTextDatum(textdatum_t::middle_right);
-  gfx.setTextColor(snap.finished ? theme::good : theme::text, theme::panel);
-  gfx.drawString(buf, right, kHeaderH / 2);
+  gfx.setTextColor(g_edit.modifiedCells() ? theme::edited : theme::dim, theme::panel);
+  gfx.drawString(buf, kScreenW - 4, kHeaderH / 2);
   gfx.setTextDatum(textdatum_t::top_left);
 }
 
@@ -742,7 +951,6 @@ void drawHeader(const run::Snapshot& snap) {
 
   char buf[64];
   if (g_tab == Tab::Run) {
-    snprintf(buf, sizeof(buf), "step %u", (unsigned)snap.step);
     gfx.setFont(&fonts::Font2);
     gfx.setTextDatum(textdatum_t::middle_left);
     gfx.setTextColor(theme::accent, theme::panel);
@@ -753,24 +961,22 @@ void drawHeader(const run::Snapshot& snap) {
     gfx.drawString(title.c_str(), 4, kHeaderH / 2);
     gfx.setTextDatum(textdatum_t::top_left);
     gfx.setFont(&fonts::Font0);
-    gfx.setTextDatum(textdatum_t::middle_right);
-    gfx.setTextColor(snap.finished ? theme::good : theme::text, theme::panel);
-    gfx.drawString(buf, btnView().x - 8, kHeaderH / 2);
-    gfx.setTextDatum(textdatum_t::top_left);
+    drawHeaderStepWord();
+    drawHeaderStep(snap);
 
     // One toggle: filled when the zoomed view is showing.
     if (!zoomOnly()) drawBtn(btnView(), g_view == View::Zoom);
     Btn sp = btnSpeed(); sp.label = speedName(run::speed());
     drawBtn(sp);
 
-    drawBtn(btnStart());  drawGlyph(btnStart(), Glyph::Start, false);
+    // Nothing to go back to when the program is already sitting at the top.
+    const bool atStart = snap.step == 0;
+    drawBtn(btnStart(), false, !atStart);
+    drawGlyph(btnStart(), Glyph::Start, false);
     if (steps()) {
       drawBtn(btnBack(), false, snap.step > 0);
       drawGlyph(btnBack(), Glyph::Back, false);
     }
-    Btn rb = btnRun();
-    drawBtn(rb, snap.running);
-    drawGlyph(rb, snap.running ? Glyph::Pause : Glyph::Play, snap.running);
     if (steps()) {
       drawBtn(btnFwd(), false, !snap.finished);
       drawGlyph(btnFwd(), Glyph::Fwd, false);
@@ -781,10 +987,10 @@ void drawHeader(const run::Snapshot& snap) {
   else {
     const char* title = "";
     switch (g_tab) {
-      case Tab::Edit: title = Store::unlocked() ? pack::str(pack::kStrEditTitle) : "EDIT PROGRAM"; break;
+      case Tab::Edit: title = Store::unlocked() ? pack::str(pack::kStrEditTitle) : "EDIT"; break;
       case Tab::Keys: title = "PARAMETER SETS"; break;
       case Tab::Out:  title = "OUTPUT"; break;
-      case Tab::Save: title = Store::unlocked() ? "PRESETS" : "SAVED PROGRAMS"; break;
+      case Tab::Save: title = "PRESETS"; break;
       case Tab::Prog: title = "PROGRAMS"; break;
       case Tab::Sys:  title = "SYSTEM"; break;
       default: break;
@@ -807,10 +1013,15 @@ void drawHeader(const run::Snapshot& snap) {
       sb.label = sz;
       drawBtn(sb);
       drawBtn(btnEdZoom(), g_edZoom);
-      drawBtn(btnEdSave(), false, plat::sdPresent());
+      drawBtn(btnEdSave());
+      drawBtn(btnEdUndo(), false, canUndo());
+      drawBtn(btnEdRedo(), false, canRedo());
       snprintf(buf, sizeof(buf), "r%d c%d", g_curRow, g_curCol);
     }
-    else if (g_tab == Tab::Out) buf[0] = 0;   // OUT shows the run, not the edit state
+    else if (g_tab == Tab::Out) {
+      buf[0] = 0;                            // OUT shows the run, not the edit state
+      if (plat::sdPresent()) drawBtn(btnOutSd());
+        }
     else snprintf(buf, sizeof(buf), "%d edited cell%s", g_edit.modifiedCells(),
                   g_edit.modifiedCells() == 1 ? "" : "s");
     gfx.setFont(&fonts::Font0);
@@ -823,30 +1034,65 @@ void drawHeader(const run::Snapshot& snap) {
 }
 
 void drawTabs() {
-  int n = tabCount();
-  int w = kScreenW / n;
+  // Changing pages changes two tabs -- the one you left and the one you
+  // arrived on -- so only those two are repainted. Each tab's appearance is
+  // summed into a small signature and compared with what is on the panel; a
+  // tab whose signature is unchanged is left exactly as it is.
+  static uint32_t sig[8] = { 0 };
+  static bool sigValid = false;
+  static int  sigCount = 0;
+  if (g_tabsStale) { g_tabsStale = false; sigValid = false; }
+
+  const int n = tabCount();
+  const int w = kScreenW / n;
+  if (!sigValid || sigCount != n) { sigValid = true; sigCount = n; for (int k = 0; k < 8; ++k) sig[k] = 0xFFFFFFFFu; }
+
+  const run::Snapshot snap = run::snapshot();
   for (int i = 0; i < n; ++i) {
-    Tab t = tabAt(i);
-    bool on = g_tab == t;
-    // The width rarely divides evenly; give the last tab the leftover pixels.
-    int tw = (i == n - 1) ? kScreenW - i * w : w;
-    bool flag = (t == Tab::Out) && g_outputUnseen && !on;
+    const Tab t  = tabAt(i);
+    const bool on   = g_tab == t;
+    const bool flag = (t == Tab::Out) && g_outputUnseen && !on;
+    const int  tw   = (i == n - 1) ? kScreenW - i * w : w;
+
+    // Everything that decides how this tab looks -- the palette included, so
+    // switching between day and night repaints the bar without anything
+    // having to remember to say so.
+    uint32_t k = (uint32_t)t | (on ? 0x100u : 0) | (flag ? 0x200u : 0)
+               | (Store::dayMode() ? 0x2000u : 0);
+    if (t == Tab::Run && on)
+      k |= snap.running ? 0x400u : (snap.finished ? 0x800u : 0x1000u);
+    if (t == Tab::Edit && on && !Store::unlocked())
+      k |= (uint32_t)(edCurKb()[0]) << 16;
+    if (k == sig[i]) continue;
+    sig[i] = k;
+
     gfx.fillRect(i * w, kTabY, tw, kTabH, on ? theme::accent : theme::panel);
     gfx.drawRect(i * w, kTabY, tw, kTabH, flag ? theme::good : theme::line);
     if (flag) gfx.fillCircle(i * w + tw - 8, kTabY + 8, 3, theme::good);
     gfx.setFont(&fonts::Font2);
     gfx.setTextDatum(textdatum_t::middle_center);
     gfx.setTextColor(on ? theme::bg : theme::text, on ? theme::accent : theme::panel);
-    // Tapping the tab you are already on is the play/pause shortcut, so while
-    // a run is going the RUN tab says what the tap would do. Only while it is
-    // the current tab: from anywhere else the same tap navigates instead.
-    const char* label = (t == Tab::Run && on && run::snapshot().running)
-                        ? "PAUSE" : kTabNames[(int)t];
+    // Tapping the tab you are already on is the play/pause shortcut, and it
+    // is the only play control there is. While RUN is the current tab the tab
+    // draws what the tap would do -- a triangle, the two bars once it is
+    // going, or the go-again arrow once it has finished -- instead of naming
+    // a page you are already looking at. From any other tab the same tap
+    // navigates, so there it still says RUN.
+    if (t == Tab::Run && on) {
+      Btn tb = { i * w, kTabY, tw, kTabH, "" };
+      tb.fg = theme::bg;
+      if (snap.finished && !snap.running) drawAgain(tb, theme::bg);
+      else drawGlyph(tb, snap.running ? Glyph::Pause : Glyph::Play, false);
+      continue;
+    }
+    const char* label = (t == Tab::Edit && on && !Store::unlocked()) ? edCurKb()
+                      : kTabNames[(int)t];
     gfx.drawString(label, i * w + tw / 2, kTabY + kTabH / 2);
   }
   gfx.setTextDatum(textdatum_t::top_left);
   gfx.setFont(&fonts::Font0);
 }
+
 
 // ---------------------------------------------------------------------------
 // screens
@@ -858,10 +1104,11 @@ void drawTabs() {
 // repaint, so it tracks the run.
 // The scroll row sits directly under the grid, wherever that ends.
 #define kWideShiftY shiftRowY()
-int gridRowsShown() { return g_view == View::Zoom ? kVisRows : gridRows(); }
+int gridRowsShown() { return g_view == View::Zoom ? zoomRows() : gridRows(); }
 int maxGridRow()    { int m = g_edit.rows() - gridRowsShown(); return m > 0 ? m : 0; }
 
-int runnerListY() { return kTabY - kBandLines * kContentH - 2; }
+int bandLines()   { return bandRunners() ? kBandLines : kBandLinesOutput; }
+int runnerListY() { return kTabY - bandLines() * kContentH - 2; }
 #define kRunnerListY runnerListY()
 
 Btn btnWideLeft()  { return { kScreenW - 62, kWideShiftY, 26, kContentH + 2, "<" }; }
@@ -880,6 +1127,7 @@ uint32_t bandSignature(const run::Snapshot& snap) {
   uint32_t h = 2166136261u;
   auto mix = [&h](uint32_t v) { h = (h ^ v) * 16777619u; };
   mix((uint32_t)Store::runView() + 1u);
+  mix(Store::debugMode() ? 2u : 1u);
   mix((uint32_t)g_wideShift);
   mix((uint32_t)g_gridRow);
   mix((uint32_t)g_outLine);
@@ -887,10 +1135,14 @@ uint32_t bandSignature(const run::Snapshot& snap) {
   mix((uint32_t)g_edit.cols());
   mix((uint32_t)g_edit.rows());
   mix(snap.step == 0 ? 1u : 0u);
-  if (Store::runView() == 1) {
+  // Only what the band is actually showing. Mixing runner positions when the
+  // band is not showing runners made the signature change on almost every
+  // step, so the row was repainted a hundred and seventy times during a run
+  // that never printed anything.
+  if (bandOutput()) {
     mix((uint32_t)run::output().size());
   }
-  else {
+  else if (bandRunners()) {
     for (int i = 0; i < run::kMaxRunners && i < 4; ++i) {
       const run::RunnerView& r = snap.runners[i];
       mix((uint32_t)(r.used ? 1 : 0));
@@ -909,11 +1161,11 @@ uint32_t bandSignature(const run::Snapshot& snap) {
 unsigned long g_bandPaints = 0;   // instrumentation, host only
 #endif
 
-void drawRunnerList(const run::Snapshot& snap) {
-#if defined(SK_HOST)
-  ++g_bandPaints;
-#endif
-  gfx.fillRect(0, kWideShiftY, kScreenW, kTabY - kWideShiftY, theme::bg);
+// The row of scroll arrows directly under the program. Separate from the
+// readout below it because scrolling the grid changes which arrows are
+// available and nothing else -- what has been printed is unaffected.
+void drawScrollRow() {
+  gfx.fillRect(0, kWideShiftY, kScreenW, shiftRowH(), theme::bg);
   // A program that fits across the screen has nothing to scroll to, so the
   // arrows are absent rather than permanently greyed out.
   if (g_edit.cols() > (wideView() ? kWideCols : kZoomCols)) {
@@ -924,6 +1176,14 @@ void drawRunnerList(const run::Snapshot& snap) {
     drawBtn(btnRowUp(),   false, g_gridRow > 0);
     drawBtn(btnRowDown(), false, g_gridRow < maxGridRow());
   }
+}
+
+void drawRunnerList(const run::Snapshot& snap) {
+#if defined(SK_HOST)
+  ++g_bandPaints;
+#endif
+  gfx.fillRect(0, kWideShiftY, kScreenW, kTabY - kWideShiftY, theme::bg);
+  drawScrollRow();
   // Nothing under the program: the scroll row is all there is, and the grid
   // above it has already taken the space.
   if (runViewNone()) return;
@@ -932,7 +1192,7 @@ void drawRunnerList(const run::Snapshot& snap) {
 
   // The other readout: what the program has printed so far, growing as it
   // runs, the way you would watch the output file on a desktop build.
-  if (Store::runView() == 1) {
+  if (bandOutput()) {
     const std::string out = run::output();
     if (out.empty()) {
       g_outLine = 0;
@@ -955,7 +1215,7 @@ void drawRunnerList(const run::Snapshot& snap) {
     // Four lines fit. g_outLine is how far back from the end we are looking:
     // zero follows the tail as it grows, anything else holds still so you can
     // read what has already gone past.
-    const std::size_t rows = kBandLines;
+    const std::size_t rows = (std::size_t)bandLines();
     const std::size_t total = lines.size();
     std::size_t maxBack = total > rows ? total - rows : 0;
     if ((std::size_t)g_outLine > maxBack) g_outLine = (int)maxBack;
@@ -992,7 +1252,7 @@ void drawRunnerList(const run::Snapshot& snap) {
   for (int i = 0; i < run::kMaxRunners; ++i)
     if (snap.runners[i].used) used[nUsed++] = i;
 
-  const int rows = nUsed > kBandLines ? kBandLines - 1 : kBandLines;
+  const int rows = nUsed > bandLines() ? bandLines() - 1 : bandLines();
   const int maxTop = nUsed > rows ? nUsed - rows : 0;
   if (g_runnerTop > maxTop) g_runnerTop = maxTop;
   if (g_runnerTop < 0) g_runnerTop = 0;
@@ -1043,7 +1303,7 @@ void drawRun(const run::Snapshot& snap) {
 struct EditRow { int y, h; };
 constexpr int kEditRowH = kContentH + 8;
 constexpr int kEditRowsPerPage = kBodyH / kEditRowH;
-// Page 1 is exactly the parameters the puzzle asks you to set.
+// Page 1 is exactly the parameters a packed program exposes.
 inline int editPageFirst(int page) { return page == 0 ? 0 : prog::primarySlots(); }
 inline int editPageCount(int page) {
   int n = page == 0 ? prog::primarySlots() : prog::slotCount() - prog::primarySlots();
@@ -1114,24 +1374,68 @@ constexpr int kEdGridY = kBodyY + 4;
 // Five rows of sixteen: the 64 base64 digits then the 16 symbols. There is no
 // function row -- the cursor carries its own arrows, '.' is the blank so a DEL
 // key would be a duplicate, and size and name are buttons in the status bar.
-constexpr int kEdKeyRows = 5;
-constexpr int kEdKeyCols = 16;
-constexpr int kEdKeyW    = kScreenW / kEdKeyCols;     // 30
-constexpr int kEdKeyH    = 20;
-constexpr int kEdKeyY    = kTabY - kEdKeyRows * kEdKeyH;
+// Two keyboards, not one.
+//
+// Writing IRCIS needs about thirty characters; the other fifty are only there
+// for names and captions. Putting all eighty on screen at once made every key
+// 30 x 20, which is a coin-flip on a resistive panel. The working keyboard is
+// now 11 x 3 at 43 x 26 -- a bit over twice the area -- and the letters live
+// behind an `abc` key on a second page.
+//
+// Row 1 is movement and the blank. Row 2 is digits, with the quote that starts
+// a number at the head of them. Row 3 is everything else you type often.
+const char* const kEdKeysMain =
+  "><^v.+-*/%V"                          // movement, the blank, arithmetic
+  "'0123456789"                          // the quote that starts a number
+  "\"@&#$?!prR|";                        // modes, output, control, random
+// The letter pages carry ~ and , as well. A view tag needs both, and neither
+// can live on the IRCIS page: that page is the characters IRCIS reads, and a
+// tag works precisely because IRCIS reads neither of these.
+const char* const kEdKeysUpper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ~,";
+const char* const kEdKeysLower = "abcdefghijklmnopqrstuvwxyz~,";
+
+constexpr int kEdKeyCols  = 11;
+constexpr int kEdKeyRows  = 3;
+constexpr int kEdKeyW     = kScreenW / kEdKeyCols;     // 43
+constexpr int kEdKeyH     = 26;
+// The letters need only two rows of thirteen, which makes those keys bigger
+// than the working ones. Nothing is spent on a switch key: the EDIT tab does
+// the switching, the way the RUN tab does play and pause.
+constexpr int kEdAbcCols  = 14;
+constexpr int kEdAbcRows  = 2;
+constexpr int kEdAbcW     = kScreenW / kEdAbcCols;     // 34
+constexpr int kEdAbcH     = 26;
+int g_edKb = 0;                                        // 0 IRCIS, 1 ABC, 2 abc
+
+inline bool edLetters() { return g_edKb != 0; }
+inline int edKeyCols() { return edLetters() ? kEdAbcCols : kEdKeyCols; }
+inline int edKeyRows() { return edLetters() ? kEdAbcRows : kEdKeyRows; }
+inline int edKeyW()    { return edLetters() ? kEdAbcW    : kEdKeyW; }
+inline int edKeyH()    { return edLetters() ? kEdAbcH    : kEdKeyH; }
+// Which keyboard is on screen, which is what the tab says while EDIT is the
+// current page. Naming the NEXT one instead -- "ABC" written over a keyboard
+// of IRCIS symbols -- reads as a mislabel rather than a promise, and there is
+// nothing else on screen to tell you which it meant. Tapping cycles, and the
+// label follows: one tap to learn.
+const char* edCurKb() { return g_edKb == 0 ? "IRCIS" : g_edKb == 1 ? "ABC" : "abc"; }
+inline int kEdKeyYf()  { return kTabY - edKeyRows() * edKeyH(); }
+// Neither keyboard divides the panel evenly -- 11 x 43 leaves 7 px, 13 x 36
+// leaves 12 -- so share the remainder between the two edges rather than
+// letting it all pile up on the right.
+inline int edKeyX0()   { return (kScreenW - edKeyCols() * edKeyW()) / 2; }
+#define kEdKeyY kEdKeyYf()
 
 int g_edRow = 0, g_edCol = 0;      // top-left of the visible window
 
 // The grid band runs from under the header down to the keyboard.
 //
-// The cell is deliberately far larger than the glyph, exactly as the character
-// inspector's is: the cursor's arrows are drawn at the outer edge of the
-// NEIGHBOURING cell, so that cell's own whitespace is what keeps them off the
-// characters either side. Packing tighter would mean drawing arrows on top of
-// letters, which is what this replaces. The cost is that fewer columns show at
-// once and the view scrolls sooner -- RUN is where you look at a whole program.
-constexpr int kEdCellW = 30;
-constexpr int kEdCellH = 32;
+// A cell is a tap target, so it is sized like one: the same 26 px height as a
+// keyboard key, which the keyboard already proves is hittable. It used to be
+// 30 x 32 to leave whitespace for cursor arrows in the neighbouring cells;
+// tapping the cell you want does the same job, so the room went back to the
+// program -- 20 x 7 cells on screen instead of 16 x 5.
+constexpr int kEdCellW = 24;
+constexpr int kEdCellH = 26;
 
 int edBandH() { return kEdKeyY - kEdGridY - 4; }
 int edCellW() { return g_edZoom ? kEdCellW : kWideCellW; }
@@ -1152,12 +1456,18 @@ int edGridY() {
 }
 
 // Keep the cursor on screen after any movement.
+// Queue a cell for the narrow repaint. Falls back to the whole grid once more
+// than three pile up, which cannot happen from one tap but keeps it honest.
+void touchEdCell(int r, int c) {
+  for (int i = 0; i < g_edCellCount; ++i)
+    if (g_edCells[i].row == r && g_edCells[i].col == c) return;
+  if (g_edCellCount >= 3) { g_edGridOnly = true; return; }
+  g_edCells[g_edCellCount++] = { (int16_t)r, (int16_t)c };
+}
+
 void edFollow() {
   const int vr = edRows(), vc = edCols();
-  // One cell of margin when the arrows are drawn, so the neighbouring cell an
-  // arrow lives in is itself on screen. Zoomed out there are no arrows, so the
-  // cursor may sit on the very edge.
-  const int m = g_edZoom ? 1 : 0;
+  const int m = 0;
   if (g_curRow - m < g_edRow) g_edRow = g_curRow - m;
   if (g_curRow + m >= g_edRow + vr) g_edRow = g_curRow + m + 1 - vr;
   if (g_curCol - m < g_edCol) g_edCol = g_curCol - m;
@@ -1171,62 +1481,53 @@ void edFollow() {
 }
 
 // index 0..79 -> the character that key types
+// 0 for a gap, otherwise the character that key types.
 char edKeyChar(int i) {
-  if (i < 64) return kCellBase64[i];
-  if (i < 80) return kCellSymbols[i - 64];
-  return 0;
+  const char* tbl = g_edKb == 1 ? kEdKeysUpper
+                  : g_edKb == 2 ? kEdKeysLower : kEdKeysMain;
+  const int n = (int)std::strlen(tbl);
+  if (i < 0 || i >= n) return 0;
+  const char k = tbl[i];
+  return k == '\x01' ? 0 : k;
 }
 
 
-// The cursor's own arrows, drawn against the cell it sits on. Unlike the
-// character inspector -- where the cursor is pinned to the centre and the grid
-// slides underneath -- here the cursor moves and the program stays put, which
-// is much easier to follow when the whole program is on screen. A cell can be
-// as small as 6 x 15, so the arrows get a minimum size you can actually hit
-// and are allowed to overlap their neighbours.
-// Defined with the character inspector, which draws the same arrows.
-void drawChevron(const Btn& b, int dx, int dy);
-
-// The cell next door, exactly as the character inspector does it. The chevron
-// is drawn at that cell's far edge, in the whitespace around its glyph.
-Btn edArrow(int dx, int dy) {
-  return { edGridX() + (g_curCol - g_edCol + dx) * kEdCellW,
-           edGridY() + (g_curRow - g_edRow + dy) * kEdCellH,
-           kEdCellW, kEdCellH, "" };
+// One cell of the editor grid, background and all. Typing changes exactly
+// three of them at most -- the character replaced, the cell the cursor left
+// and the cell it arrived on -- so the other hundred-odd are left alone.
+void drawEdCell(int r, int c) {
+  if (r < g_edRow || r >= g_edRow + edRows()) return;
+  if (c < g_edCol || c >= g_edCol + edCols()) return;
+  if (r < 0 || r >= g_edit.rows() || c < 0 || c >= g_edit.cols()) return;
+  const int cw = edCellW(), chh = edCellH();
+  const int x = edGridX() + (c - g_edCol) * cw;
+  const int y = edGridY() + (r - g_edRow) * chh;
+  const bool cur = (r == g_curRow && c == g_curCol);
+  const uint16_t bg = cur ? theme::accent : theme::bg;
+  gfx.setTextSize(1);
+  gfx.fillRect(x, y, cw, chh, bg);
+  char ch[2] = { g_edit.cell(r, c), 0 };
+  gfx.setTextColor(cur ? theme::bg : (ch[0] == '.' ? theme::blank : theme::text), bg);
+  if (g_edZoom) {
+    gfx.setFont(&fonts::FreeMono12pt7b);
+    gfx.setTextDatum(textdatum_t::middle_center);
+    gfx.drawString(ch, x + cw / 2, y + chh / 2);
+  }
+  else {
+    gfx.setFont(&fonts::Font0);
+    gfx.setTextDatum(textdatum_t::top_left);
+    gfx.drawString(ch, x, y + 4);
+  }
+  gfx.setTextDatum(textdatum_t::top_left);
+  gfx.setFont(&fonts::Font0);
 }
 
 void drawProgEditGrid() {
   gfx.fillRect(0, kEdGridY, kScreenW, edBandH() + 4, theme::bg);
-  const int cw = edCellW(), chh = edCellH();
-  const int ox = edGridX(), oy = edGridY();
-  gfx.setTextSize(1);
   int rowTo = g_edRow + edRows(); if (rowTo > g_edit.rows()) rowTo = g_edit.rows();
   int colTo = g_edCol + edCols(); if (colTo > g_edit.cols()) colTo = g_edit.cols();
-  char ch[2] = { 0, 0 };
-  for (int r = g_edRow; r < rowTo; ++r) {
-    for (int c = g_edCol; c < colTo; ++c) {
-      int x = ox + (c - g_edCol) * cw;
-      int y = oy + (r - g_edRow) * chh;
-      bool cur = (r == g_curRow && c == g_curCol);
-      uint16_t bg = cur ? theme::accent : theme::bg;
-      gfx.fillRect(x, y, cw, chh, bg);
-      ch[0] = g_edit.cell(r, c);
-      uint16_t fg = cur ? theme::bg : (ch[0] == '.' ? theme::blank : theme::text);
-      gfx.setTextColor(fg, bg);
-      if (g_edZoom) {
-        gfx.setFont(&fonts::FreeMono12pt7b);
-        gfx.setTextDatum(textdatum_t::middle_center);
-        gfx.drawString(ch, x + cw / 2, y + chh / 2);
-      }
-      else {
-        gfx.setFont(&fonts::Font0);
-        gfx.setTextDatum(textdatum_t::top_left);
-        gfx.drawString(ch, x, y + 4);
-      }
-    }
-  }
-  gfx.setTextDatum(textdatum_t::top_left);
-  gfx.setFont(&fonts::Font0);
+  for (int r = g_edRow; r < rowTo; ++r)
+    for (int c = g_edCol; c < colTo; ++c) drawEdCell(r, c);
 }
 
 void drawProgEdit() {
@@ -1235,40 +1536,34 @@ void drawProgEdit() {
   drawProgEditGrid();
 
   gfx.setTextDatum(textdatum_t::middle_center);
-  for (int r = 0; r < kEdKeyRows; ++r) {
-    for (int c = 0; c < kEdKeyCols; ++c) {
-      int i = r * kEdKeyCols + c;
-      char k = edKeyChar(i);
+  const int kw = edKeyW(), kh = edKeyH();
+  for (int r = 0; r < edKeyRows(); ++r) {
+    for (int c = 0; c < edKeyCols(); ++c) {
+      char k = edKeyChar(r * edKeyCols() + c);
       if (!k) continue;
-      int x = c * kEdKeyW, y = kEdKeyY + r * kEdKeyH;
-      // Same scheme as the character picker: a key that is not a base64
-      // digit gets a lighter face. Seven base64 letters are ALSO commands
-      // (v V + / r R p), so those keep the base64 face and only the glyph
-      // changes colour -- the key is still a digit, it just does two jobs.
-      bool symbol  = i >= 64;
-      bool command = symbol || std::strchr("vV+/rRp", k) != nullptr;
-      uint16_t kbg = symbol ? theme::line : theme::panel;
-      gfx.fillRect(x + 1, y + 1, kEdKeyW - 2, kEdKeyH - 2, kbg);
-      gfx.drawRect(x + 1, y + 1, kEdKeyW - 2, kEdKeyH - 2, theme::line);
+      int x = edKeyX0() + c * kw, y = kEdKeyY + r * kh;
+      // A command gets the accent; a base64 digit stays plain. Seven letters
+      // are both (v V + / r R p), and keep the digit's face so the key still
+      // reads as a digit that happens to do two jobs.
+      // A command gets the accent. Several base64 digits are also commands
+      // (v V r R p + /), so they show as commands here and on the letters
+      // page too -- the key still types a digit, it just does two jobs.
+      const bool command = std::strchr("><^v+-*/%V'\"@&#$?!prR|", k) != nullptr;
+      // No outline. Thirty-three boxed keys is a lot of ruled lines for a
+      // small panel; the fill alone separates them, the way the picker's
+      // keyboards already do it.
+      uint16_t kbg = theme::panel;
+      gfx.fillRect(x + 1, y + 1, kw - 2, kh - 2, kbg);
+      // The key is set in the same face and size the grid uses, so what you
+      // tap looks like what lands in the cell. It used to be the 5 x 7 pixel
+      // font at double size, which matched nothing else on the device.
       char lbl[2] = { k, 0 };
-      gfx.setFont(&fonts::Font0);
-      gfx.setTextSize(2);
+      useContentFont(true);
       gfx.setTextColor(command ? theme::accent : theme::text, kbg);
-      // +1: Font0's glyph box is 16 px in a 20 px key, and middle_center
-      // rounds the odd pixel upwards -- capitals ended up touching the top
-      // edge with two clear beneath them.
-      gfx.drawString(lbl, x + kEdKeyW / 2, y + kEdKeyH / 2 + 1);
+      gfx.drawString(lbl, x + kw / 2, y + kh / 2);
     }
   }
   gfx.setTextSize(1);
-
-  // Arrows last, so they sit over the grid rather than under it.
-  if (g_edZoom) {
-    if (g_curRow > 0)                  drawChevron(edArrow(0, -1), 0, -1);
-    if (g_curRow < g_edit.rows() - 1)  drawChevron(edArrow(0,  1), 0,  1);
-    if (g_curCol > 0)                  drawChevron(edArrow(-1, 0), -1, 0);
-    if (g_curCol < g_edit.cols() - 1)  drawChevron(edArrow( 1, 0),  1, 0);
-  }
 
   gfx.setTextDatum(textdatum_t::top_left);
   gfx.setFont(&fonts::Font0);
@@ -1282,8 +1577,25 @@ void openSizeDialog();
 int  g_sizeRows = 11, g_sizeCols = 40;
 bool g_sizeIsNew = true;         // false when resizing the loaded program
 
-constexpr int kSzY = 60;
-constexpr int kSzH = 150;
+// A new program is two numbers; resizing an existing one is four edges, and
+// needs the room. RESIZE asks which SIDE to add to or take from, because
+// "eleven rows" does not say whether the new one lands above the program or
+// below it -- and for a program whose runner starts at 0,0, that is the whole
+// question.
+inline int szY() { return g_sizeIsNew ? 60 : 34; }
+inline int szH() { return g_sizeIsNew ? 150 : 222; }
+#define kSzY szY()
+#define kSzH szH()
+
+// top, bottom, left, right -- how many rows or columns to add at each edge,
+// negative to take away. Applied together when OK is pressed, so CANCEL
+// really does leave the program alone.
+int g_szEdge[4] = { 0, 0, 0, 0 };
+const char* const kEdgeName[4] = { "top", "bottom", "left", "right" };
+inline int szEdgeY(int i) { return kSzY + 40 + i * 34; }
+Btn btnSzEdgeDn(int i) { return { 196, szEdgeY(i), 40, 26, "-" }; }
+Btn btnSzEdgeUp(int i) { return { 300, szEdgeY(i), 40, 26, "+" }; }
+
 Btn btnSzRowsDn() { return { 150, kSzY + 40, 40, 28, "-" }; }
 Btn btnSzRowsUp() { return { 250, kSzY + 40, 40, 28, "+" }; }
 Btn btnSzColsDn() { return { 150, kSzY + 76, 40, 28, "-" }; }
@@ -1301,6 +1613,40 @@ void drawSize() {
   gfx.drawString(g_sizeIsNew ? "NEW PROGRAM" : "RESIZE", 30, kSzY + 6);
 
   char buf[32];
+
+  if (!g_sizeIsNew) {
+    // What the program is now, and what it would become.
+    const int nr = g_edit.rows() + g_szEdge[0] + g_szEdge[1];
+    const int nc = g_edit.cols() + g_szEdge[2] + g_szEdge[3];
+    snprintf(buf, sizeof(buf), "%d x %d  ->  %d x %d",
+             g_edit.rows(), g_edit.cols(), nr, nc);
+    gfx.setFont(&fonts::Font0);
+    gfx.setTextDatum(textdatum_t::top_right);
+    gfx.setTextColor((nr != g_edit.rows() || nc != g_edit.cols())
+                       ? theme::edited : theme::dim, theme::panel);
+    gfx.drawString(buf, kScreenW - 30, kSzY + 10);
+    gfx.setTextDatum(textdatum_t::top_left);
+
+    for (int i = 0; i < 4; ++i) {
+      clabel(40, szEdgeY(i) + 5, kEdgeName[i], theme::text, theme::panel);
+      snprintf(buf, sizeof(buf), "%+d", g_szEdge[i]);
+      gfx.setFont(&fonts::Font2);
+      gfx.setTextDatum(textdatum_t::middle_center);
+      gfx.setTextColor(g_szEdge[i] ? theme::edited : theme::dim, theme::panel);
+      gfx.drawString(g_szEdge[i] ? buf : "0", 268, szEdgeY(i) + 13);
+      gfx.setTextDatum(textdatum_t::top_left);
+      const bool isRow = i < 2;
+      const int  now   = isRow ? g_edit.rows() + g_szEdge[0] + g_szEdge[1]
+                               : g_edit.cols() + g_szEdge[2] + g_szEdge[3];
+      const int  cap   = isRow ? prog::kMaxRows : prog::kMaxCols;
+      drawBtn(btnSzEdgeDn(i), false, now > 1);
+      drawBtn(btnSzEdgeUp(i), false, now < cap);
+    }
+    drawBtn(btnSzCancel()); drawBtn(btnSzOk());
+    gfx.setFont(&fonts::Font0);
+    return;
+  }
+
   clabel(40, kSzY + 46, "rows", theme::text, theme::panel);
   snprintf(buf, sizeof(buf), "%d", g_sizeRows);
   gfx.setFont(&fonts::Font2);
@@ -1327,6 +1673,22 @@ void handleSizeTouch(int x, int y) {
                      if (g_sizeRows > prog::kMaxRows) g_sizeRows = prog::kMaxRows; };
   auto clampC = [] { if (g_sizeCols < 1) g_sizeCols = 1;
                      if (g_sizeCols > prog::kMaxCols) g_sizeCols = prog::kMaxCols; };
+  if (!g_sizeIsNew) {
+    for (int i = 0; i < 4; ++i) {
+      const bool isRow = i < 2;
+      const int  cap   = isRow ? prog::kMaxRows : prog::kMaxCols;
+      const int  now   = isRow ? g_edit.rows() + g_szEdge[0] + g_szEdge[1]
+                               : g_edit.cols() + g_szEdge[2] + g_szEdge[3];
+      if (hit(btnSzEdgeDn(i), x, y)) {
+        if (now > 1) { --g_szEdge[i]; g_dirty = true; }
+        return;
+      }
+      if (hit(btnSzEdgeUp(i), x, y)) {
+        if (now < cap) { ++g_szEdge[i]; g_dirty = true; }
+        return;
+      }
+    }
+  }
   if (hit(btnSzRowsDn(), x, y)) { --g_sizeRows; clampR(); g_dirty = true; return; }
   if (hit(btnSzRowsUp(), x, y)) { ++g_sizeRows; clampR(); g_dirty = true; return; }
   if (hit(btnSzColsDn(), x, y)) { --g_sizeCols; clampC(); g_dirty = true; return; }
@@ -1334,10 +1696,27 @@ void handleSizeTouch(int x, int y) {
   if (hit(btnSzCancel(), x, y)) { g_modal = Modal::None; g_dirty = true; return; }
   if (hit(btnSzOk(), x, y)) {
     if (g_sizeIsNew) { g_edit.newProgram(g_sizeRows, g_sizeCols); g_progFile.clear(); }
-    else if (!g_edit.resize(g_sizeRows, g_sizeCols)) {
-      g_modal = Modal::None;
-      message("Cannot resize", pack::str(pack::kStrResizeBody));
-      return;
+    else {
+      // Each edge in turn. Adding at the top or the left shifts the program
+      // down or right; adding at the bottom or the right leaves it where it
+      // is. Taking away does the same in reverse.
+      bool ok = true;
+      for (int k = 0; k < g_szEdge[0]; ++k)  ok = ok && g_edit.insertRow(0);
+      for (int k = 0; k > g_szEdge[0]; --k)  ok = ok && g_edit.deleteRow(0);
+      for (int k = 0; k < g_szEdge[1]; ++k)  ok = ok && g_edit.insertRow(g_edit.rows());
+      for (int k = 0; k > g_szEdge[1]; --k)  ok = ok && g_edit.deleteRow(g_edit.rows() - 1);
+      for (int k = 0; k < g_szEdge[2]; ++k)  ok = ok && g_edit.insertCol(0);
+      for (int k = 0; k > g_szEdge[2]; --k)  ok = ok && g_edit.deleteCol(0);
+      for (int k = 0; k < g_szEdge[3]; ++k)  ok = ok && g_edit.insertCol(g_edit.cols());
+      for (int k = 0; k > g_szEdge[3]; --k)  ok = ok && g_edit.deleteCol(g_edit.cols() - 1);
+      if (!ok) {
+        g_modal = Modal::None;
+        message("Cannot resize", pack::str(pack::kStrResizeBody));
+        return;
+      }
+      // Every cell may have moved, so the history no longer describes this
+      // grid.
+      clearUndo();
     }
     run::load(g_edit);
     markLoaded();
@@ -1352,6 +1731,7 @@ void handleSizeTouch(int x, int y) {
 
 void openSizeDialog() {
   g_sizeIsNew = false;
+  g_szEdge[0] = g_szEdge[1] = g_szEdge[2] = g_szEdge[3] = 0;
   g_sizeRows = g_edit.rows();
   g_sizeCols = g_edit.cols();
   g_modal = Modal::Size;
@@ -1384,40 +1764,99 @@ void openRenameDialog() {
              kKbSplit);
 }
 
+// Record an edit, dropping any redo branch: once you type after undoing, the
+// path you undid is gone, which is what every editor does.
+void noteEdit(int row, int col, char was, char now) {
+  if (was == now) return;
+  g_undo.resize(g_undoAt);
+  g_undo.push_back({ (int16_t)row, (int16_t)col, was, now });
+  if (g_undo.size() > kUndoMax) g_undo.erase(g_undo.begin());
+  g_undoAt = g_undo.size();
+}
+void clearUndo() { g_undo.clear(); g_undoAt = 0; }
+
+bool canUndo() { return g_undoAt > 0; }
+bool canRedo() { return g_undoAt < g_undo.size(); }
+
+void doUndo() {
+  if (!canUndo()) return;
+  const CellEdit& e = g_undo[--g_undoAt];
+  touchEdCell(g_curRow, g_curCol);
+  g_edit.setCell(e.row, e.col, e.was);
+  g_curRow = e.row; g_curCol = e.col;      // show what moved
+  touchEdCell(g_curRow, g_curCol);
+  markEdited();
+  g_edHeadOnly = true; g_dirty = true;
+}
+void doRedo() {
+  if (!canRedo()) return;
+  const CellEdit& e = g_undo[g_undoAt++];
+  touchEdCell(g_curRow, g_curCol);
+  g_edit.setCell(e.row, e.col, e.now);
+  g_curRow = e.row; g_curCol = e.col;
+  touchEdCell(g_curRow, g_curCol);
+  markEdited();
+  g_edHeadOnly = true; g_dirty = true;
+}
+
 void handleProgEditTouch(int x, int y) {
   // The status bar's two controls.
   if (hit(btnEdName(), x, y)) { openRenameDialog(); return; }
   if (hit(btnEdSize(), x, y)) { openSizeDialog();   return; }
-  if (hit(btnEdZoom(), x, y)) { g_edZoom = !g_edZoom; g_dirty = true; return; }
-  if (hit(btnEdSave(), x, y)) { saveCurrentProgram(); return; }
-  // The cursor's arrows sit on top of the grid, so they are tested first.
-  if (g_edZoom) {
-    if (g_curRow > 0 && hit(edArrow(0, -1), x, y))                { --g_curRow; g_dirty = true; return; }
-    if (g_curRow < g_edit.rows() - 1 && hit(edArrow(0, 1), x, y)) { ++g_curRow; g_dirty = true; return; }
-    if (g_curCol > 0 && hit(edArrow(-1, 0), x, y))                { --g_curCol; g_dirty = true; return; }
-    if (g_curCol < g_edit.cols() - 1 && hit(edArrow(1, 0), x, y)) { ++g_curCol; g_dirty = true; return; }
+  if (hit(btnEdZoom(), x, y)) {
+    g_edZoom = !g_edZoom;
+    g_edGridOnly = true; g_headerOnly = true; g_dirty = true;
+    return;
   }
-  // the grid: tap a cell to put the cursor there
-  if (y >= edGridY() && y < edGridY() + edRows() * edCellH() && x >= edGridX()) {
+  if (hit(btnEdSave(), x, y)) { saveCurrentProgram(); return; }
+  if (hit(btnEdUndo(), x, y)) { doUndo(); return; }
+  if (hit(btnEdRedo(), x, y)) { doRedo(); return; }
+  // The grid: tap a cell to put the cursor there. Bounded by the rows and
+  // columns actually on screen, not by how many WOULD fit -- edRows() counts
+  // the space available, so under a short program this claimed the keyboard
+  // as well and swallowed every key press that landed on it. A two-row
+  // program lost the whole top row of keys; a five-row program lost part of
+  // it; anything seven rows or taller was unaffected, which is what made it
+  // look intermittent rather than broken.
+  const int shownRows = g_edit.rows() - g_edRow < edRows()
+                          ? g_edit.rows() - g_edRow : edRows();
+  const int shownCols = g_edit.cols() - g_edCol < edCols()
+                          ? g_edit.cols() - g_edCol : edCols();
+  if (y >= edGridY() && y < edGridY() + shownRows * edCellH() &&
+      x >= edGridX() && x < edGridX() + shownCols * edCellW()) {
     int r = g_edRow + (y - edGridY()) / edCellH();
     int c = g_edCol + (x - edGridX()) / edCellW();
-    if (r >= 0 && r < g_edit.rows() && c >= 0 && c < g_edit.cols()) {
-      g_curRow = r; g_curCol = c; g_dirty = true;
+    // Tapping the cell the cursor is already on changes nothing, so it draws
+    // nothing: on a panel that mis-reads taps, the same cell gets hit twice
+    // often enough for that to be worth saying.
+    if (r >= 0 && r < g_edit.rows() && c >= 0 && c < g_edit.cols() &&
+        (r != g_curRow || c != g_curCol)) {
+      touchEdCell(g_curRow, g_curCol);        // the one it is leaving
+      g_curRow = r; g_curCol = c;
+      touchEdCell(g_curRow, g_curCol);        // and the one it lands on
+      g_edHeadOnly = true; g_dirty = true;
     }
     return;
   }
   // character keys: type and advance, wrapping to the next row
-  if (y >= kEdKeyY && y < kEdKeyY + kEdKeyRows * kEdKeyH) {
-    int r = (y - kEdKeyY) / kEdKeyH;
-    int c = x / kEdKeyW;
-    char k = edKeyChar(r * kEdKeyCols + c);
+  if (y >= kEdKeyY && y < kTabY) {
+    int r = (y - kEdKeyY) / edKeyH();
+    if (x < edKeyX0()) return;
+    int c = (x - edKeyX0()) / edKeyW();
+    if (c >= edKeyCols()) return;
+    char k = edKeyChar(r * edKeyCols() + c);
     if (!k) return;
+    const char was = g_edit.cell(g_curRow, g_curCol);
     if (g_edit.setCell(g_curRow, g_curCol, k)) {
+      noteEdit(g_curRow, g_curCol, was, k);
       markEdited();
+      touchEdCell(g_curRow, g_curCol);        // the character just replaced
       if (g_curCol < g_edit.cols() - 1) ++g_curCol;
       else if (g_curRow < g_edit.rows() - 1) { g_curCol = 0; ++g_curRow; }
+      touchEdCell(g_curRow, g_curCol);        // and where the cursor went
     }
-    g_dirty = true;
+    // Those cells and the readout change; the keys and the rest do not.
+    g_edHeadOnly = true; g_dirty = true;
   }
 }
 
@@ -1632,10 +2071,6 @@ int g_outTotal = 1;
 int g_outTop = 0;
 
 constexpr int kOutHeaderH = 3 * kContentH + 4;
-constexpr int kOutBtnW = 74;
-constexpr int kOutBtnH = kContentH + 2;
-Btn btnOutSd()     { return { kScreenW - kOutBtnW - 4, kBodyY + 1, kOutBtnW, kOutBtnH, "SAVE SD" }; }
-Btn btnOutColour() { return { kScreenW - kOutBtnW - 4, kBodyY + 3 + kOutBtnH, kOutBtnW, kOutBtnH, "COLOUR", theme::good }; }
 // Only drawn when the output is longer than the page, on a footer row of
 // their own so they cannot land on top of a line of output.
 constexpr int kOutFootH = kContentH + 4;
@@ -1682,11 +2117,22 @@ void drawOutHeader() {
 
     const run::Snapshot snap = run::snapshot();
     if (snap.step > 0) {
+      // No elapsed time here: it is the one figure that changes run to run,
+      // and it would make this screen impossible to compare in the regression.
+      // SYS carries the timings.
+      // The death count is only worth showing while the run is still going,
+      // where it says how many of the runners are left. Once it has finished
+      // they are all dead by definition, and the figure says nothing.
       char how[80];
-      snprintf(how, sizeof(how), "%u steps   %u runner%s   %u died   %u ms",
-               (unsigned)snap.step,
-               (unsigned)snap.runnersCreated, snap.runnersCreated == 1 ? "" : "s",
-               (unsigned)snap.deaths, (unsigned)snap.elapsedMs);
+      if (snap.finished)
+        snprintf(how, sizeof(how), "%u steps   %u runner%s",
+                 (unsigned)snap.step,
+                 (unsigned)snap.runnersCreated, snap.runnersCreated == 1 ? "" : "s");
+      else
+        snprintf(how, sizeof(how), "%u steps   %u runner%s   %u died",
+                 (unsigned)snap.step,
+                 (unsigned)snap.runnersCreated, snap.runnersCreated == 1 ? "" : "s",
+                 (unsigned)snap.deaths);
       clabel(4, kBodyY + 1 + kContentH, how, theme::dim);
     }
     gfx.drawFastHLine(0, kBodyY + kOutHeaderH - 2, kScreenW, theme::line);
@@ -1728,7 +2174,6 @@ void drawOut() {
   gfx.fillRect(0, kBodyY, kScreenW, kBodyH, theme::bg);
   drawOutHeader();
 
-  drawBtn(btnOutSd(), false, plat::sdPresent());
   // Colouring by chunk length and sign describes a packed program's output.
   // For any other program the output is just text.
   if (g_ranGrid.isPacked()) drawBtn(btnOutColour(), Store::outputColour());
@@ -1765,11 +2210,32 @@ void drawOut() {
   if (g_outTop > maxTop) g_outTop = maxTop;
   if (g_outTop < 0) g_outTop = 0;
 
+  // Centre the block on the widest line it is showing, so a short output sits
+  // in the middle of the panel rather than hugging the left edge. A long one
+  // fills the width anyway and does not move.
+  int widest = 0;
+  for (int i = 0; i < g_outLines && g_outTop + i < g_outTotal; ++i) {
+    const int n = (int)spans[g_outTop + i].len;
+    if (n > widest) widest = n;
+  }
+  int ox = (kScreenW - widest * cw) / 2;
+  if (ox < 4) ox = 4;
+
+  // And centre it down the panel too. Most outputs are a line or two and were
+  // sitting against the top edge with the rest of the screen empty under
+  // them. Once the output is long enough to scroll it fills the space anyway,
+  // so this only moves the short ones.
+  const int shown  = g_outTotal - g_outTop < g_outLines
+                       ? g_outTotal - g_outTop : g_outLines;
+  const int room   = (kTabY - 2 - (scrolls ? kOutFootH : 0)) - top;
+  int oy = top + (room - shown * ch) / 2;
+  if (oy < top) oy = top;
+
   for (int i = 0; i < g_outLines && g_outTop + i < g_outTotal; ++i) {
     const LineSpan& ln = spans[g_outTop + i];
-    int y = top + i * ch;
+    int y = oy + i * ch;
     if (chunks.empty()) {
-      clabel(4, y, text.substr(ln.start, ln.len).c_str(), theme::text, theme::bg, true);
+      clabel(ox, y, text.substr(ln.start, ln.len).c_str(), theme::text, theme::bg, true);
       continue;
     }
     // Walk the chunks overlapping this line and draw each piece in its colour.
@@ -1789,7 +2255,7 @@ void drawOut() {
         for (const auto& c : chunks)
           if ((uint32_t)c.start > pos && (uint32_t)c.start < stop) stop = c.start;
       }
-      clabel(4 + (int)(pos - ln.start) * cw, y, text.substr(pos, stop - pos).c_str(),
+      clabel(ox + (int)(pos - ln.start) * cw, y, text.substr(pos, stop - pos).c_str(),
              col, theme::bg, true);
       pos = stop;
     }
@@ -1815,8 +2281,8 @@ Btn btnSaveDel(int i)   { return { kScreenW -  62, kBodyY + 4 + i * kSaveRowH, 5
 // can be moved on and off with any computer.
 // ---------------------------------------------------------------------------
 
-std::vector<std::string> g_progFiles;
-bool g_progFilesRead = false;
+std::vector<std::string> g_devFiles;    // the board's own flash
+std::vector<std::string> g_cardFiles;   // the SD card, if there is one
 
 // Split a program file into rows, padded to the longest, bounded by the
 // model's limits. False when there is nothing usable in it.
@@ -1837,16 +2303,135 @@ bool splitProgramText(const std::string& text,
   return (int)rows.size() <= prog::kMaxRows && (int)wide <= prog::kMaxCols;
 }
 
+void applyViewTags(const std::string& text);
+
 void afterProgramChange() {
+  // A different program: its cells are not the ones the history is about.
+  clearUndo();
+  // No markLoaded() here. run::load rebuilds on the run task and the watch in
+  // tick() paints once it has, which is both one frame instead of two and the
+  // right frame -- painting now would put the old machine's runners on the
+  // new grid.
   run::load(g_edit);
-  markLoaded();
   g_curRow = g_curCol = 0;
   g_edRow = g_edCol = 0;
   syncViewToProgram();
+  // After syncViewToProgram, so a program that asks for a view gets it rather
+  // than having it chosen for it.
+  applyViewTags(g_edit.text());
 }
 
 // A different program: it brings its own identity and its own blank baseline.
-bool loadProgramText(const std::string& text) {
+// A program can ask to be shown a particular way, in one short tag written
+// anywhere in the grid. None of the tag characters is an IRCIS command, so a
+// runner that crosses one steps over it -- which is why the tag can sit in the
+// middle of a program rather than needing a row of its own. A tilde, then
+// single letters:
+//
+//     n  nothing under the program        s  slow      q  quick
+//     d  debug: step buttons + runners     m  medium    f  full
+//     <col>,<row>[NESW]  start here, heading east unless a letter says
+//
+// So `~nm3,1` is: nothing underneath, medium, start at column 3 row 1 heading
+// east. The comma is what marks a coordinate, and either side of it may be
+// left off -- `~,2` starts at column 0 row 2.
+//
+// A tag speaks for every setting it could set, so anything it leaves out goes
+// back to the default: the output underneath, fast, no debug, starting at the
+// top left heading east. A bare `~` therefore means "the usual", and there is
+// no letter to write for a setting you are happy with. No tag at all leaves
+// the device exactly as the user left it.
+//
+// The tilde is not an IRCIS command, so a runner that does cross one steps
+// over it. Tags set the ordinary settings, so what a program asked for is
+// visible on SYS afterwards rather than being an invisible state.
+// Read a program's view tag and put the device into the state it asks for.
+//
+// The defaults are applied whether or not there is a tag, so a program without
+// one opens the same way every time instead of inheriting whatever the last
+// program happened to set. That is what lets an ordinary program carry no tag
+// at all: only a program that wants something OTHER than the defaults needs to
+// say so.
+//
+// Where a tag contradicts itself -- "~sq" asking for both slow and quick --
+// the first one wins and the rest of that group is ignored, so the reading is
+// left to right and never depends on which letter came last.
+void applyViewTags(const std::string& text) {
+  Store::setRunView(0);                 // the output, underneath
+  Store::setDebugMode(false);
+  Store::setRunSpeed(1);                // medium
+  run::setSpeed(run::Speed::Medium);
+  Store::setStartEditable(false);
+  run::setStart(0, 0, 'E');
+
+  const std::size_t at = text.find('~');
+  if (at == std::string::npos) return;
+
+  bool bandSet = false, speedSet = false, startSet = false;
+
+  auto setSpeed = [&speedSet](int n, run::Speed s) {
+    if (speedSet) return;
+    speedSet = true;
+    Store::setRunSpeed(n);
+    run::setSpeed(s);
+  };
+
+  for (std::size_t i = at + 1; i < text.size(); ++i) {
+    const char c = text[i];
+    if (std::isspace((unsigned char)c) || c == '.') break;   // a blank ends it
+
+    // A comma marks a coordinate; the digits around it are optional.
+    if (std::isdigit((unsigned char)c) || c == ',') {
+      std::size_t j = i;
+      int col = 0, row = 0;
+      // Capped rather than accumulated freely: a tag is text anyone can type,
+      // and "~999999999,0" must not overflow its way to a nonsense start cell.
+      while (j < text.size() && std::isdigit((unsigned char)text[j])) {
+        if (col < 10000) col = col * 10 + (text[j] - '0');
+        ++j;
+      }
+      if (j >= text.size() || text[j] != ',') { i = j - 1; continue; }  // digits alone
+      ++j;
+      while (j < text.size() && std::isdigit((unsigned char)text[j])) {
+        if (row < 10000) row = row * 10 + (text[j] - '0');
+        ++j;
+      }
+      char dir = 'E';
+      if (j < text.size() && std::strchr("NESW", text[j])) dir = text[j++];
+      i = j - 1;
+      if (startSet) continue;           // the first coordinate is the one
+      startSet = true;
+      // A start outside the grid would put the runner nowhere; clamp it to a
+      // cell that exists rather than refusing the whole tag.
+      if (col >= g_edit.cols()) col = g_edit.cols() - 1;
+      if (row >= g_edit.rows()) row = g_edit.rows() - 1;
+      if (col < 0) col = 0;
+      if (row < 0) row = 0;
+      Store::setStartEditable(true);
+      Store::setStartPoint(col, row, dir);
+      run::setStart(col, row, dir);
+      continue;
+    }
+
+    switch (c) {
+      case 'n': if (!bandSet) { bandSet = true; Store::setRunView(1); }   break;
+      case 'd': if (!bandSet) { bandSet = true; Store::setDebugMode(true); } break;
+      // s m q f, in order. 'r' would have been the obvious letter for the
+      // third one, but r is an IRCIS command -- push a random number -- and a
+      // tag can sit on a cell a runner crosses, where it would be executed.
+      case 's': setSpeed(0, run::Speed::Slow);   break;
+      case 'm': setSpeed(1, run::Speed::Medium); break;
+      case 'q': setSpeed(2, run::Speed::Quick);  break;
+      case 'f': setSpeed(3, run::Speed::Full);   break;
+      default: break;                   // anything else is just a character
+    }
+  }
+}
+
+// `name` is taken before the machine is handed the program, not after. It
+// used to be set by the caller afterwards, which meant a second run::load to
+// carry the name across -- two rebuilds and two full repaints for one load.
+bool loadProgramText(const std::string& text, const char* name = nullptr) {
   std::vector<std::string> rows;
   std::size_t w = 0;
   if (!splitProgramText(text, rows, w)) return false;
@@ -1858,6 +2443,7 @@ bool loadProgramText(const std::string& text) {
   // The text it arrived as is its baseline, so it starts with no edits and
   // REVERT means "back to the file", not "back to blank".
   g_edit.adoptBaseline();
+  if (name) g_edit.setProgramName(name);
   afterProgramChange();
   return true;
 }
@@ -1882,135 +2468,155 @@ bool applyProgramText(const std::string& text) {
 }
 
 // Whatever of a program's name a filesystem will take.
+// A program name as a file name. Spaces and punctuation become a single
+// hyphen rather than being dropped, so "Count to 20" stays readable as
+// Count-to-20 instead of collapsing to Countto20. Hyphens keep the name safe
+// for FAT, for LittleFS, and inside the web view's ?name= links, which are
+// not percent-decoded.
 std::string fileNameFor(const char* name) {
   std::string out;
-  for (const char* n = name; *n && out.size() < 24; ++n)
-    if (std::isalnum((unsigned char)*n) || *n == '-' || *n == '_') out.push_back(*n);
+  bool gap = false;
+  for (const char* n = name; *n && out.size() < 24; ++n) {
+    if (std::isalnum((unsigned char)*n) || *n == '_') {
+      if (gap && !out.empty()) out.push_back('-');
+      gap = false;
+      out.push_back(*n);
+    }
+    else gap = true;                    // a run of anything else is one hyphen
+  }
   return out;
 }
 
 void refreshProgFiles();
-void promptSaveAs();
+void promptSaveAs(plat::Where w);
 
 // SAVE writes the loaded program to the card under the name in the status bar,
 // which is editable right beside it, so what it writes is never a surprise.
-void saveCurrentProgram() {
-  if (!plat::sdPresent()) {
-    message("No card", "Insert an SD card to save programs.");
+const char* whereName(plat::Where w) {
+  return w == plat::Where::Device ? "device" : "card";
+}
+
+void saveProgramTo(plat::Where w) {
+  if (!plat::progStoreReady(w)) {
+    message("No card", "Insert an SD card to save programs there.");
     return;
   }
   const std::string name = fileNameFor(g_edit.programName());
-  if (name.empty()) { promptSaveAs(); return; }
-  auto write = [name] {
-    if (!plat::progWrite(name, g_edit.text())) {
-      message("Save failed", "Could not write to the card.");
+  if (name.empty()) { promptSaveAs(w); return; }
+  auto write = [name, w] {
+    if (!plat::progWrite(w, name, g_edit.text())) {
+      message("Save failed", std::string("Could not write to the ") + whereName(w) + ".");
       return;
     }
+    // What is saved IS the program now, so nothing in it is an unsaved edit
+    // any more. Without this every changed cell stayed marked as edited on
+    // the RUN grid after the file was written, and REVERT would have gone
+    // back past a version you had deliberately kept.
+    g_edit.adoptBaseline();
+    clearUndo();
     g_edit.setProgramName(name);
-    g_progFile = name;
+    g_progFile  = name;
+    g_progWhere = w;
     refreshProgFiles();
-    message("Saved", name + ".txt");
+    message("Saved", name + ".txt on the " + whereName(w));
   };
   // Overwriting the file this program came from is what you meant; overwriting
   // somebody else's is worth one question.
   std::string existing;
-  if (name != g_progFile && plat::progRead(name, existing))
-    confirm("Replace " + name + ".txt?", "Another program of that name is "
-            "already on the card.", write);
+  if ((name != g_progFile || w != g_progWhere) &&
+      plat::progRead(w, name, existing))
+    confirm("Replace " + name + ".txt?",
+            std::string("Another program of that name is already on the ")
+              + whereName(w) + ".", write);
   else
     write();
 }
 
+// SAVE writes back to wherever this program came from. If that was a card
+// that has since been pulled, the device's own storage is always there, so
+// save goes there rather than refusing -- there is no longer any state in
+// which the device cannot keep your work.
+void saveCurrentProgram() {
+  saveProgramTo(plat::progStoreReady(g_progWhere) ? g_progWhere
+                                                  : plat::Where::Device);
+}
+
+// The built-in programs ship inside the firmware as const arrays. On first
+// run they are copied into the board's own filesystem, where they stop being
+// special: you can edit one, save over it, rename it or delete it like
+// anything else. The firmware copies stay where they are and are the source
+// for RESTORE BUILT-INS, so nothing is lost by editing.
+//
+// The packed program is never copied. Its grid exists decrypted only in RAM,
+// and writing it to a filesystem would leave it there in plain text.
+std::string builtInText(int i) {
+  const prog::ProgramDef& d = prog::programAt(i);
+  std::string t;
+  for (int r = 0; r < d.rows_n; ++r) { t += d.rows[r]; t += '\n'; }
+  return t;
+}
+
+int writeBuiltIns(bool overwrite) {
+  int written = 0;
+  for (int i = prog::kFirstExample; i < prog::programCount(); ++i) {
+    if (prog::programAt(i).packed) continue;          // never the packed one
+    std::string name = fileNameFor(prog::programAt(i).name);
+    if (name.empty()) continue;
+    std::string existing;
+    if (!overwrite && plat::progRead(plat::Where::Device, name, existing)) continue;
+    if (plat::progWrite(plat::Where::Device, name, builtInText(i))) ++written;
+  }
+  return written;
+}
+
+void seedDeviceProgramsOnce() {
+  if (plat::kv::getBool("seeded", false)) return;
+  if (!plat::progStoreReady(plat::Where::Device)) return;
+  // Overwrite: the flag is cleared when the firmware changes, and the point of
+  // that is to replace the shipped programs with the versions this build
+  // carries. Anything the owner made has a name of its own and is not touched.
+  writeBuiltIns(true);
+  plat::kv::putBool("seeded", true);
+}
+
 void refreshProgFiles() {
-  g_progFiles.clear();
-  g_progFilesRead = plat::progList(g_progFiles);
+  seedDeviceProgramsOnce();
+  g_devFiles.clear();
+  g_cardFiles.clear();
+  plat::progList(plat::Where::Device, g_devFiles);
+  if (plat::sdPresent()) plat::progList(plat::Where::Card, g_cardFiles);
+
+  // At power-on the loaded program came from the examples table, before any of
+  // this existed as files. It is one of these files now, so point at it --
+  // otherwise the list shows nothing as loaded on a device fresh out of the
+  // box. Only the pointer moves; the grid is left exactly as it is.
+  if (g_progFile.empty() && !g_edit.isScratch() && !g_edit.isPacked()) {
+    const std::string name = fileNameFor(g_edit.programName());
+    for (const std::string& f : g_devFiles)
+      if (f == name) { g_progFile = name; g_progWhere = plat::Where::Device; break; }
+  }
 }
 
-constexpr int kFileRowH = 26;
-constexpr int kFileRows = 7;
-Btn fileTile(int i) {
-  return { 4, kBodyY + 4 + i * kFileRowH, kScreenW - 40, 22, "", theme::text, theme::panel };
-}
-Btn fileDel(int i) {
-  return { kScreenW - 32, kBodyY + 4 + i * kFileRowH, 28, 22, "X", theme::bad, theme::panel };
-}
-Btn btnFileSaveAs() {
-  return { 4, kTabY - 30, 150, 26, "SAVE AS...", theme::bg, theme::good };
-}
-
-void drawFiles() {
-  gfx.fillRect(0, kBodyY, kScreenW, kBodyH, theme::bg);
-  if (!plat::sdPresent()) {
-    clabel(6, kBodyY + 10, "No SD card.", theme::warn);
-    return;
-  }
-  int n = (int)g_progFiles.size();
-  if (n > kFileRows) n = kFileRows;
-  for (int i = 0; i < n; ++i) {
-    Btn b = fileTile(i);
-    gfx.fillRoundRect(b.x, b.y, b.w, b.h, 3, theme::panel);
-    gfx.drawRoundRect(b.x, b.y, b.w, b.h, 3, theme::line);
-    clabel(10, b.y + (b.h - kContentH) / 2 + 1, g_progFiles[i].c_str(), theme::text, theme::panel);
-    drawBtn(fileDel(i));
-  }
-  if (g_progFiles.empty())
-    clabel(6, kBodyY + 10, "No saved programs yet.", theme::dim);
-  else if ((int)g_progFiles.size() > kFileRows) {
-    char more[48];
-    snprintf(more, sizeof(more), "+%d more on the card", (int)g_progFiles.size() - kFileRows);
-    clabel(6, kBodyY + 4 + kFileRows * kFileRowH, more, theme::dim);
-  }
-  drawBtn(btnFileSaveAs());
-}
-
-void promptSaveAs() {
-  openPicker("Save program as", "", kKbText, fileNameFor(g_edit.programName()), 24,
-             [](const std::string& v) {
+void promptSaveAs(plat::Where w) {
+  openPicker(std::string("Save on the ") + whereName(w), "", kKbText,
+             fileNameFor(g_edit.programName()), 24,
+             [w](const std::string& v) {
                if (v.empty()) return;
-               if (!plat::progWrite(v, g_edit.text())) {
-                 message("Save failed", "Could not write to the card.");
+               if (!plat::progWrite(w, v, g_edit.text())) {
+                 message("Save failed",
+                         std::string("Could not write to the ") + whereName(w) + ".");
                  return;
                }
-               // The program is now that file; keep the two names together.
+               // The program is now that file, edits and all.
+               g_edit.adoptBaseline();
+               clearUndo();
                g_edit.setProgramName(v);
-               g_progFile = v;
+               g_progFile  = v;
+               g_progWhere = w;
                refreshProgFiles();
-               message("Saved", v + ".txt");
+               message("Saved", v + ".txt on the " + whereName(w));
              },
              kKbSplit);
-}
-
-void handleFilesTouch(int x, int y) {
-  if (!plat::sdPresent()) return;
-  if (hit(btnFileSaveAs(), x, y)) { promptSaveAs(); return; }
-  int n = (int)g_progFiles.size();
-  if (n > kFileRows) n = kFileRows;
-  for (int i = 0; i < n; ++i) {
-    if (hit(fileDel(i), x, y)) {
-      std::string name = g_progFiles[i];
-      confirm("Delete program?", name, [name] {
-        plat::progDelete(name);
-        refreshProgFiles();
-      });
-      return;
-    }
-    if (hit(fileTile(i), x, y)) {
-      std::string text;
-      if (!plat::progRead(g_progFiles[i], text)) {
-        message("Load failed", "Could not read that file.");
-        return;
-      }
-      if (!loadProgramText(text)) {
-        message("Not a program", "That file is empty, or too big for the grid.");
-        return;
-      }
-      g_edit.setProgramName(g_progFiles[i]);
-      g_progFile = g_progFiles[i];
-      g_tab = Tab::Run;
-      g_dirty = true;
-      return;
-    }
-  }
 }
 
 void drawSave() {
@@ -2045,32 +2651,42 @@ Btn sysTile(int row, int col, const char* label, uint16_t fg = theme::text) {
 // when they are absent.
 Btn btnSysWifi()    { return sysTile(0, 0, "WIFI"); }
 Btn btnSysTheme()   { return sysTile(0, 1, "THEME: NIGHT"); }
-Btn btnSysSd()      { return sysTile(1, 0, "SD LOG: OFF"); }
-Btn btnSysDebug()   { return sysTile(1, 1, "DEBUG"); }
-Btn btnSysDump()    { return sysTile(2, 0, "DUMP GRID"); }
+Btn btnSysSd()      { return sysTile(3, 0, "SD LOG: OFF"); }
+Btn btnSysDebug()   { return sysTile(1, 1, "DIAGNOSTICS"); }
+// What the RUN page shows under the program: OUTPUT, RUNNERS or NOTHING.
+Btn btnSysBand()    { return sysTile(1, 0, "UNDER GRID: OUTPUT"); }
 Btn btnSysCal()     { return sysTile(2, 1, "RECALIBRATE TOUCH"); }
 // Named for what it actually controls rather than "advanced".
-Btn btnSysStart()   { return sysTile(3, 0, "START POINT: FIXED"); }
-// What the RUN page shows under the program.
-Btn btnSysRunView() { return sysTile(3, 1, "RUN VIEW: RUNNERS"); }
-// Whether the transport carries its two single-step buttons. There is an odd
-// number of tiles either way, so one half-row is empty; it sits here, between
-// the settings and the About pages, where it reads as the break between them.
-Btn btnSysSteps() { return sysTile(4, 0, "STEP BUTTONS: OFF"); }
-// Row 5 onwards depends on the mode.
-Btn btnSysInfo()  { return sysTile(5, 0, pack::str(pack::kStrInfoTile), theme::accent); }
-Btn btnSysIrcis() { return Store::unlocked() ? sysTile(5, 1, "ABOUT IRCIS", theme::accent)
-                                            : sysTile(5, 0, "ABOUT IRCIS", theme::accent); }
-Btn btnSysRead()  { return Store::unlocked() ? sysTile(6, 0, "ABOUT THIS DEVICE", theme::accent)
-                                            : sysTile(5, 1, "ABOUT THIS DEVICE", theme::accent); }
+Btn btnSysStart()   { return sysTile(2, 0, "START POINT: FIXED"); }
+Btn btnSysRestore() { return sysTile(3, 1, "RESTORE BUILT-INS"); }
+// Everything below here is anchored to the foot of the page rather than to a
+// row of the settings grid: the pages that tell you about the device, and
+// under them the two things you cannot undo. They keep the same place
+// whichever mode the device is in, and a rule separates the lot from the
+// settings above. sysFootTile counts rows UP from the bottom, so row 0 is the
+// bottom row and adding a mode's extra tiles pushes the block up, never down
+// off the screen.
+Btn sysFootTile(int rowUp, int col, const char* label, uint16_t fg) {
+  const int w = (kScreenW - 12) / 2;
+  return { 4 + col * (w + 4), kTabY - 26 - rowUp * kSysRowH, w, 22,
+           label, fg, theme::panel };
+}
+// One more row of About tiles when unlocked, so the block starts a row higher.
+int  sysAboutRows()  { return Store::unlocked() ? 3 : 2; }
+int  sysFootRuleY()  { return kTabY - 32 - sysAboutRows() * kSysRowH + kSysRowH - 4; }
+
+Btn btnSysInfo()  { return sysFootTile(2, 0, pack::str(pack::kStrInfoTile), theme::accent); }
+Btn btnSysIrcis() { return Store::unlocked() ? sysFootTile(2, 1, "ABOUT IRCIS", theme::accent)
+                                            : sysFootTile(1, 0, "ABOUT IRCIS", theme::accent); }
+Btn btnSysRead()  { return Store::unlocked() ? sysFootTile(1, 0, "ABOUT THIS DEVICE", theme::accent)
+                                            : sysFootTile(1, 1, "ABOUT THIS DEVICE", theme::accent); }
 // Puts the device back to looking like a plain IRCIS interpreter without
 // throwing away anything else. Re-entering means setting the WiFi credentials
 // again. Only exists once unlocked, for obvious reasons.
-Btn btnSysExit()  { return sysTile(6, 1, pack::str(pack::kStrExitTile), theme::warn); }
-Btn btnSysReset() { return Store::unlocked() ? sysTile(7, 0, "RESET ALL DATA", theme::bad)
-                                            : sysTile(6, 0, "RESET ALL DATA", theme::bad); }
-Btn btnSysOff()   { return Store::unlocked() ? sysTile(7, 1, "OFF", theme::warn)
-                                            : sysTile(6, 1, "OFF", theme::warn); }
+Btn btnSysExit()  { return sysFootTile(1, 1, pack::str(pack::kStrExitTile), theme::warn); }
+// The bottom row: erasing everything, and cutting the power.
+Btn btnSysReset() { return sysFootTile(0, 0, "RESET ALL DATA", theme::bad); }
+Btn btnSysOff()   { return sysFootTile(0, 1, "POWER OFF", theme::warn); }
 
 // ---------------------------------------------------------------------------
 // PROG: pick a program to load. While locked this lists only the bundled IRCIS
@@ -2079,71 +2695,301 @@ Btn btnSysOff()   { return Store::unlocked() ? sysTile(7, 1, "OFF", theme::warn)
 
 // The first program the list will show. The packed one is index 0, so locking
 // simply starts the list one further along.
-int firstProgram() { return Store::unlocked() ? 0 : 1; }
-
 constexpr int kProgRowH = 26;
+// How many rows fit above the tab bar, leaving the last one for the scroll
+// arrows when the list is longer than that.
+int progRows()    { return (kTabY - 8 - (kBodyY + 4)) / kProgRowH; }
+int g_progTop = 0;                       // first program shown
+Btn btnProgUp()   { return { kScreenW - 62, kTabY - kContentH - 6, 26, kContentH + 2, "^" }; }
+Btn btnProgDown() { return { kScreenW - 32, kTabY - kContentH - 6, 26, kContentH + 2, "v" }; }
 Btn progTile(int i) {
   return { 4, kBodyY + 4 + i * kProgRowH, kScreenW - 8, 22, "", theme::text, theme::panel };
 }
 
+// PROGRAMS is one list: the two things you can do to it, then your own saved
+// programs, then the built-ins. It used to be two tabs -- PROG for the
+// built-ins and SAVE for the card -- which split "pick a program to run"
+// across two places and left SAVE showing one sentence and one button on a
+// device with no card. Rows are built by one function and both drawn and
+// hit-tested from it, so the list and the taps cannot drift apart.
+struct ProgRow {
+  enum Kind { Packed, SaveDev, SaveCard, Discard, NewProg, File };
+  Kind kind;
+  int  index;              // File: into that store's list
+  plat::Where where;       // File: which store the row came from
+};
+
+std::vector<std::string>& filesIn(plat::Where w) {
+  return w == plat::Where::Device ? g_devFiles : g_cardFiles;
+}
+
+// What you can do to the list, as against what is in it. These stay put at the
+// top of the page: scrolling to the bottom of twenty-odd programs and finding
+// Save gone is the sort of thing you only forgive once.
+void buildProgActions(std::vector<ProgRow>& out) {
+  out.clear();
+  const bool card = plat::sdPresent();
+  // A packed program is the one thing here that is never a file, so it is listed on
+  // its own above everything else.
+  if (Store::unlocked())
+    out.push_back({ ProgRow::Packed, prog::kPackedIndex, plat::Where::Device });
+  out.push_back({ ProgRow::SaveDev,  0, plat::Where::Device });
+  if (card) out.push_back({ ProgRow::SaveCard, 0, plat::Where::Card });
+  // Only when there is something to throw away, so the row is never a dead
+  // option sitting next to Save.
+  if (g_edit.modifiedCells() > 0)
+    out.push_back({ ProgRow::Discard, 0, plat::Where::Device });
+  out.push_back({ ProgRow::NewProg, 0, plat::Where::Device });
+}
+
+// And the files themselves, which are what scrolls.
+void buildProgRows(std::vector<ProgRow>& out) {
+  out.clear();
+  // One list, in name order, whichever store a program is in -- looking for a
+  // program by name should not mean knowing where it was saved first. The
+  // icon down the left says which store each one is in.
+  const std::size_t firstFile = out.size();
+  for (int i = 0; i < (int)g_devFiles.size(); ++i)
+    out.push_back({ ProgRow::File, i, plat::Where::Device });
+  for (int i = 0; i < (int)g_cardFiles.size(); ++i)
+    out.push_back({ ProgRow::File, i, plat::Where::Card });
+  std::sort(out.begin() + firstFile, out.end(),
+            [](const ProgRow& a, const ProgRow& b) {
+              const std::string& na = filesIn(a.where)[a.index];
+              const std::string& nb = filesIn(b.where)[b.index];
+              // Case-insensitive, so MyThing sorts beside mything rather than
+              // ahead of every lower-case name on the device.
+              const int c = strcasecmp(na.c_str(), nb.c_str());
+              return c != 0 ? c < 0 : a.where < b.where;
+            });
+}
+
+// A file row says which store it is in with a small mark rather than a word:
+// a chip with legs for the board's own flash, a notched card for the SD slot.
+// Both are drawn at the same 9 x 11 so the names still line up.
+void drawStoreMark(int x, int y, plat::Where w, uint16_t c) {
+  if (w == plat::Where::Device) {
+    gfx.fillRect(x + 2, y + 1, 5, 9, c);            // the chip
+    for (int i = 0; i < 3; ++i) {                   // and its legs
+      gfx.drawFastHLine(x, y + 2 + i * 3, 2, c);
+      gfx.drawFastHLine(x + 7, y + 2 + i * 3, 2, c);
+    }
+  }
+  else {
+    gfx.fillRect(x + 1, y, 7, 11, c);               // the card
+    gfx.fillTriangle(x + 6, y, x + 8, y + 2, x + 8, y, theme::bg);  // notched corner
+  }
+}
+
+// On the LEFT. It used to sit at the right end of the row, which is where a
+// thumb travelling down the list lands, and deleting a program by mis-tapping
+// a scroll is not a mistake worth making available.
+Btn progDel(int i) {
+  Btn b = progTile(i);
+  return { 4, b.y, 28, 22, "X", theme::bad, theme::panel };
+}
+
+// A row's tile, narrowed to leave room for the delete button when it has one.
+Btn progRowTile(const ProgRow& r, int shown) {
+  Btn b = progTile(shown);
+  if (r.kind == ProgRow::File) { b.x = 36; b.w = kScreenW - 40; }
+  return b;
+}
+
+int progVisible() { return progRows(); }
+
 void drawProg() {
   gfx.fillRect(0, kBodyY, kScreenW, kBodyH, theme::bg);
-  int shown = 0;
-  for (int i = firstProgram(); i < prog::programCount(); ++i, ++shown) {
-    const prog::ProgramDef& d = prog::programAt(i);
-    bool on = (g_edit.programIndex() == i);
-    Btn b = progTile(shown);
-    b.fg = d.packed ? theme::accent : theme::text;
-    gfx.fillRoundRect(b.x, b.y, b.w, b.h, 3, on ? theme::accent : theme::panel);
-    gfx.drawRoundRect(b.x, b.y, b.w, b.h, 3, theme::line);
-    uint16_t fg = on ? theme::bg : b.fg;
-    uint16_t bg = on ? theme::accent : theme::panel;
-    clabel(10, b.y + (b.h - kContentH) / 2 + 1, d.name, fg, bg);
-    char dim[32];
-    snprintf(dim, sizeof(dim), "%d x %d", d.rows_n, d.cols_n);
-    gfx.setFont(&fonts::Font0);
-    gfx.setTextDatum(textdatum_t::middle_right);
-    gfx.setTextColor(on ? theme::bg : theme::dim, bg);
-    gfx.drawString(dim, kScreenW - 14, b.y + b.h / 2);
-    gfx.setTextDatum(textdatum_t::top_left);
-  }
-  // A blank grid of your own, at whatever size you choose.
-  Btn nb = progTile(shown);
-  gfx.fillRoundRect(nb.x, nb.y, nb.w, nb.h, 3, theme::panel);
-  gfx.drawRoundRect(nb.x, nb.y, nb.w, nb.h, 3, theme::good);
-  clabel(10, nb.y + (nb.h - kContentH) / 2 + 1, "New program...", theme::good, theme::panel);
-  gfx.setFont(&fonts::Font0);
-  gfx.setTextDatum(textdatum_t::middle_right);
-  gfx.setTextColor(theme::dim, theme::panel);
-  gfx.drawString("choose a size", kScreenW - 14, nb.y + nb.h / 2);
-  gfx.setTextDatum(textdatum_t::top_left);
+  std::vector<ProgRow> actions, files;
+  buildProgActions(actions);
+  buildProgRows(files);
 
+  const int fixed   = (int)actions.size();
+  const int visible = progVisible() - fixed;          // rows left for the list
+  const int total   = (int)files.size();
+  const int maxTop  = total > visible ? total - visible : 0;
+  if (g_progTop > maxTop) g_progTop = maxTop;
+  if (g_progTop < 0) g_progTop = 0;
+
+  int shown = 0;
+  auto drawRow = [&](const ProgRow& r, int slot) {
+    Btn b = progRowTile(r, slot);
+
+    const char* name;
+    const char* hint = nullptr;
+    char sizebuf[32];
+    uint16_t edge = theme::line, fg = theme::text;
+    bool on = false;
+
+    switch (r.kind) {
+      case ProgRow::Packed: {
+        const prog::ProgramDef& d = prog::programAt(r.index);
+        name = d.name;
+        on   = (g_edit.programIndex() == r.index && g_progFile.empty());
+        fg   = theme::accent;
+        snprintf(sizebuf, sizeof(sizebuf), "%d x %d", d.rows_n, d.cols_n);
+        hint = sizebuf;
+        break;
+      }
+      case ProgRow::SaveDev:
+        name = "Save on this device..."; hint = g_edit.programName();
+        edge = theme::good; fg = theme::good;
+        break;
+      case ProgRow::SaveCard:
+        name = "Save on the SD card..."; hint = g_edit.programName();
+        edge = theme::good; fg = theme::good;
+        break;
+      case ProgRow::Discard: {
+        static char buf[40];
+        const int m = g_edit.modifiedCells();
+        snprintf(buf, sizeof(buf), "%d edited cell%s", m, m == 1 ? "" : "s");
+        name = "Discard changes"; hint = buf;
+        edge = theme::warn; fg = theme::warn;
+        break;
+      }
+      case ProgRow::NewProg:
+        name = "New program..."; hint = "choose a size";
+        edge = theme::good; fg = theme::good;
+        break;
+      default:
+        name = filesIn(r.where)[r.index].c_str();
+        on   = (g_progWhere == r.where && g_progFile == filesIn(r.where)[r.index]);
+        break;
+    }
+
+    gfx.fillRoundRect(b.x, b.y, b.w, b.h, 3, on ? theme::accent : theme::panel);
+    gfx.drawRoundRect(b.x, b.y, b.w, b.h, 3, on ? theme::accent : edge);
+    uint16_t bg = on ? theme::accent : theme::panel;
+    int textX = b.x + 6;
+    if (r.kind == ProgRow::File) {
+      drawStoreMark(b.x + 6, b.y + (b.h - 11) / 2, r.where,
+                    on ? theme::bg : theme::dim);
+      textX = b.x + 20;
+    }
+    clabel(textX, b.y + (b.h - kContentH) / 2 + 1, name, on ? theme::bg : fg, bg);
+    if (hint) {
+      gfx.setFont(&fonts::Font0);
+      gfx.setTextDatum(textdatum_t::middle_right);
+      gfx.setTextColor(on ? theme::bg : theme::dim, bg);
+      gfx.drawString(hint, b.x + b.w - 6, b.y + b.h / 2);
+      gfx.setTextDatum(textdatum_t::top_left);
+    }
+    if (r.kind == ProgRow::File) drawBtn(progDel(slot));
+  };
+
+  for (const ProgRow& r : actions) drawRow(r, shown++);
+  for (int i = g_progTop; i < total && shown < progVisible(); ++i, ++shown)
+    drawRow(files[i], shown);
+
+  if (maxTop > 0) {
+    drawBtn(btnProgUp(),   false, g_progTop > 0);
+    drawBtn(btnProgDown(), false, g_progTop < maxTop);
+    char where[40];
+    snprintf(where, sizeof(where), "%d-%d of %d", g_progTop + 1,
+             g_progTop + shown - fixed, total);
+    clabel(6, kTabY - kContentH - 4, where, theme::dim);
+  }
 }
 
 void handleProgTouch(int x, int y) {
-  int shown = 0;
-  int total = prog::programCount() - firstProgram();
-  if (hit(progTile(total), x, y)) {      // the NEW PROGRAM row, always last
-    g_sizeIsNew = true;
-    g_sizeRows = 11;
-    g_sizeCols = 40;
-    g_modal = Modal::Size;
-    g_dirty = true;
-    return;
-  }
-  for (int i = firstProgram(); i < prog::programCount(); ++i, ++shown) {
-    if (hit(progTile(shown), x, y)) {
-      if (g_edit.programIndex() != i) {
-        g_edit.loadProgram(i);
-        g_progFile.clear();
-        run::load(g_edit);
-        markLoaded();
-        syncViewToProgram();
-        g_follow = true;
+  std::vector<ProgRow> actions, files;
+  buildProgActions(actions);
+  buildProgRows(files);
+
+  const int fixed   = (int)actions.size();
+  const int visible = progVisible() - fixed;
+  const int total   = (int)files.size();
+  const int maxTop  = total > visible ? total - visible : 0;
+  if (maxTop > 0) {
+    // A whole page a tap, not a line. Twenty-odd programs one row at a time is
+    // twenty taps on a panel that mis-reads some of them.
+    const int page = visible > 1 ? visible : 1;
+    if (hit(btnProgUp(), x, y)) {
+      if (g_progTop > 0) {
+        g_progTop -= page; if (g_progTop < 0) g_progTop = 0;
+        g_bodyOnly = true; g_dirty = true;
       }
-      g_tab = Tab::Run;
-      g_dirty = true;
       return;
+    }
+    if (hit(btnProgDown(), x, y)) {
+      if (g_progTop < maxTop) {
+        g_progTop += page; if (g_progTop > maxTop) g_progTop = maxTop;
+        g_bodyOnly = true; g_dirty = true;
+      }
+      return;
+    }
+  }
+
+  // The rows on screen, pinned actions first, then the scrolled slice.
+  std::vector<ProgRow> rows = actions;
+  for (int i = g_progTop; i < total && (int)rows.size() < progVisible(); ++i)
+    rows.push_back(files[i]);
+
+  for (int slot = 0; slot < (int)rows.size(); ++slot) {
+    const ProgRow& r = rows[slot];
+
+    if (r.kind == ProgRow::File && hit(progDel(slot), x, y)) {
+      std::string name = filesIn(r.where)[r.index];
+      plat::Where w = r.where;
+      confirm("Delete program?",
+              name + ".txt on the " + whereName(w)
+                + (w == plat::Where::Device
+                     ? ". RESTORE BUILT-INS in SYS brings back the ones that "
+                       "shipped with the device." : "."),
+              [name, w] {
+        plat::progDelete(w, name);
+        refreshProgFiles();
+      });
+      return;
+    }
+    if (!hit(progRowTile(r, slot), x, y)) continue;
+
+    switch (r.kind) {
+      case ProgRow::SaveDev:  saveProgramTo(plat::Where::Device); return;
+      case ProgRow::SaveCard: saveProgramTo(plat::Where::Card);   return;
+
+      case ProgRow::Discard:
+        confirm("Discard changes?",
+                "The program goes back to the last version saved, and every "
+                "edit since is lost.",
+                [] { g_edit.revertAll(); clearUndo(); markEdited(); });
+        return;
+
+      case ProgRow::NewProg:
+        g_sizeIsNew = true;
+        g_sizeRows  = 11;
+        g_sizeCols  = 40;
+        g_modal     = Modal::Size;
+        g_dirty     = true;
+        return;
+
+      case ProgRow::Packed:
+        if (g_edit.programIndex() != r.index || !g_progFile.empty()) {
+          g_edit.loadProgram(r.index);
+          g_progFile.clear();
+          afterProgramChange();
+          g_follow = true;
+        }
+        g_tab = Tab::Run;
+        g_dirty = true;
+        return;
+
+      default: {
+        const std::string name = filesIn(r.where)[r.index];
+        std::string text;
+        if (!plat::progRead(r.where, name, text)) {
+          message("Load failed", "Could not read that file.");
+          return;
+        }
+        if (!loadProgramText(text, name.c_str())) {
+          message("Not a program", "That file is empty, or too big for the grid.");
+          return;
+        }
+        g_progFile  = name;
+        g_progWhere = r.where;
+        g_tab = Tab::Run;
+        return;                 // the rebuild's own repaint covers this
+      }
     }
   }
 }
@@ -2151,10 +2997,17 @@ void handleProgTouch(int x, int y) {
 void drawSys() {
   gfx.fillRect(0, kBodyY, kScreenW, kBodyH, theme::bg);
 
+  // SYS is a page of labelled settings rather than a strip of controls, so
+  // its tiles are set in the tab bar's face instead of the small one the
+  // compact buttons share.
+  auto tile = [](const Btn& b, bool on = false, bool enabled = true) {
+    drawBtn(b, on, enabled, true);
+  };
+
   Btn w = btnSysWifi();
   std::string wl = std::string("WIFI: ") + (web::running() ? web::ipAddress() : "off");
   w.label = wl.c_str();
-  drawBtn(w, web::running());
+  tile(w, web::running());
 
   // A tile is filled when it is set to something OTHER than the default, so
   // the SYS page reads as a list of what has been changed rather than a wall
@@ -2162,7 +3015,7 @@ void drawSys() {
   Btn th = btnSysTheme();
   std::string tl = std::string("THEME: ") + (Store::dayMode() ? "DAY" : "NIGHT");
   th.label = tl.c_str();
-  drawBtn(th, !Store::dayMode());
+  tile(th, !Store::dayMode());
 
   // With no card there is nowhere to log, so the tile reads OFF and is
   // greyed rather than offering a switch that cannot do anything.
@@ -2171,37 +3024,34 @@ void drawSys() {
   std::string sl = std::string("SD LOG: ")
                  + ((card && Store::sdLoggingEnabled()) ? "ON" : "OFF");
   sd.label = sl.c_str();
-  drawBtn(sd, card && Store::sdLoggingEnabled(), card);
+  tile(sd, card && Store::sdLoggingEnabled(), card);
 
-  drawBtn(btnSysDebug());
-  drawBtn(btnSysCal());
-  drawBtn(btnSysDump());
+  tile(btnSysDebug());
+  tile(btnSysCal());
 
-  Btn rv = btnSysRunView();
-  const int rvv = Store::runView();
-  std::string rl = std::string("RUN VIEW: ")
-                 + (rvv == 0 ? "RUNNERS" : rvv == 1 ? "OUTPUT" : "NONE");
-  rv.label = rl.c_str();
-  drawBtn(rv, rvv != 2);          // NONE is the default, so it reads plain
+  const int band = bandMode();
+  Btn bt = btnSysBand();
+  std::string bl = std::string("UNDER GRID: ")
+                 + (band == kBandRunners ? "RUNNERS"
+                  : band == kBandNothing ? "NOTHING" : "OUTPUT");
+  bt.label = bl.c_str();
+  tile(bt, band != kBandOutput);       // OUTPUT is the default, so it reads plain
 
-  Btn sb = btnSysSteps();
-  std::string sbl = std::string("STEP BUTTONS: ")
-                  + (Store::stepButtons() ? "ON" : "OFF");
-  sb.label = sbl.c_str();
-  drawBtn(sb, Store::stepButtons());
+  tile(btnSysRestore());
 
   Btn st = btnSysStart();
   std::string stl = std::string("START POINT: ")
                   + (Store::startEditable() ? "FREE" : "FIXED");
   st.label = stl.c_str();
-  drawBtn(st, Store::startEditable());
+  tile(st, Store::startEditable());
 
-  if (Store::unlocked()) { drawBtn(btnSysInfo()); drawBtn(btnSysExit()); }
-  drawBtn(btnSysIrcis());
-  drawBtn(btnSysRead());
+  if (Store::unlocked()) { tile(btnSysInfo()); tile(btnSysExit()); }
+  tile(btnSysIrcis());
+  tile(btnSysRead());
 
-  drawBtn(btnSysReset());
-  drawBtn(btnSysOff());
+  gfx.drawFastHLine(4, sysFootRuleY(), kScreenW - 8, theme::line);
+  tile(btnSysReset());
+  tile(btnSysOff());
 }
 
 // ---------------------------------------------------------------------------
@@ -2379,14 +3229,7 @@ int insOrigin(int cursor, int extent, int window, int mid) {
 }
 int insOriginRow() { return insOrigin(g_cellRow, g_edit.rows(), kInsRows, kInsMidR); }
 int insOriginCol() { return insOrigin(g_cellCol, g_edit.cols(), kInsCols, kInsMidC); }
-// Where the cursor sits inside the window.
-int insCurR() { return g_cellRow - insOriginRow(); }
-int insCurC() { return g_cellCol - insOriginCol(); }
 
-Btn btnCellUp()    { return { insCellX(insCurC()),     insCellY(insCurR() - 1), kInsCellW, kInsCellH, "" }; }
-Btn btnCellDown()  { return { insCellX(insCurC()),     insCellY(insCurR() + 1), kInsCellW, kInsCellH, "" }; }
-Btn btnCellLeft()  { return { insCellX(insCurC() - 1), insCellY(insCurR()),     kInsCellW, kInsCellH, "" }; }
-Btn btnCellRight() { return { insCellX(insCurC() + 1), insCellY(insCurR()),     kInsCellW, kInsCellH, "" }; }
 Btn btnCellSet()   { return { modalBtnX(0), kModalBtnY, kModalBtnW, 26, "EDIT CHAR", theme::bg, theme::good }; }
 Btn btnCellRevert(){ return { modalBtnX(1), kModalBtnY, kModalBtnW, 26, "REVERT", theme::warn }; }
 Btn btnCellStart() { return { modalBtnX(2), kModalBtnY, kModalBtnW, 26, "START", theme::edited }; }
@@ -2394,14 +3237,6 @@ Btn btnCellClose() { return { modalBtnX(3), kModalBtnY, kModalBtnW, 26, "CLOSE",
 
 // Small chevrons pushed to the outer edge of their cell, so the character in
 // the middle stays readable behind them.
-void drawChevron(const Btn& b, int dx, int dy) {
-  int cx = b.x + b.w / 2, cy = b.y + b.h / 2;
-  uint16_t c = theme::accent;
-  if (dy < 0)      { int t = b.y + 3;       gfx.fillTriangle(cx - 5, t + 5, cx + 5, t + 5, cx, t, c); }
-  else if (dy > 0) { int t = b.y + b.h - 3; gfx.fillTriangle(cx - 5, t - 5, cx + 5, t - 5, cx, t, c); }
-  else if (dx < 0) { int l = b.x + 3;       gfx.fillTriangle(l + 5, cy - 5, l + 5, cy + 5, l, cy, c); }
-  else             { int r = b.x + b.w - 3; gfx.fillTriangle(r - 5, cy - 5, r - 5, cy + 5, r, cy, c); }
-}
 
 void drawCellModal() {
   gfx.fillScreen(theme::bg);
@@ -2474,10 +3309,6 @@ void drawCellModal() {
   }
   gfx.setTextSize(1);
 
-  if (g_cellRow > 0)             drawChevron(btnCellUp(), 0, -1);
-  if (g_cellRow < g_edit.rows() - 1) drawChevron(btnCellDown(), 0, 1);
-  if (g_cellCol > 0)             drawChevron(btnCellLeft(), -1, 0);
-  if (g_cellCol < g_edit.cols() - 1) drawChevron(btnCellRight(), 1, 0);
 
   drawBtn(btnCellSet());
   drawBtn(btnCellRevert(), false, cur != orig);
@@ -2494,7 +3325,7 @@ void drawCellModal() {
 }
 
 // ---------------------------------------------------------------------------
-// Paged dialogs: DEBUG (keys / system) and ABOUT (the puzzle)
+// Paged dialogs: DIAGNOSTICS (keys / system) and ABOUT (IRCIS, the device)
 // ---------------------------------------------------------------------------
 
 int g_dialogPage = 0;
@@ -2504,6 +3335,24 @@ int dlgH() { return kTabY - kDlgY - 8; }
 Btn btnDlgPrev()  { return { 20, kDlgY + dlgH() - 32, 70, 26, "<" }; }
 Btn btnDlgNext()  { return { 94, kDlgY + dlgH() - 32, 70, 26, ">" }; }
 Btn btnDlgClose() { return { kScreenW - 92, kDlgY + dlgH() - 32, 72, 26, "CLOSE", theme::bad }; }
+// DIAGNOSTICS only. Writing the grid and its edits to the console is a thing
+// you do while looking at the console, which is what this dialog is for; as a
+// SYS tile it sat among settings and did nothing visible on the device.
+Btn btnDlgDump()  { return { 172, kDlgY + dlgH() - 32, 110, 26, "DUMP GRID" }; }
+
+void dumpGrid() {
+  plat::logf("--- %s ---\n", g_edit.programName());
+  plat::log(g_edit.text().c_str());
+  plat::logln(g_edit.isPacked() ? pack::str(pack::kStrDumpDiff)
+                                : "--- edits from the program as loaded ---");
+  for (const prog::Diff& d : g_edit.diff())
+    plat::logf("  row %2d col %2d  '%c' -> '%c'\n", d.row, d.col,
+               g_edit.baselineCell(d.row, d.col), d.ch);
+  if (web::running())
+    message("Dumped", "Console, and http://" + web::ipAddress() + "/edit");
+  else
+    message("Dumped", "Grid and edits written to the console.");
+}
 
 int dlgFrame(const char* title, const char* page, int pages) {
   int w = kScreenW - 24, h = dlgH();
@@ -2527,6 +3376,7 @@ int dlgFrame(const char* title, const char* page, int pages) {
     drawBtn(btnDlgPrev(), false, g_dialogPage > 0);
     drawBtn(btnDlgNext(), false, g_dialogPage + 1 < pages);
   }
+  if (g_modal == Modal::Debug) drawBtn(btnDlgDump());
   drawBtn(btnDlgClose());
   return kDlgY + 26;
 }
@@ -2584,7 +3434,7 @@ void drawDebug() {
   const bool keysPage = Store::unlocked();
   const int pages = keysPage ? 2 : 1;
   if (!keysPage) g_dialogPage = 0;
-  int y = dlgFrame("DEBUG", keysPage && g_dialogPage == 0 ? "keys" : "system", pages);
+  int y = dlgFrame("DIAGNOSTICS", keysPage && g_dialogPage == 0 ? "keys" : "system", pages);
   if (keysPage && g_dialogPage == 0) drawDebugKeys(y);
   else                               drawDebugSystem(y);
 }
@@ -2624,6 +3474,18 @@ const char* const kIrcis3[] = {
   "        'fU.    pushes base64 fU",
   "  \"   toggles string mode: what lies",
   "      between is pushed as text",
+};
+const char* const kIrcis3b[] = {
+  "BASE64 NUMBERS",
+  "",
+  "  The 64 digits, in order:",
+  "    A-Z is 0-25,  a-z is 26-51,",
+  "    0-9 is 52-61,  + is 62,  / is 63",
+  "",
+  "  So 'B. is 1 and 'BA. is 64. Leading",
+  "  As are zeros and are dropped, which",
+  "  is why padding with A is harmless.",
+  "  %  prints a number back as base64.",
 };
 const char* const kIrcis4[] = {
   "THE STACK AND VARIABLES",
@@ -2671,6 +3533,33 @@ const char* const kIrcis7[] = {
   "  .   and space are blanks. Any other",
   "      character with no meaning is",
   "      simply walked over.",
+};
+// Not part of IRCIS. The last page says so, because someone reading these
+// pages to learn the language should not come away with a command that only
+// exists here.
+const char* const kIrcis8[] = {
+  "VIEW TAGS - pIRCIS ONLY",
+  "",
+  "Not IRCIS. A tilde and some letters",
+  "where no runner reaches, saying how",
+  "to show the program. Any order.",
+  "",
+  "Anything a tag leaves out takes the",
+  "default: the output under the grid,",
+  "fast, starting at 0,0 heading east.",
+  "A program with no tag gets all four.",
+};
+const char* const kIrcis9[] = {
+  "VIEW TAGS - THE LETTERS",
+  "",
+  "under grid  n nothing  d runners",
+  "speed       s slow     m medium",
+  "            q quick    f full",
+  "start       col,row and NESW",
+  "",
+  "eg  ~n3,1N   no readout, and start",
+  "    at column 3 row 1 facing north.",
+  "~sq names two speeds: the first wins.",
 };
 
 const char* const kDevice1Locked[] = {
@@ -2739,9 +3628,11 @@ struct TextPage { const char* const* lines; int n; const char* tag; int highligh
 
 const TextPage kIrcisPages[] = {
   SK_PAGE(kIrcis1, "the language", 9), SK_PAGE(kIrcis2, "movement",  -1),
-  SK_PAGE(kIrcis3, "values",      -1), SK_PAGE(kIrcis4, "the stack", -1),
+  SK_PAGE(kIrcis3, "values",      -1), SK_PAGE(kIrcis3b, "base64",   -1),
+  SK_PAGE(kIrcis4, "the stack",   -1),
   SK_PAGE(kIrcis5, "arithmetic",  -1), SK_PAGE(kIrcis6, "output",    -1),
-  SK_PAGE(kIrcis7, "conditions",  -1),
+  SK_PAGE(kIrcis7, "conditions",  -1), SK_PAGE(kIrcis8, "pIRCIS only", -1),
+  SK_PAGE(kIrcis9, "pIRCIS only", -1),
 };
 const TextPage kDeviceLockedPages[] = {
   SK_PAGE(kDevice1Locked, "what it is",  9), SK_PAGE(kDevice2Locked, "the tabs",   -1),
@@ -2755,10 +3646,12 @@ constexpr int kDeviceCount = (int)(sizeof(kDeviceLockedPages) / sizeof(TextPage)
 
 // How many pages a dialog has. The packed groups are described by the pack, so
 // adding one there cannot leave the ">" button refusing to reach it.
-int devicePageCount() {
+// The written pages, plus one the device fills in about itself.
+int devicePageBase() {
   const int n = pack::pageCount(pack::kGroupDevice);
   return n > 0 ? n : kDeviceCount;
 }
+int devicePageCount() { return devicePageBase() + 1; }
 
 // Anything that is plainly a web address. Colouring these by rule rather than
 // by a per-page index means a link added later is coloured without anyone
@@ -2836,7 +3729,33 @@ void drawSplash() {
   }
 }
 
+// The last page of ABOUT THIS DEVICE says which build is on the board. The
+// version names the release; the build stamp pins the exact binary, which is
+// what you actually need when a bug report says "the latest one"; the id is
+// the first eight bytes of the app image hash, which is also what the device
+// watches to notice it has been reflashed.
+void drawFirmwarePage(int count) {
+  int y = dlgFrame("THIS DEVICE", "firmware", count);
+  y += 4;
+  struct { const char* k; std::string v; } rows[] = {
+    { "version", PIRCIS_VERSION },
+    { "built",   plat::firmwareBuilt() },
+    { "id",      plat::firmwareId() },
+    { "panel",   std::string(SK_PANEL_NAME) },
+  };
+  char buf[96];
+  for (const auto& r : rows) {
+    snprintf(buf, sizeof(buf), "%-8s %s", r.k, r.v.c_str());
+    clabel(20, y, buf, theme::text, theme::panel);
+    y += kContentH;
+  }
+  y += 6;
+  clabel(20, y, "github.com/jamesleaver/pIRCIS", theme::accent, theme::panel);
+}
+
 void drawDevice() {
+  const int count = devicePageCount();
+  if (g_dialogPage >= count - 1) { drawFirmwarePage(count); return; }
   if (Store::unlocked() && drawPackPages("THIS DEVICE", pack::kGroupDevice)) return;
   drawTextPages("THIS DEVICE", kDeviceLockedPages, kDeviceCount);
 }
@@ -2907,41 +3826,76 @@ void drawWifi() {
 }
 
 
-void drawMessage() {
-  gfx.fillRect(20, 60, kScreenW - 40, 120, theme::panel);
-  gfx.drawRect(20, 60, kScreenW - 40, 120, theme::accent);
-  gfx.setFont(&fonts::Font2);
-  gfx.setTextDatum(textdatum_t::top_center);
-  gfx.setTextColor(theme::accent, theme::panel);
-  gfx.drawString(g_msgTitle.c_str(), kScreenW / 2, 70);
-  gfx.setFont(&fonts::Font0);
-  gfx.setTextColor(theme::text, theme::panel);
-  // Wrap on word boundaries. Breaking mid-word reads as a rendering fault
-  // rather than a long message, which is exactly the wrong impression for a
-  // dialog whose whole job is to be believed.
-  constexpr std::size_t kWrap = 44;
-  int y = 96;
+// A dialog is set in the same face as everything else it sits over. It used
+// to be the 5 x 7 pixel font at ten pixels a line inside a fixed 120 px box,
+// which was small enough to look like a different program had drawn it -- and
+// on a screen this size, a warning you have to lean in to read is a warning
+// half-read. The box sizes itself to the wrapped text instead of the text
+// being squeezed into the box.
+constexpr int kMsgWrap = 36;          // characters a line at the content font
+constexpr int kMsgPad  = 12;
+constexpr int kMsgBtnH = 26;
+
+std::vector<std::string> msgLines() {
+  std::vector<std::string> out;
   std::size_t i = 0;
   while (i < g_msgBody.size()) {
     std::size_t take = g_msgBody.size() - i;
-    if (take > kWrap) {
-      take = g_msgBody.rfind(' ', i + kWrap);
-      // No space to break on: fall back to a hard cut rather than loop.
-      take = (take == std::string::npos || take <= i) ? kWrap : take - i;
+    if (take > kMsgWrap) {
+      // Wrap on word boundaries. Breaking mid-word reads as a rendering fault
+      // rather than a long message, which is exactly the wrong impression for
+      // a dialog whose whole job is to be believed.
+      std::size_t sp = g_msgBody.rfind(' ', i + kMsgWrap);
+      take = (sp == std::string::npos || sp <= i) ? kMsgWrap : sp - i;
     }
-    gfx.drawString(g_msgBody.substr(i, take).c_str(), kScreenW / 2, y);
-    y += 10;
+    out.push_back(g_msgBody.substr(i, take));
     i += take;
     while (i < g_msgBody.size() && g_msgBody[i] == ' ') ++i;
   }
+  if (out.empty()) out.push_back("");
+  return out;
+}
+
+int msgH() {
+  return kMsgPad + kContentBigH + 8 + (int)msgLines().size() * kContentH
+       + kMsgPad + kMsgBtnH + kMsgPad;
+}
+int msgY() {
+  int y = (kScreenH - msgH()) / 2;
+  return y < 26 ? 26 : y;
+}
+int msgBtnY() { return msgY() + msgH() - kMsgPad - kMsgBtnH; }
+
+Btn btnMsgCancel()  { return { kScreenW / 2 - 118, msgBtnY(), 104, kMsgBtnH, "CANCEL", theme::bad }; }
+Btn btnMsgConfirm() { return { kScreenW / 2 + 14,  msgBtnY(), 104, kMsgBtnH, "CONFIRM", theme::bg, theme::good }; }
+Btn btnMsgOk()      { return { kScreenW / 2 - 52,  msgBtnY(), 104, kMsgBtnH, "OK", theme::bg, theme::good }; }
+
+void drawMessage() {
+  const std::vector<std::string> lines = msgLines();
+  const int y0 = msgY(), h = msgH();
+  gfx.fillRect(20, y0, kScreenW - 40, h, theme::panel);
+  gfx.drawRect(20, y0, kScreenW - 40, h, theme::accent);
+
+  // The title in the larger content face, so it reads as the title rather
+  // than as a caption above bigger text.
+  useContentFont(true);
+  gfx.setTextDatum(textdatum_t::top_center);
+  gfx.setTextColor(theme::accent, theme::panel);
+  gfx.drawString(g_msgTitle.c_str(), kScreenW / 2, y0 + kMsgPad);
+
+  useContentFont();
+  gfx.setTextDatum(textdatum_t::top_center);
+  gfx.setTextColor(theme::text, theme::panel);
+  int y = y0 + kMsgPad + kContentBigH + 8;
+  for (const std::string& ln : lines) {
+    gfx.drawString(ln.c_str(), kScreenW / 2, y);
+    y += kContentH;
+  }
   gfx.setTextDatum(textdatum_t::top_left);
-  if (g_modal == Modal::Confirm) {
-    drawBtn(Btn{ kScreenW / 2 - 120, 148, 100, 24, "CANCEL", theme::bad });
-    drawBtn(Btn{ kScreenW / 2 + 20,  148, 100, 24, "CONFIRM", theme::bg, theme::good });
-  }
-  else {
-    drawBtn(Btn{ kScreenW / 2 - 50, 148, 100, 24, "OK", theme::bg, theme::good });
-  }
+  gfx.setFont(&fonts::Font0);
+
+  if (g_modal == Modal::Confirm) { drawBtn(btnMsgCancel()); drawBtn(btnMsgConfirm()); }
+  else                           { drawBtn(btnMsgOk()); }
 }
 
 void message(const std::string& title, const std::string& body) {
@@ -2964,7 +3918,7 @@ void announceUnlock() {
   theme::setDay(false);
   // The output is the point of the exercise here, and its 38 chunks read
   // better uncoloured until you ask for the colouring.
-  Store::setRunView(1);
+  Store::setRunView(0);
   Store::setOutputColour(false);
   g_outLine = 0;
   g_runnerTop = 0;
@@ -3037,12 +3991,28 @@ void handleTabs(int x, int y) {
     if (tabAt(i) == Tab::Run && g_tab == Tab::Run) {
       if (run::snapshot().running) run::cmdPause();
       else                         run::cmdRun();
+      // The grid is the same grid either way. A restart winds the step count
+      // back, and the run loop redraws in full when it sees that.
+      g_headerOnly = true;
+      g_tabsOnly   = true;
+      g_dirty = true;
+      return;
+    }
+    // On the editor, tapping EDIT again cycles the keyboard rather than
+    // navigating nowhere. The tab says which one the tap will bring up.
+    if (tabAt(i) == Tab::Edit && g_tab == Tab::Edit && !Store::unlocked()) {
+      g_edKb = (g_edKb + 1) % 3;
+      // The letter pages are two rows deep against the IRCIS page's three, so
+      // the grid above moves and has to be redrawn -- but the status bar does
+      // not, and repainting it made switching keyboards blink.
+      g_bodyOnly = true;
+      g_tabsOnly = true;
       g_dirty = true;
       return;
     }
     g_tab = tabAt(i);
     // The card is only read on entry, not on every repaint.
-    if (g_tab == Tab::Save && !Store::unlocked()) refreshProgFiles();
+    if (g_tab == Tab::Prog) refreshProgFiles();
     g_dirty = true;
   }
 }
@@ -3059,19 +4029,26 @@ void handleRunTouch(int x, int y) {
       g_dirty = true;
       return;
     }
-    if (hit(btnStart(), x, y))      { run::load(g_edit);  g_follow = true; g_dirty = true; }
+    if (run::snapshot().step > 0 && hit(btnStart(), x, y)) {
+      // The dedicated reset, not a reload: buildMachine already clears the
+      // output, the timer, the runners and the step count, and this avoids
+      // copying the whole program back through the mutex to say so.
+      run::cmdReset();
+      g_follow = true;
+      // The grid is untouched: reset moves the runners back to the start and
+      // clears the output. g_prevRunners is deliberately NOT cleared -- it is
+      // the list of cells the old runners and their trails were painted over,
+      // and restoring exactly those is what makes this cost a handful of
+      // cells instead of the whole program.
+      g_resetSameGrid = true;
+      // Deliberately NOT g_dirty. The rebuild happens on the run task, so
+      // painting now would draw the state we are leaving, and the version
+      // watch below would then paint the state we are going to -- the grid
+      // twice for one press. Let the watch do it, once, when it is true.
+    }
     else if (steps() && hit(btnBack(), x, y)) { run::cmdStepBack(); g_dirty = true; }
     else if (steps() && hit(btnFwd(), x, y))  { run::cmdStep(1); }
     else if (hit(btnEnd(), x, y))   { run::cmdRunToEnd(); g_dirty = true; }
-    else if (hit(btnRun(), x, y))   {
-      run::Snapshot s = run::snapshot();
-      if (s.running) run::cmdPause();
-      else {
-        g_follow = true;
-        run::cmdRun();      // restarts by itself if the run had finished
-      }
-      g_dirty = true; g_headerOnly = true;
-    }
     else if (hit(btnSpeed(), x, y)) {
       int n = ((int)run::speed() + 1) % 4;
       run::setSpeed((run::Speed)n);
@@ -3081,14 +4058,14 @@ void handleRunTouch(int x, int y) {
     return;
   }
   if (maxGridRow() > 0) {
-    if (hit(btnRowUp(), x, y))   { if (g_gridRow > 0) { --g_gridRow; g_bodyOnly = true; g_dirty = true; } return; }
-    if (hit(btnRowDown(), x, y)) { if (g_gridRow < maxGridRow()) { ++g_gridRow; g_bodyOnly = true; g_dirty = true; } return; }
+    if (hit(btnRowUp(), x, y))   { if (g_gridRow > 0) { --g_gridRow; g_runGridOnly = true; g_dirty = true; } return; }
+    if (hit(btnRowDown(), x, y)) { if (g_gridRow < maxGridRow()) { ++g_gridRow; g_runGridOnly = true; g_dirty = true; } return; }
   }
-  if (Store::runView() == 1) {
+  if (bandOutput()) {
     if (hit(btnOutUp(), x, y))   { ++g_outLine; g_bandOnly = true; g_dirty = true; return; }
     if (hit(btnOutDown(), x, y)) { if (g_outLine > 0) --g_outLine; g_bandOnly = true; g_dirty = true; return; }
   }
-  else if (Store::runView() == 0) {
+  else if (bandRunners()) {
     // The same pair of buttons, driving the runner list instead. Clamping is
     // left to the drawing code, which is the only thing that knows how many
     // runners there are and how many of them fit.
@@ -3096,40 +4073,33 @@ void handleRunTouch(int x, int y) {
     if (hit(btnOutDown(), x, y)) { ++g_runnerTop; g_bandOnly = true; g_dirty = true; return; }
   }
   if (wideView() && g_edit.cols() > kWideCols) {
-    if (hit(btnWideLeft(), x, y))  { if (g_wideShift > 0) { --g_wideShift; g_bodyOnly = true; g_dirty = true; } return; }
+    if (hit(btnWideLeft(), x, y))  { if (g_wideShift > 0) { --g_wideShift; g_runGridOnly = true; g_dirty = true; } return; }
     if (hit(btnWideRight(), x, y)) {
-      if (g_wideShift + kWideCols < g_edit.cols()) { ++g_wideShift; g_bodyOnly = true; g_dirty = true; }
+      if (g_wideShift + kWideCols < g_edit.cols()) { ++g_wideShift; g_runGridOnly = true; g_dirty = true; }
       return;
     }
   }
   int r, c;
   if (cellAt(x, y, r, c)) {
+    // Zoomed out, a tap is aim rather than choice. A WIDE cell is six pixels
+    // across, and picking one of eighty on a resistive panel is a lottery --
+    // so the first tap zooms to what was touched and the second, on a cell
+    // four times the area, is the one that means something. Applies to the
+    // parameter editor and the character inspector alike, and to any zoomable
+    // program, not just a packed one. A program small enough to be shown
+    // large already has nothing to zoom into and is exempt.
+    if (!zoomOnly() && g_view != View::Zoom) { zoomToCell(r, c); return; }
+
     int slot = slotAtCell(r, c);
     if (slot >= 0) { openSlotEditor(slot); return; }   // straight to the parameter
-    if (!Store::unlocked()) {
-      // The character inspector belongs to a packed program -- it names
-      // parameters and shows what a cell used to be. Moving the entry point
-      // was the one thing it did that a plain program still needs, so that
-      // lives here instead:
-      // tap a character to start there, tap it again to turn it. The chevron
-      // beside the cell says which way.
-      if (!Store::startEditable()) return;
-      if (r == run::startRow() && c == run::startCol()) {
-        const char* order = "ESWN";              // clockwise from east
-        const char* at = std::strchr(order, run::startDir());
-        char next = at && at[1] ? at[1] : order[0];
-        run::setStart(c, r, next);
-        Store::setStartPoint(c, r, next);
-      }
-      else {
-        run::setStart(c, r, run::startDir());
-        Store::setStartPoint(c, r, run::startDir());
-      }
-      run::load(g_edit);
-      markLoaded();
-      g_dirty = true;
-      return;
-    }
+    // The inspector is pack-agnostic already: slotAtCell() returns -1 for an
+    // unpacked program and drawCellModal() guards every line that needs a
+    // pack, so a plain program gets the same panel without the parameter
+    // names. In plain mode it is gated on START POINT: FREE -- which is what
+    // used to make a tap on the grid do anything at all. That tap moved the
+    // entry point and a second tap turned it, with nothing on screen saying
+    // so; the inspector's START button does both and is labelled.
+    if (!Store::unlocked() && !Store::startEditable()) return;
     g_cellRow = r; g_cellCol = c;
     g_modal = Modal::Cell;
     g_dirty = true;
@@ -3159,7 +4129,7 @@ void followRunner(const run::Snapshot& snap) {
     // that knows how far right there is to go.
     const int before = g_scrollCol;
     setScroll(col - kZoomCols / 2);
-    if (g_scrollCol != before) g_dirty = true;
+    if (g_scrollCol != before) { g_runGridOnly = true; g_dirty = true; }
   }
 
   const int maxRow = maxGridRow();
@@ -3172,18 +4142,18 @@ void followRunner(const run::Snapshot& snap) {
       int want = row - visible / 2;
       if (want < 0) want = 0;
       if (want > maxRow) want = maxRow;
-      if (want != g_gridRow) { g_gridRow = want; g_dirty = true; }
+      if (want != g_gridRow) { g_gridRow = want; g_runGridOnly = true; g_dirty = true; }
     }
   }
 }
 
 void handleEditTouch(int x, int y) {
-  if (hit(btnEditPrev(), x, y))   { if (g_editPage > 0) { --g_editPage; g_dirty = true; } return; }
-  if (hit(btnEditNext(), x, y))   { if (g_editPage == 0) { g_editPage = 1; g_dirty = true; } return; }
+  if (hit(btnEditPrev(), x, y))   { if (g_editPage > 0) { --g_editPage; g_bodyOnly = true; g_dirty = true; } return; }
+  if (hit(btnEditNext(), x, y))   { if (g_editPage == 0) { g_editPage = 1; g_bodyOnly = true; g_dirty = true; } return; }
   if (hit(btnEditRevert(), x, y)) {
     confirm("Revert everything?",
             pack::str(pack::kStrRevertBody),
-            [] { g_edit.revertAll(); markEdited(); });
+            [] { g_edit.revertAll(); clearUndo(); markEdited(); });
     return;
   }
   int first = editPageFirst(g_editPage);
@@ -3208,8 +4178,7 @@ void handleOutTouch(int x, int y) {
     g_dirty = true;
     return;
   }
-  if (hit(btnOutSd(), x, y)) {
-    if (!plat::sdPresent()) { message("No card", "Insert an SD card."); return; }
+  if (plat::sdPresent() && hit(btnOutSd(), x, y)) {
     std::string path;
     run::loadedGridInto(g_ranGrid);
     if (sinks::saveRunToSd(run::output(), g_ranGrid, path))
@@ -3261,17 +4230,16 @@ void handleSaveTouch(int x, int y) {
 void handleSysTouch(int x, int y) {
   if (hit(btnSysWifi(), x, y))       { g_modal = Modal::Wifi; g_dirty = true; }
   else if (hit(btnSysSd(), x, y)) {
-    if (plat::sdPresent()) { Store::setSdLogging(!Store::sdLoggingEnabled()); g_dirty = true; }
+    if (plat::sdPresent()) {
+      Store::setSdLogging(!Store::sdLoggingEnabled());
+      g_bodyOnly = true; g_dirty = true;
+    }
   }
   else if (hit(btnSysDebug(), x, y)) { g_modal = Modal::Debug; g_dialogPage = 0; g_dirty = true; }
-  else if (hit(btnSysRunView(), x, y)) {
-    Store::setRunView((Store::runView() + 1) % 3);
-    g_outLine = 0;
-    g_dirty = true;
-  }
-  else if (hit(btnSysSteps(), x, y)) {
-    Store::setStepButtons(!Store::stepButtons());
-    g_dirty = true;
+  else if (hit(btnSysBand(), x, y)) {
+    setBandMode((bandMode() + 1) % 3);      // output -> runners -> nothing
+    g_outLine = g_runnerTop = 0;
+    g_bodyOnly = true; g_dirty = true;
   }
   else if (hit(btnSysTheme(), x, y)) {
     bool day = !Store::dayMode();
@@ -3307,21 +4275,43 @@ void handleSysTouch(int x, int y) {
     g_dirty = true;
   }
   else if (hit(btnSysCal(), x, y)) {
-    confirm("Recalibrate touch?", "You will be asked to tap the four corners.",
-            [] { Store::clearTouchCalibration(); gfx.beginTouch(true); });
+    confirm("Recalibrate touch?",
+            "Tap the four corner markers, then three rings to check the result.",
+            [] {
+              Store::clearTouchCalibration();
+              gfx.beginTouch(true);
+              // Say how well it went. The calibration cannot be made finer --
+              // it is the four corners and nothing else -- so the useful thing
+              // is knowing whether the one you just did is any good, rather
+              // than finding out later on a keyboard.
+              const int miss = gfx.checkTouch();
+              char body[120];
+              if (miss <= 6)
+                snprintf(body, sizeof(body),
+                         "Within %d pixels. Comfortably inside a key.", miss);
+              else if (miss <= 14)
+                snprintf(body, sizeof(body),
+                         "Out by %d pixels. Usable, but a key is about 43 "
+                         "wide -- worth another go.", miss);
+              else
+                snprintf(body, sizeof(body),
+                         "Out by %d pixels, which is more than half a key. "
+                         "Run it again and press the very centre of each "
+                         "corner marker.", miss);
+              message(miss <= 6 ? "Calibrated" : "Calibrated, roughly", body);
+            });
   }
-  else if (hit(btnSysDump(), x, y)) {
-    plat::logf("--- %s ---\n", g_edit.programName());
-    plat::log(g_edit.text().c_str());
-    plat::logln(g_edit.isPacked() ? pack::str(pack::kStrDumpDiff)
-                                  : "--- edits from the program as loaded ---");
-    for (const prog::Diff& d : g_edit.diff())
-      plat::logf("  row %2d col %2d  '%c' -> '%c'\n", d.row, d.col,
-                 g_edit.baselineCell(d.row, d.col), d.ch);
-    if (web::running())
-      message("Dumped", "Console, and http://" + web::ipAddress() + "/edit");
-    else
-      message("Dumped", "Grid and edits written to the console.");
+
+  else if (hit(btnSysRestore(), x, y)) {
+    confirm("Restore built-in programs?",
+            "The programs that shipped with the device are written back to its "
+            "own storage, replacing your changes to those. Programs you made "
+            "yourself are left alone.",
+            [] {
+              int written = writeBuiltIns(true);
+              refreshProgFiles();
+              message("Restored", std::to_string(written) + " built-in programs.");
+            });
   }
   else if (hit(btnSysReset(), x, y)) {
     // Plain mode has no presets or saved sets. Both readings are true: the
@@ -3330,10 +4320,14 @@ void handleSysTouch(int x, int y) {
             Store::unlocked()
               ? std::string(pack::str(pack::kStrResetBody))
               : std::string("WiFi and calibration go, and the device returns to "
-                            "how it shipped. The programs are in flash and are "
-                            "untouched."),
+                            "how it shipped -- including its programs, which "
+                            "are written back over anything you changed."),
             [] {
               Store::factoryReset();
+              // factoryReset() wipes the seeded flag with everything else, so
+              // the built-ins are written back on the next look at PROGRAMS.
+              // Anything the user saved on the device stays where it is.
+              refreshProgFiles();
               // factoryReset() clears the unlock too, so the packed program
               // is no longer listed -- do not leave it loaded with no way back.
               // The device should come back exactly as it ships: day palette,
@@ -3397,8 +4391,13 @@ void handlePickerTouch(int x, int y) {
     std::string v = g_pickerValue;
     g_modal = g_pickerBack;
     g_pickerBack = Modal::None;
-    g_dirty = true;
+    g_rebuildPending = false;
     if (commit) commit(v);          // a commit may still send you elsewhere
+    // A commit that changed the program has a repaint coming with the
+    // rebuild, and that is the one showing the new value. Painting here as
+    // well drew the same screen twice -- which is why OK repainted the grid
+    // twice while CANCEL, changing nothing, only did it once.
+    if (!g_rebuildPending) g_dirty = true;
     return;
   }
   if (hit(btnPickClear(), x, y)) {
@@ -3416,11 +4415,20 @@ void handlePickerTouch(int x, int y) {
   if (x < g.x0 || y < g.y0) return;
   int c = (x - g.x0) / g.kw, r = (y - g.y0) / g.kh;
   if (c < 0 || c >= g.cols || r < 0 || r >= g.rows) return;
-  int i;
-  if (g.sideCols && c >= kPickMainCols)
-    i = (int)g_pickerSplit + r * g.sideCols + (c - kPickMainCols);
-  else
-    i = r * (g.sideCols ? kPickMainCols : g.cols) + c;
+
+  // Ask pickerCell where each key was DRAWN and take the one that lands here,
+  // rather than inverting its arithmetic by hand. The hand-written inverse
+  // knew about the main block and the two side columns but not the third
+  // case -- the extras in full rows underneath -- so on the text keyboard the
+  // last fifteen keys typed whatever the main block would have had at those
+  // coordinates: space gave '!', '(' gave '"'. That keyboard names programs
+  // and presets and takes the WiFi password. Ninety-five comparisons is
+  // nothing, and the two can no longer disagree.
+  int i = -1;
+  for (int k = 0; k < (int)g_pickerSet.size(); ++k) {
+    int kr, kc;
+    if (pickerCell(k, g, kr, kc) && kr == r && kc == c) { i = k; break; }
+  }
   if (i < 0 || i >= (int)g_pickerSet.size()) return;
   if (g_pickerSet[i] == '\x01') return;          // spacer
   // A single-character field replaces on every press -- there is nothing to
@@ -3433,17 +4441,16 @@ void handlePickerTouch(int x, int y) {
 }
 
 void handleCellTouch(int x, int y) {
-  if (hit(btnCellUp(), x, y))    { if (g_cellRow > 0) --g_cellRow; g_dirty = true; return; }
-  if (hit(btnCellDown(), x, y))  { if (g_cellRow < g_edit.rows() - 1) ++g_cellRow; g_dirty = true; return; }
-  if (hit(btnCellLeft(), x, y))  { if (g_cellCol > 0) --g_cellCol; g_dirty = true; return; }
-  if (hit(btnCellRight(), x, y)) { if (g_cellCol < g_edit.cols() - 1) ++g_cellCol; g_dirty = true; return; }
-
-  // Any other character in the window jumps straight to it.
+  // Tap a character in the window to inspect it. The window is pinned to the
+  // program's edges rather than always centred on the cursor, so the mapping
+  // has to go through the window origin -- assuming the cursor sits at
+  // kInsMidR/kInsMidC lands up to four columns away near any edge.
   if (y >= insTop() && y < insTop() + kInsRows * kInsCellH &&
       x >= kInsX && x < kInsX + kInsCols * kInsCellW) {
-    int r = g_cellRow + ((y - insTop()) / kInsCellH - kInsMidR);
-    int c = g_cellCol + ((x - kInsX) / kInsCellW - kInsMidC);
-    if (r >= 0 && r < g_edit.rows() && c >= 0 && c < g_edit.cols()) {
+    int r = insOriginRow() + (y - insTop()) / kInsCellH;
+    int c = insOriginCol() + (x - kInsX) / kInsCellW;
+    if (r >= 0 && r < g_edit.rows() && c >= 0 && c < g_edit.cols() &&
+        (r != g_cellRow || c != g_cellCol)) {
       g_cellRow = r; g_cellCol = c; g_dirty = true;
     }
     return;
@@ -3456,8 +4463,10 @@ void handleCellTouch(int x, int y) {
                std::string(1, g_edit.cell(r, c)), 1,
                [r, c](const std::string& v) {
                  if (v.empty()) return;
-                 if (g_edit.cell(r, c) == v[0]) return;    // no change, no edit
+                 const char was = g_edit.cell(r, c);
+                 if (was == v[0]) return;                 // no change, no edit
                  g_edit.setCell(r, c, v[0]);
+                 noteEdit(r, c, was, v[0]);
                  markEdited();
                },
                kKbSplit);
@@ -3468,8 +4477,10 @@ void handleCellTouch(int x, int y) {
     // The button is drawn disabled when the cell already matches; honour that,
     // or a tap here would raise "edits pending" without changing anything.
     char orig = g_edit.baselineCell(g_cellRow, g_cellCol);
-    if (g_edit.cell(g_cellRow, g_cellCol) != orig) {
+    const char was = g_edit.cell(g_cellRow, g_cellCol);
+    if (was != orig) {
       g_edit.setCell(g_cellRow, g_cellCol, orig);
+      noteEdit(g_cellRow, g_cellCol, was, orig);
       markEdited();
     }
     return;
@@ -3490,15 +4501,16 @@ void handleCellTouch(int x, int y) {
 }
 
 void handleMessageTouch(int x, int y) {
-  if (y < 148 || y >= 172) return;
+  // Through the same rectangles the buttons are drawn from, so moving one
+  // moves both. These used to be hand-written coordinates repeated here.
   if (g_modal == Modal::Confirm) {
-    if (x >= kScreenW / 2 + 20 && x < kScreenW / 2 + 120) {
+    if (hit(btnMsgConfirm(), x, y)) {
       auto f = g_confirmYes; g_modal = Modal::None; g_dirty = true; if (f) f(); return;
     }
-    if (x >= kScreenW / 2 - 120 && x < kScreenW / 2 - 20) { g_modal = Modal::None; g_dirty = true; }
+    if (hit(btnMsgCancel(), x, y)) { g_modal = Modal::None; g_dirty = true; }
     return;
   }
-  if (x >= kScreenW / 2 - 50 && x < kScreenW / 2 + 50) {
+  if (hit(btnMsgOk(), x, y)) {
     if (g_msgThenInfo) {
       g_msgThenInfo = false;
       g_modal = Modal::Info;        // straight into the info pages
@@ -3523,6 +4535,36 @@ bool g_deferTap = false;      // act on release, so a long press can be told apa
 uint32_t g_pressMs = 0;
 int  g_pressX = 0, g_pressY = 0, g_dragLastX = 0, g_dragLastY = 0;
 constexpr uint32_t kLongPressMs = 600;
+// How far the finger must travel from where it went down before the gesture
+// counts as a drag rather than a tap. Wider than a zoom cell: a press on a
+// resistive panel wanders, and a wander used to pan the grid and swallow the
+// tap with it.
+constexpr int kDragSlop = 24;
+
+// A resistive panel's first reading is its worst: the pressure is still rising
+// and the value can be several pixels out. On a 43 px key that is the
+// difference between a character and its neighbour, which is what made the
+// keyboards feel like they were typing next door. Take a handful of readings
+// and use the middle of each axis, which throws away the outlier without
+// waiting for anything.
+//
+// Whatever the panel gives is used -- one sample on a build whose touch is
+// synthetic, five on the board -- so this changes nothing except accuracy.
+bool readTouch(int32_t& x, int32_t& y) {
+  constexpr int kSamples = 5;
+  int32_t xs[kSamples], ys[kSamples];
+  int n = 0;
+  for (int i = 0; i < kSamples; ++i) {
+    int32_t tx, ty;
+    if (gfx.getTouch(&tx, &ty)) { xs[n] = tx; ys[n] = ty; ++n; }
+  }
+  if (n == 0) return false;
+  std::sort(xs, xs + n);
+  std::sort(ys, ys + n);
+  x = xs[n / 2];
+  y = ys[n / 2];
+  return true;
+}
 
 void onTap(int x, int y) {
   switch (g_modal) {
@@ -3546,6 +4588,7 @@ void onTap(int x, int y) {
                 : g_modal == Modal::Device ? devicePageCount()
                 : (Store::unlocked() ? 2 : 1);   // DEBUG loses its keys page
       if (hit(btnDlgClose(), x, y)) { g_modal = Modal::None; g_dirty = true; }
+      else if (g_modal == Modal::Debug && hit(btnDlgDump(), x, y)) dumpGrid();
       else if (hit(btnDlgPrev(), x, y) && g_dialogPage > 0) { --g_dialogPage; g_dirty = true; }
       else if (hit(btnDlgNext(), x, y) && g_dialogPage + 1 < pages) { ++g_dialogPage; g_dirty = true; }
       return;
@@ -3567,10 +4610,7 @@ void onTap(int x, int y) {
       break;
     case Tab::Keys: handleKeysTouch(x, y); break;
     case Tab::Out:  handleOutTouch(x, y); break;
-    case Tab::Save:
-      if (Store::unlocked()) handleSaveTouch(x, y);
-      else                   handleFilesTouch(x, y);
-      break;
+    case Tab::Save: handleSaveTouch(x, y); break;
     case Tab::Prog: handleProgTouch(x, y); break;
     case Tab::Sys:  handleSysTouch(x, y); break;
     default: break;
@@ -3588,10 +4628,7 @@ void drawBody(const run::Snapshot& snap) {
       break;
     case Tab::Keys: drawKeys(); break;
     case Tab::Out:  drawOut(); break;
-    case Tab::Save:
-      if (Store::unlocked()) drawSave();
-      else                   drawFiles();
-      break;
+    case Tab::Save: drawSave(); break;
     case Tab::Prog: drawProg(); break;
     case Tab::Sys:  drawSys(); break;
     default: break;
@@ -3599,18 +4636,26 @@ void drawBody(const run::Snapshot& snap) {
 }
 
 void drawAll(const run::Snapshot& snap) {
+  // A modal paints over the tab bar, and so does the frame after it closes,
+  // so what drawTabs() believes is on the panel stops being true either way.
+  // A page change does not: the header, the body and the bar each clear their
+  // own area, so the bar is still exactly where it was.
+  static Modal lastModal = Modal::None;
+  if (g_modal != lastModal) { g_tabsStale = true; lastModal = g_modal; }
   if (g_modal == Modal::Picker) { drawPicker(); return; }
   if (g_modal == Modal::Cell)   { drawCellModal(); return; }
   if (g_modal == Modal::Debug)  { drawDebug(); return; }
   if (g_modal == Modal::Info)   { drawInfo(); return; }
   if (g_modal == Modal::Wifi)   { drawWifi(); return; }
   if (g_modal == Modal::Splash) {
-    // The base screen first: the splash is also raised on unlocking and after
-    // a reset, when the header and the tab bar underneath it have both just
-    // changed and would otherwise show the state they were in before.
+    // The header and the tab bar, because the splash is also raised on
+    // unlocking and after a reset, when both have just changed and would
+    // otherwise show the state they were in before. NOT the body: the panel
+    // covers everything but four pixels of it, and drawing the program
+    // underneath is what made opening a packed program look like the grid
+    // loading in twice -- once invisibly under this, once when it closed.
     gfx.fillScreen(theme::bg);
     drawHeader(snap);
-    drawBody(snap);
     drawTabs();
     drawSplash();
     return;
@@ -3618,7 +4663,10 @@ void drawAll(const run::Snapshot& snap) {
   if (g_modal == Modal::Size)   { drawSize();   return; }
   if (g_modal == Modal::Ircis)  { drawIrcis();  return; }
   if (g_modal == Modal::Device) { drawDevice(); return; }
-  gfx.fillScreen(theme::bg);
+  // No fillScreen. drawHeader clears the status bar, every page's drawer
+  // clears the body, and drawTabs paints each tab it touches -- so clearing
+  // the whole panel first only wiped the tab bar and forced all six tabs to
+  // be redrawn for a change that affects two of them.
   drawHeader(snap);
   drawBody(snap);
   drawTabs();
@@ -3631,7 +4679,7 @@ prog::Program& editGrid() { return g_edit; }
 // Every edit is pushed into the interpreter immediately and the run restarts.
 // There is no "pending" state to forget about -- what is on screen is always
 // what will run.
-void markEdited() { run::load(g_edit); g_dirty = true; }
+void markEdited() { g_rebuildPending = true; run::load(g_edit); }
 void markLoaded() { g_dirty = true; }
 void repaint() { g_dirty = true; }
 void injectTap(int x, int y) { onTap(x, y); }
@@ -3690,17 +4738,25 @@ void showMessage(const std::string& title, const std::string& body) { message(ti
 void notifyUnlocked() { announceUnlock(); }
 #if defined(SK_HOST)
 unsigned long gridPaints() { return g_gridPaints; }
+unsigned long fullPaints() { return g_fullPaints; }
 unsigned long bandPaints() { return g_bandPaints; }
 #else
 unsigned long gridPaints() { return 0; }
 unsigned long bandPaints() { return 0; }
 #endif
-bool loadProgramTextPublic(const std::string& t) { return loadProgramText(t); }
+bool loadProgramTextPublic(const std::string& t, const char* name) { return loadProgramText(t, name); }
 bool applyProgramTextPublic(const std::string& t) { return applyProgramText(t); }
 void lockDevice() { relock(); }
 
 void begin() {
   theme::setDay(Store::dayMode());   // before a single pixel is drawn
+
+  // Copy the built-in programs into the device's own store at start-up rather
+  // than the first time PROG is opened. Everything else that reads programs --
+  // the web view's list, the console's progload, a program loaded straight
+  // into the machine -- would otherwise find an empty store on a device whose
+  // owner had not happened to visit that tab yet.
+  refreshProgFiles();
   int sc, sr; char sd;
   Store::startPoint(sc, sr, sd);
   // A stored entry point only applies while it is allowed to move; otherwise
@@ -3725,13 +4781,23 @@ void begin() {
   run::load(g_edit);
   markLoaded();
 
-  g_modal = Modal::Splash;
+  // The welcome is a welcome: it belongs on the first power-on, not on every
+  // one. ABOUT THIS DEVICE says the same things afterwards, and a factory
+  // reset clears the flag with everything else, so a device handed on shows
+  // it again.
+  if (plat::kv::getBool("welcomed", false)) {
+    g_modal = Modal::None;
+  }
+  else {
+    plat::kv::putBool("welcomed", true);
+    g_modal = Modal::Splash;
+  }
   g_dirty = true;
 }
 
 void tick() {
   int32_t tx, ty;
-  bool touched = gfx.getTouch(&tx, &ty);
+  bool touched = readTouch(tx, ty);
   uint32_t now = plat::millis();
 
   if (touched && !g_wasTouched) {
@@ -3750,24 +4816,32 @@ void tick() {
     }
   }
   else if (touched && g_wasTouched && g_dragArmed) {
-    int dx = tx - g_dragLastX;
-    int dy = ty - g_dragLastY;
-    bool moved = false;
-    if (dx >= kZoomCellW || dx <= -kZoomCellW) {
-      panByPixels(dx);
-      g_dragLastX = tx;
-      moved = true;
-    }
-    int step = cellH();
-    if (dy >= step || dy <= -step) {
-      panByRows(dy);
-      g_dragLastY = ty;
-      moved = true;
-    }
-    if (moved) {
-      g_dragged = true;
-      g_follow = false;                           // manual control takes over
-      g_dirty = true;
+    const int adx = tx - g_pressX, ady = ty - g_pressY;
+    // Nothing counts as a drag until the finger has left the slop circle.
+    // Panning used to start after one cell of movement, which a press can
+    // produce on its own -- so tapping a cell sometimes panned the view and
+    // dropped the tap instead of opening the character inspector.
+    if (g_dragged || adx * adx + ady * ady >= kDragSlop * kDragSlop) {
+      if (!g_dragged) {
+        g_dragged = true;
+        g_follow = false;                         // manual control takes over
+        g_dragLastX = tx; g_dragLastY = ty;       // measure from here on
+      }
+      int dx = tx - g_dragLastX;
+      int dy = ty - g_dragLastY;
+      bool moved = false;
+      if (dx >= kZoomCellW || dx <= -kZoomCellW) {
+        panByPixels(dx);
+        g_dragLastX = tx;
+        moved = true;
+      }
+      int step = cellH();
+      if (dy >= step || dy <= -step) {
+        panByRows(dy);
+        g_dragLastY = ty;
+        moved = true;
+      }
+      if (moved) { g_runGridOnly = true; g_dirty = true; }
     }
   }
   else if (!touched && g_wasTouched && g_deferTap) {
@@ -3789,42 +4863,141 @@ void tick() {
   static uint32_t lastStep = 0xFFFFFFFF;
   static bool lastRunning = false;
   static bool lastFinished = false;
+  static uint32_t lastRunVersion = 0xFFFFFFFF;
   run::Snapshot snap = run::snapshot();
-  if (snap.running != lastRunning) { lastRunning = snap.running; g_dirty = true; }
+  if (snap.running != lastRunning) {
+    lastRunning = snap.running;
+    // Starting or stopping changes the transport and the RUN tab's glyph and
+    // nothing else. Repainting everything for it meant one tap on play drew
+    // the grid twice -- once for the tap, once when the machine actually
+    // started a moment later -- and on a large grid the second one is long
+    // enough to miss the opening steps of the run.
+    g_headerOnly = true;
+    g_tabsOnly   = true;
+    g_dirty = true;
+  }
   if (snap.finished && !lastFinished) {
     lastFinished = true;
-    if (!run::output().empty()) {
-      // Straight to the output, which is what a dialog about the output was
-      // standing in front of. If something else is open, leave it alone and
-      // let the tab's own flag say there is something to look at.
-      if (g_modal == Modal::None) {
-        g_tab = Tab::Out;
-        g_outTop = 0;
-        g_outputUnseen = false;
-      }
-      else g_outputUnseen = true;
+    // Whitespace is not output. Programs like race are watched on the grid and
+    // print nothing; several still emit a stray space, and jumping to a page
+    // showing one space is worse than staying where the program is.
+    const std::string& out = run::output();
+    const bool printed = out.find_first_not_of(" \t\r\n") != std::string::npos;
+    if (printed) {
+      // Stay where you are. Being thrown onto another page the moment a run
+      // ends takes the grid away at exactly the moment you were watching it;
+      // the OUT tab wears a dot instead, and the RUN tab's glyph becomes the
+      // go-again arrow, which between them say the same thing without moving
+      // anything.
+      g_outTop = 0;
+      if (g_tab != Tab::Out) g_outputUnseen = true;
+      g_headerOnly = true;
+      g_tabsOnly   = true;
+      g_bandOnly   = true;      // the readout still says "press play"
       g_dirty = true;
     }
   }
   else if (!snap.finished) lastFinished = false;
 
+  // A rebuild -- a program loaded, an edit re-run, a reset -- happens on the
+  // run task. Painting when the request goes out draws the new grid with the
+  // OLD machine's runners on it, and the rebuild then paints it again: two
+  // frames for one change, the first of them wrong. So the request paths
+  // leave g_dirty alone and this is the single paint, whichever page is up.
+  const uint32_t bv = run::buildVersion();
+  if (bv != lastRunVersion) {
+    lastRunVersion = bv;
+    if (g_resetSameGrid && g_tab == Tab::Run && g_modal == Modal::None) {
+      // Same characters, different runners: put back the cells the old ones
+      // were drawn over and leave the grid alone.
+      g_resetSameGrid = false;
+      drawRunners(snap);
+      drawHeader(snap);      g_headerSig = headerSignature(snap);
+      drawRunnerList(snap);  g_bandSig   = bandSignature(snap);
+      g_dirty = false; g_headerOnly = false; g_tabsOnly = false;
+      g_bodyOnly = false; g_bandOnly = false;
+      g_edGridOnly = false; g_edHeadOnly = false;
+      g_lastRunPaintMs = now;
+      lastStep = snap.step;
+      return;
+    }
+    g_resetSameGrid = false;
+    g_prevRunners.clear();
+    // Only RUN and OUT show anything the machine owns. The editor draws from
+    // the grid in memory, which was already right the instant the edit was
+    // made, so a rebuild there changes nothing on screen -- and repainting
+    // for it would put a full frame behind every keystroke.
+    if (g_tab == Tab::Run || g_tab == Tab::Out) {
+      g_headerOnly = g_bodyOnly = g_bandOnly = false;
+      g_edGridOnly = g_edHeadOnly = g_tabsOnly = false;
+      g_dirty = true;               // one full repaint, through the path below
+    }
+  }
+
   if (g_dirty) {
-    // A header-only repaint leaves the grid alone: it is the same grid, and
-    // redrawing it is the whole cost.
-    if (g_headerOnly && g_tab == Tab::Run && g_modal == Modal::None) {
-      drawHeader(snap); g_headerSig = headerSignature(snap);
+    // The partial repaints compose: a tap that changed the cursor and the
+    // readout asks for the grid and the header, and gets exactly those. Only
+    // a request that names no part at all falls through to the whole screen.
+    // Whatever else was asked for, arriving on a different page means the
+    // page has to be drawn. Without this, a run finishing while the
+    // running-state change had asked for header-and-tabs left the OUT page
+    // showing nothing but its tab bar.
+    static Tab lastDrawnTab = Tab::Run;
+    static bool everDrawn = false;
+    const bool tabChanged = !everDrawn || g_tab != lastDrawnTab;
+    const bool anyPart = g_modal == Modal::None && !tabChanged &&
+                         (g_headerOnly || g_bandOnly || g_bodyOnly ||
+                          g_edGridOnly || g_edHeadOnly || g_tabsOnly ||
+                          g_runGridOnly || g_edCellCount > 0);
+    if (g_modal == Modal::None) { lastDrawnTab = g_tab; everDrawn = true; }
+    if (!anyPart) {
+#if defined(SK_HOST)
+      ++g_fullPaints;
+#endif
+      drawAll(snap);
+      g_bandSig = 0; g_headerSig = 0; g_tabsOnly = false;
     }
-    else if (g_bandOnly && g_tab == Tab::Run && g_modal == Modal::None) {
-      drawRunnerList(snap); g_bandSig = bandSignature(snap);
+    else {
+      // Header-only leaves the grid alone: it is the same grid, and redrawing
+      // it is the whole cost.
+      if (g_headerOnly)   { drawHeader(snap); g_headerSig = headerSignature(snap); }
+      if (g_bandOnly && g_tab == Tab::Run) {
+        drawRunnerList(snap); g_bandSig = bandSignature(snap);
+      }
+      if (g_bodyOnly)     { drawBody(snap); g_bandSig = 0; }
+      if (g_runGridOnly && g_tab == Tab::Run) {
+        // The program and the arrows under it. The readout below them says
+        // what has been printed, which scrolling does not change.
+        const int top = (g_view == View::Zoom) ? kHeaderH : kWideY;
+        gfx.fillRect(0, top, kScreenW, shiftRowY() - top, theme::bg);
+        g_prevRunners.clear();          // cleared along with the cells
+        drawGrid();
+        drawRunners(snap);
+        drawScrollRow();
+      }
+      if ((g_edGridOnly || g_edCellCount) &&
+          g_tab == Tab::Edit && !Store::unlocked()) {
+        // If following the cursor scrolled the window, every cell moved and
+        // the queued handful means nothing; otherwise repaint just those.
+        const int r0 = g_edRow, c0 = g_edCol;
+        edFollow();
+        if (g_edGridOnly || g_edRow != r0 || g_edCol != c0) drawProgEditGrid();
+        else for (int i = 0; i < g_edCellCount; ++i)
+          drawEdCell(g_edCells[i].row, g_edCells[i].col);
+      }
+      if (g_edHeadOnly && g_tab == Tab::Edit && !Store::unlocked())
+        drawEdHeadBits();
     }
-    else if (g_bodyOnly && g_modal == Modal::None) {
-      drawBody(snap); g_bandSig = 0;
-    }
-    else { drawAll(snap); g_bandSig = 0; g_headerSig = 0; }
+    if (g_tabsOnly) drawTabs();
     g_dirty = false;
     g_headerOnly = false;
+    g_tabsOnly = false;
     g_bodyOnly = false;
     g_bandOnly = false;
+    g_edGridOnly = false;
+    g_edHeadOnly = false;
+    g_runGridOnly = false;
+    g_edCellCount = 0;
     lastDraw = now;
     g_lastRunPaintMs = now;
     lastStep = snap.step;
@@ -3838,6 +5011,12 @@ void tick() {
   if (g_modal != Modal::None) return;
 
   if (g_tab == Tab::Run) {
+    // A rebuild -- reset, restart, an edit re-running -- happens on the run
+    // task, so the repaint the button asked for can land before the machine
+    // has actually gone back to the top, leaving the old runners drawn. The
+    // step count alone cannot catch that: pressing reset twice, or on a run
+    // that had barely started, leaves it unchanged. buildMachine bumps this
+    // version every time, so watch that instead.
     if (snap.step != lastStep) {
       followRunner(snap);
       if (g_dirty) {

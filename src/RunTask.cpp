@@ -24,10 +24,15 @@ namespace {
   plat::Mutex        g_mutex;
   std::deque<Command> g_queue;
 
-  volatile Speed g_speed = Speed::Fast;   // written by the UI thread, read here
+  volatile Speed g_speed = Speed::Medium;   // written by the UI thread, read here
   Snapshot    g_snap;
   std::string g_output;
   uint32_t    g_outputVersion = 0;
+  // Bumped only when the machine is rebuilt -- a reset, a reload, an edit --
+  // never when it merely prints. The UI watches this to know the grid it is
+  // drawing has been replaced; watching outputVersion instead meant a full
+  // repaint for every character a program wrote.
+  uint32_t    g_buildVersion = 0;
   bool        g_outputTruncated = false;
   static constexpr std::size_t kMaxOutput = 16384;
 
@@ -112,6 +117,7 @@ int  g_visitCols = 0;
     g_visitCols = 0;
     g_globals.clear();
     g_chunks.clear();
+    ++g_buildVersion;
     g_running = false;
     g_runMs = 0;
     g_snap = Snapshot();
@@ -192,8 +198,8 @@ int  g_visitCols = 0;
   uint32_t budgetFor(Speed s) {
     switch (s) {
       case Speed::Slow:  return 1;
-      case Speed::Fast:  return 1;
-      case Speed::Rapid: return 40;
+      case Speed::Medium:  return 1;
+      case Speed::Quick: return 40;
       case Speed::Full:  return 20000;
     }
     return 1;
@@ -201,11 +207,36 @@ int  g_visitCols = 0;
   uint32_t delayFor(Speed s) {
     switch (s) {
       case Speed::Slow:  return 320;   // ~3 steps/sec
-      case Speed::Fast:  return 40;    // ~25 steps/sec
-      case Speed::Rapid: return 20;    // ~2000 steps/sec
+      case Speed::Medium:  return 40;    // ~25 steps/sec
+      case Speed::Quick: return 20;    // ~2000 steps/sec
       case Speed::Full:  return 0;
     }
     return 40;
+  }
+
+  // At QUICK a program is gone before the eye finds the first runner, so a run
+  // opens slow enough to see the runners set off and then gets out of the way.
+  // About a second in total: easing all the way down from SLOW took five,
+  // which reads as the device being broken rather than considerate.
+  //
+  // FULL is exempt. Asking for FULL is asking for the answer, not for the
+  // performance, and a second of ceremony in front of it is a second spent
+  // watching something you said you did not want to watch.
+  constexpr uint32_t kEaseSteps   = 16;
+  constexpr uint32_t kEaseStartMs = 120;
+  uint32_t g_sinceStart = 0;     // steps since play was last pressed
+
+  bool easing(Speed s) { return s != Speed::Full && g_sinceStart < kEaseSteps; }
+
+  uint32_t easedBudget(Speed s) {
+    return easing(s) ? 1u : budgetFor(s);
+  }
+  uint32_t easedDelay(Speed s) {
+    const uint32_t want = delayFor(s);
+    if (!easing(s)) return want;
+    const uint32_t from = kEaseStartMs;
+    if (want >= from) return want;                 // already slow enough
+    return from - (from - want) * g_sinceStart / kEaseSteps;
   }
 
   void runSteps(uint32_t n) {
@@ -270,7 +301,8 @@ int  g_visitCols = 0;
               g_runMs = 0;
             }
             if (g_machine && !g_machine->finished()) {
-              g_running = true; g_startMs = plat::millis(); setEvent("running");
+              g_running = true; g_sinceStart = 0;   // ease in from here
+              g_startMs = plat::millis(); setEvent("running");
             }
             break;
           case Cmd::Pause:
@@ -327,9 +359,13 @@ int  g_visitCols = 0;
       }
 
       Speed sp = g_speed;   // single byte; volatile read is enough on both targets
-      if (g_running) runSteps(budgetFor(sp));
+      if (g_running) {
+        const uint32_t n = easedBudget(sp);
+        runSteps(n);
+        if (g_sinceStart < kEaseSteps) g_sinceStart += n;
+      }
       publish();
-      plat::taskYield(g_running ? delayFor(sp) : 20);
+      plat::taskYield(g_running ? easedDelay(sp) : 20);
     }
   }
 }
@@ -367,6 +403,7 @@ int  g_visitCols = 0;
     return g_output;
   }
   uint32_t outputVersion() { plat::Guard g(g_mutex); return g_outputVersion; }
+  uint32_t buildVersion()  { plat::Guard g(g_mutex); return g_buildVersion; }
 
   void loadedGridInto(prog::Program& out) { plat::Guard g(g_mutex); out = g_loaded; }
   // Copied under the mutex rather than handed out as a raw pointer: the

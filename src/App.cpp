@@ -48,7 +48,7 @@ void printHelp() {
     "\ncommands:\n"
     "  run | pause | reset            transport\n"
     "  step [n]                       advance n steps (default 1)\n"
-    "  speed slow|fast|rapid|full     run speed\n"
+    "  speed slow|medium|quick|full     run speed\n"
     "  cell <row> <col> <char>        overwrite a single cell\n"
     "  revert                         undo every edit\n"
     "  load                           push edits to the interpreter and reset\n"
@@ -94,6 +94,22 @@ std::string trim(std::string v) {
   return v.substr(a, b - a + 1);
 }
 
+#if defined(SK_HOST)
+// Console names may name their store: "card:spiral" or "device:spiral".
+// A bare name means the device, which is the one that is always there.
+const char* whereTag(plat::Where w) {
+  return w == plat::Where::Device ? "device" : "card";
+}
+plat::Where splitWhere(std::string& name) {
+  const std::size_t c = name.find(':');
+  if (c == std::string::npos) return plat::Where::Device;
+  const std::string tag = name.substr(0, c);
+  if (tag != "card" && tag != "device") return plat::Where::Device;
+  name = name.substr(c + 1);
+  return tag == "card" ? plat::Where::Card : plat::Where::Device;
+}
+#endif
+
 std::string nextToken(std::string& line) {
   line = trim(line);
   std::size_t sp = line.find(' ');
@@ -133,10 +149,10 @@ void handleCommand(std::string line) {
   else if (cmd == "speed") {
     std::string v = nextToken(line);
     if (v == "slow") run::setSpeed(run::Speed::Slow);
-    else if (v == "fast") run::setSpeed(run::Speed::Fast);
-    else if (v == "rapid") run::setSpeed(run::Speed::Rapid);
+    else if (v == "medium") run::setSpeed(run::Speed::Medium);
+    else if (v == "quick") run::setSpeed(run::Speed::Quick);
     else if (v == "full") run::setSpeed(run::Speed::Full);
-    else { plat::logln("speed: slow|fast|rapid|full"); return; }
+    else { plat::logln("speed: slow|medium|quick|full"); return; }
     Store::setRunSpeed((int)run::speed());
     ui::repaint();
   }
@@ -211,6 +227,7 @@ void handleCommand(std::string line) {
     else plat::logln("write failed");
   }
 #if defined(SK_HOST)
+
   else if (cmd == "page") {
     // Emulator only: render a web page and print it. There is no radio here,
     // so this is the only way to see what the device would serve -- and it is
@@ -256,34 +273,44 @@ void handleCommand(std::string line) {
   }
   else if (cmd == "progsave") {
     std::string name = nextToken(line);
-    if (name.empty()) { plat::logln("usage: progsave <name>"); return; }
-    if (plat::progWrite(name, s.text())) plat::logf("saved %s.txt\n", name.c_str());
-    else plat::logln("could not write to the card");
+    if (name.empty()) { plat::logln("usage: progsave [card:]<name>"); return; }
+    plat::Where w = splitWhere(name);
+    if (plat::progWrite(w, name, s.text()))
+      plat::logf("saved %s.txt on the %s\n", name.c_str(), whereTag(w));
+    else plat::logf("could not write to the %s\n", whereTag(w));
   }
   else if (cmd == "progload") {
     std::string name = nextToken(line);
+    plat::Where w = splitWhere(name);
     std::string text;
-    if (!plat::progRead(name, text)) { plat::logln("no such program"); return; }
-    if (!ui::loadProgramTextPublic(text)) plat::logln("not a usable program");
-    else plat::logf("loaded %s (%d x %d), %d edited cell%s\n", name.c_str(),
-                    s.rows(), s.cols(), s.modifiedCells(),
-                    s.modifiedCells() == 1 ? "" : "s");
+    if (!plat::progRead(w, name, text)) { plat::logln("no such program"); return; }
+    if (!ui::loadProgramTextPublic(text, name.c_str())) plat::logln("not a usable program");
+    else {
+      // The name goes in with the program, so one load does it.
+      plat::logf("loaded %s (%d x %d), %d edited cell%s\n", name.c_str(),
+                  s.rows(), s.cols(), s.modifiedCells(),
+                  s.modifiedCells() == 1 ? "" : "s");
+    }
   }
   else if (cmd == "webedit") {
     // Exactly what the web editor's POST does, so the path can be exercised
     // without a radio: apply this text as edits to the loaded program.
     std::string name = nextToken(line);
+    plat::Where w = splitWhere(name);
     std::string text;
-    if (!plat::progRead(name, text)) { plat::logln("no such program"); return; }
+    if (!plat::progRead(w, name, text)) { plat::logln("no such program"); return; }
     if (!ui::applyProgramTextPublic(text)) plat::logln("not a usable program");
     else plat::logf("applied %s; %d edited cell%s\n", name.c_str(),
                     s.modifiedCells(), s.modifiedCells() == 1 ? "" : "s");
   }
   else if (cmd == "proglist") {
-    std::vector<std::string> names;
-    plat::progList(names);
-    if (names.empty()) plat::logln("no saved programs");
-    for (const std::string& n : names) plat::logf("  %s\n", n.c_str());
+    for (plat::Where w : { plat::Where::Device, plat::Where::Card }) {
+      std::vector<std::string> names;
+      if (!plat::progList(w, names)) continue;
+      plat::logf("%s:\n", whereTag(w));
+      if (names.empty()) plat::logln("  (nothing)");
+      for (const std::string& n : names) plat::logf("  %s\n", n.c_str());
+    }
   }
   else if (cmd == "lock") {
     // The mirror of setting the credentials. Flashing new firmware does not
@@ -292,7 +319,17 @@ void handleCommand(std::string line) {
     ui::lockDevice();
     plat::logln("locked: plain IRCIS interpreter");
   }
-  else if (cmd == "gridpaints") plat::logf("grid repaints: %lu, band repaints: %lu\n", ui::gridPaints(), ui::bandPaints());
+  else if (cmd == "settings") {
+    int sc, sr; char sd;
+    Store::startPoint(sc, sr, sd);
+    const char* sp[] = { "slow", "medium", "quick", "full" };
+    plat::logf("view=%s debug=%s speed=%s start=%d,%d%c%s\n",
+               Store::runView() == 0 ? "output" : "none",
+               Store::debugMode() ? "on" : "off",
+               sp[Store::runSpeed() & 3],
+               sc, sr, sd, Store::startEditable() ? "" : " (fixed)");
+  }
+  else if (cmd == "gridpaints") plat::logf("full repaints: %lu, grid repaints: %lu, band repaints: %lu, machine rebuilds: %u\n", ui::fullPaints(), ui::gridPaints(), ui::bandPaints(), (unsigned)run::buildVersion());
   else if (cmd == "dragv") {
     int dy = std::atoi(line.c_str());
     ui::injectDragV(dy);

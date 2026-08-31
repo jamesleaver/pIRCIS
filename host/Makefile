@@ -26,19 +26,24 @@ CORE      = ../lib/ircis/src/CharMaps.cpp ../lib/ircis/src/DataType.cpp \
             ../lib/ircis/src/Machine.cpp ../lib/program/src/Program.cpp \
             ../lib/pack/src/Pack.cpp ../lib/pack/src/Crypto.cpp
 
+# Headers, so a change to Examples.h or Pack.h rebuilds what depends on it.
+# Without this a regenerated header left a stale object behind and the tests
+# reported on code that was no longer there.
+HDRS = $(wildcard ../lib/ircis/src/*.h ../lib/program/src/*.h ../lib/pack/src/*.h)
+
 all: sk_emu test_golden test_crypto test_pack
 
-sk_emu: sk_emu.cpp $(CORE)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
+sk_emu: sk_emu.cpp $(CORE) $(HDRS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(filter %.cpp,$^)
 
-test_golden: test_golden.cpp $(CORE)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
+test_golden: test_golden.cpp $(CORE) $(HDRS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(filter %.cpp,$^)
 
-test_crypto: test_crypto.cpp ../lib/pack/src/Crypto.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
+test_crypto: test_crypto.cpp ../lib/pack/src/Crypto.cpp $(HDRS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(filter %.cpp,$^)
 
-test_pack: test_pack.cpp $(CORE)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
+test_pack: test_pack.cpp $(CORE) $(HDRS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $(filter %.cpp,$^)
 
 test: test_golden test_crypto test_pack
 	./test_crypto

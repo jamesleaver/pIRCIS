@@ -79,6 +79,10 @@ namespace plat {
   // so it changes whenever new firmware is flashed; on the host it is the
   // compile time. Used to notice a reflash, which NVS otherwise survives.
   std::string firmwareId();
+  // When this firmware was built, as a plain date and time. firmwareId() is a
+  // hash -- good for spotting that the board has been reflashed, useless for
+  // telling someone which build they are on.
+  std::string firmwareBuilt();
 
   // A different value each call. The interpreter's RNG was seeded with a
   // constant, so `r` and `R` replayed the same sequence on every run --
@@ -91,17 +95,23 @@ namespace plat {
   bool powerOffRequested();
 
   // Saved programs, as plain text files one row per line, so they can be moved
-  // on and off the card with any computer. /programs on the device,
-  // ./sdcard/programs in the emulator. All four return false with no card.
-  bool progList(std::vector<std::string>& namesOut);   // no path, no extension
-  bool progRead(const std::string& name, std::string& textOut);
-  bool progWrite(const std::string& name, const std::string& text);
+  // on and off with any computer. They live in two places and the UI lists
+  // both: the board's own flash, which is always there, and an SD card, which
+  // may not be. On the device that is LittleFS on the spare 896 KB data
+  // partition and /pircis/programs on the card; in the emulator it is
+  // ./device/programs and ./sdcard/programs. Names carry no path and no
+  // extension. Every call returns false if that store is not available.
+  enum class Where { Device, Card };
+  bool progStoreReady(Where w);
+  bool progList(Where w, std::vector<std::string>& namesOut);
+  bool progRead(Where w, const std::string& name, std::string& textOut);
+  bool progWrite(Where w, const std::string& name, const std::string& text);
 
   // Saved run reports, as written by writeRunFile. Same convention: no path,
   // no extension.
   bool runList(std::vector<std::string>& namesOut);
   bool runRead(const std::string& name, std::string& textOut);
-  bool progDelete(const std::string& name);
+  bool progDelete(Where w, const std::string& name);
 
   // Network view. Real on the device; the emulator says so and does nothing.
   // The web server runs on the loop task inside webTick(),

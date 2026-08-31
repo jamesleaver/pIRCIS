@@ -43,7 +43,7 @@ namespace Store {
   void setWifi(const std::string& ssid, const std::string& pass);
   bool sdLoggingEnabled();
   void setSdLogging(bool on);
-  int runSpeed();                 // run::Speed: 0 slow, 1 fast, 2 rapid, 3 full
+  int runSpeed();                 // run::Speed: 0 slow, 1 medium, 2 quick, 3 full
   void setRunSpeed(int speed);
   bool outputColour();            // OUT tab: colour chunks by length/sign
   void setOutputColour(bool on);
@@ -55,13 +55,17 @@ namespace Store {
   // What sits under the program on RUN: 0 the runners, 1 the output as it
   // is printed, 2 nothing at all -- which is the default, because the space
   // is better spent on the program until you ask for it back.
+  // What sits under the program when debug is off: 0 the output as it is
+  // printed (the default), 1 nothing.
   int  runView();
   void setRunView(int v);
 
-  // Whether the transport carries the two single-step buttons. Off by default:
-  // five buttons in that strip are small enough to mis-hit, and three are not.
-  bool stepButtons();
-  void setStepButtons(bool on);
+  // One switch for the things you want while working out what a program does:
+  // the two single-step buttons on the transport, and the per-runner readout
+  // under the program. Off by default -- five buttons in that strip are small
+  // enough to mis-hit, and the readout costs rows the program could use.
+  bool debugMode();
+  void setDebugMode(bool on);
 
   bool dayMode();
   void setDayMode(bool on);

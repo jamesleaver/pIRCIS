@@ -49,9 +49,11 @@ say() { printf '%s\n' "$1" >&3; sleep "${2:-0.6}"; }
 sleep 2.5
 
 # Coordinates come from the button rects in src/Ui.cpp, not from eyeballing.
-# Both tab sets are six wide, so the bar geometry is the same either way:
-#   w = 80 -> centres 40 120 200 280 360 440
-#   locked    RUN OUT EDIT PROG SAVE SYS
+# The two tab sets are no longer the same width:
+#   locked   five tabs,  w = 96 -> centres 48 144 240 336 432
+#            RUN OUT EDIT PROG SYS
+#   unlocked six tabs,   w = 80 -> centres 40 120 200 280 360 440
+#            RUN OUT EDIT KEYS SAVE SYS
 #   PROG rows y = 26 + 26*i + 11       ^ v < > at y 203, x 371/401/431/461
 #   modal row y 301, x 62+118i         done row y 253
 #
@@ -64,25 +66,25 @@ default_scene() {
      tap 240 160
      speed slow
 1    shot 00_locked_run.ppm
-     tap 200 306
+     tap 240 306
 1    shot 00b_locked_edit.ppm
-     tap 280 306
+     tap 336 306
 1    shot 00c_locked_prog.ppm
-     tap 360 306
-1    shot 00d_locked_save.ppm
-     tap 440 306
+     tap 336 203
+1    shot 00d_locked_loaded.ppm
+     tap 432 306
 1    shot 00e_locked_sys.ppm
      tap 359 37
 1    shot 00e2_night_sys.ppm
-     tap 40 306
+     tap 48 306
 1    shot 00e3_night_run.ppm
-     tap 440 306
+     tap 432 306
      tap 359 37
-     tap 40 306
+     tap 48 306
      speed full
-     run 5
+5    run
 1    shot 00f_locked_done.ppm
-     tap 120 306
+     tap 144 306
 1    shot 00g_locked_out.ppm
 1.5  quit
 SCENE

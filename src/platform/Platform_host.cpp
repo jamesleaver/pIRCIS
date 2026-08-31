@@ -205,7 +205,10 @@ bool webAvailable() { return false; }
 
 // --- saved programs --------------------------------------------------------
 namespace {
-  std::string progDir() { return std::string(kSdDir) + "/programs"; }
+  // Two stores, mirroring the device: its own flash and the card.
+  const char* kDevDir = "device";
+  std::string storeRoot(Where w) { return w == Where::Device ? kDevDir : kSdDir; }
+  std::string progDir(Where w)   { return storeRoot(w) + "/programs"; }
   // Keep names to something every filesystem and the SD FAT driver accept.
   bool safeName(const std::string& n) {
     if (n.empty() || n.size() > 24) return false;
@@ -215,9 +218,12 @@ namespace {
   }
 }
 
-bool progList(std::vector<std::string>& namesOut) {
+bool progStoreReady(Where w) { return w == Where::Device || sdPresent(); }
+
+bool progList(Where w, std::vector<std::string>& namesOut) {
   namesOut.clear();
-  DIR* d = ::opendir(progDir().c_str());
+  if (!progStoreReady(w)) return false;
+  DIR* d = ::opendir(progDir(w).c_str());
   if (!d) return true;                    // no directory yet is not an error
   while (struct dirent* e = ::readdir(d)) {
     std::string n = e->d_name;
@@ -229,9 +235,9 @@ bool progList(std::vector<std::string>& namesOut) {
   return true;
 }
 
-bool progRead(const std::string& name, std::string& textOut) {
-  if (!safeName(name)) return false;
-  std::ifstream f(progDir() + "/" + name + ".txt", std::ios::binary);
+bool progRead(Where w, const std::string& name, std::string& textOut) {
+  if (!safeName(name) || !progStoreReady(w)) return false;
+  std::ifstream f(progDir(w) + "/" + name + ".txt", std::ios::binary);
   if (!f) return false;
   textOut.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
   return true;
@@ -260,19 +266,19 @@ bool runRead(const std::string& name, std::string& textOut) {
   return true;
 }
 
-bool progWrite(const std::string& name, const std::string& text) {
-  if (!safeName(name)) return false;
-  ::mkdir(kSdDir, 0755);
-  ::mkdir(progDir().c_str(), 0755);
-  std::ofstream f(progDir() + "/" + name + ".txt", std::ios::binary | std::ios::trunc);
+bool progWrite(Where w, const std::string& name, const std::string& text) {
+  if (!safeName(name) || !progStoreReady(w)) return false;
+  ::mkdir(storeRoot(w).c_str(), 0755);
+  ::mkdir(progDir(w).c_str(), 0755);
+  std::ofstream f(progDir(w) + "/" + name + ".txt", std::ios::binary | std::ios::trunc);
   if (!f) return false;
   f.write(text.data(), (std::streamsize)text.size());
   return (bool)f;
 }
 
-bool progDelete(const std::string& name) {
-  if (!safeName(name)) return false;
-  return ::remove((progDir() + "/" + name + ".txt").c_str()) == 0;
+bool progDelete(Where w, const std::string& name) {
+  if (!safeName(name) || !progStoreReady(w)) return false;
+  return ::remove((progDir(w) + "/" + name + ".txt").c_str()) == 0;
 }
 
 
@@ -285,7 +291,18 @@ bool powerOffRequested() { return g_powerOff; }
 void webSetHooks(const WebHooks&) {}
 
 
-std::string firmwareId() { return __DATE__ " " __TIME__; }
+// The board reports the first eight bytes of its app image hash. There is no
+// app image here, so hash the build stamp to the same shape -- it still
+// changes on every build, which is all Store uses it for.
+std::string firmwareId() {
+  const char* stamp = __DATE__ " " __TIME__;
+  uint64_t h = 1469598103934665603ull;              // FNV-1a
+  for (const char* c = stamp; *c; ++c) { h ^= (unsigned char)*c; h *= 1099511628211ull; }
+  char buf[17];
+  snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)h);
+  return buf;
+}
+std::string firmwareBuilt() { return __DATE__ " " __TIME__; }
 
 
 uint32_t randomSeed() {

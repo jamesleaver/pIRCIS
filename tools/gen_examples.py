@@ -3,23 +3,49 @@
 # SPDX-License-Identifier: MIT
 # pIRCIS -- https://github.com/jamesleaver/pIRCIS
 #
-# Bakes the IRCIS example programs into flash. The programs themselves are
-# Arjun Nair's, MIT licensed, from IRCIS-master/examples.
+# Bakes the bundled example programs into flash, from programs/.
+#
+# These replace the examples that used to come from IRCIS-master/examples.
+# Those are fine programs but they are up to 28 x 73, which on a 480 x 320
+# panel means the small font and scrolling before you have understood
+# anything. Everything bundled here fits 34 x 11, so the whole program is on
+# screen at the large font while it runs, which is the point of the device.
+#
+# All of programs/ is bundled. dice never finishes -- it keeps its runners
+# orbiting so the roll stays countable -- and the golden test knows that.
 import os, sys
 
-SRC = sys.argv[1] if len(sys.argv) > 1 else "../IRCIS-master/examples"
+SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+    os.path.dirname(__file__), "..", "programs")
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
     os.path.dirname(__file__), "..", "lib", "program", "src", "Examples.h")
 
 # name shown on the device -> source file
 WANTED = [
-    ("Hello World",   "hello_world.txt"),
-    ("Binary",        "num_to_binary_rev.txt"),
-    ("Factors",       "factors.txt"),
-    ("Calculator",    "calc.txt"),
-    ("FizzBuzz",      "fizzbuzz.txt"),
+    ("Hello World",   "hello.txt"),
+    ("Countdown",     "countdown.txt"),
+    ("Count to 20",   "count.txt"),
+    ("Odd Numbers",   "odds.txt"),
+    ("Even Numbers",  "evens.txt"),
+    ("Threes",        "threes.txt"),
+    ("Seven Times",   "times7.txt"),
+    ("Squares",       "squares.txt"),
+    ("Cubes",         "cubes.txt"),
+    ("Doubling",      "powers2.txt"),
+    ("Halving",       "halving.txt"),
+    ("Running Total", "triangle.txt"),
+    ("Fibonacci",     "fib.txt"),
+    ("Binary",        "binary.txt"),
+    ("Dice Roll",     "dice.txt"),
+    ("Dumb Clock",    "clock.txt"),
+    ("Coin Flip",     "coin.txt"),
+    ("Lottery",       "lotto.txt"),
+    ("Race",          "race.txt"),
+    ("Spiral",        "spiral.txt"),
+    ("Snake",         "snake.txt"),
+    # Arjun Nair's own example, from IRCIS. Three runners round a track, the
+    # output being the order they finish in -- and the order is random.
     ("Racetrack",     "racetrack.txt"),
-    ("Options",       "options.txt"),
 ]
 
 def esc(s):

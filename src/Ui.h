@@ -32,10 +32,11 @@ namespace ui {
   void injectTap(int x, int y);
   void injectDrag(int dx);   // ZOOM: pan by a pixel delta, as a finger would
   void injectDragV(int dy);  // scroll the row window, as a finger would
-  unsigned long gridPaints();  // host-only instrumentation
+  unsigned long gridPaints();
+unsigned long fullPaints();  // host-only instrumentation
   unsigned long bandPaints();
   // Parse a program file into the working grid. False if empty or too big.
-  bool loadProgramTextPublic(const std::string& text);
+  bool loadProgramTextPublic(const std::string& text, const char* name = nullptr);
   // The same, but as EDITS to the program already loaded when the shape
   // matches, so its baseline -- and therefore its diff -- survives.
   bool applyProgramTextPublic(const std::string& text);

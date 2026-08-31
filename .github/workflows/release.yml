@@ -1,0 +1,71 @@
+# Builds the flashable images for a release and attaches them, with hashes.
+#
+# Push a tag to cut one:
+#
+#   git tag v1.1.0 && git push origin v1.1.0
+#
+# The tag must match PIRCIS_VERSION in src/Version.h -- the job fails if it
+# does not, so a release cannot be published carrying a version the firmware
+# on it does not report. Building here rather than on a laptop is the point of
+# publishing the hashes: anyone can re-run this workflow from the tag and get
+# the same images.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pircis
+          key: pio-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Check the tag matches src/Version.h
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(sed -n 's/.*PIRCIS_VERSION "\([^"]*\)".*/\1/p' src/Version.h)
+          tag=${GITHUB_REF#refs/tags/v}
+          echo "Version.h says $version, tag says $tag"
+          [ "$version" = "$tag" ] || { echo "::error::tag v$tag does not match PIRCIS_VERSION $version"; exit 1; }
+
+      - name: Build the release artifacts
+        run: tools/release.sh
+
+      - name: Verify the manifest
+        run: cd dist && sha256sum -c SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pircis-firmware
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS
+
+      - name: Attach them to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS
+          generate_release_notes: true

@@ -533,9 +533,15 @@ namespace ircis {
   }
 
   void Runner::push_random_number_to_stack(int limit) {
-    // uniform in [0, limit] inclusive, matching uniform_int_distribution(0, limit)
-    uint32_t span = static_cast<uint32_t>(limit) + 1u;
-    Data dat(static_cast<int>(rng_->next() % span), true);
+    // Uniform in [0, limit] inclusive, the guarantee uniform_int_distribution
+    // gives upstream. A bare modulo would favour the low residues, since 2^32
+    // rarely divides the span; draws landing in that short tail are discarded
+    // and taken again. IRCIS_TRACK: std::uniform_int_distribution(0, limit).
+    const uint32_t span = static_cast<uint32_t>(limit) + 1u;
+    const uint32_t tail = (0u - span) % span;   // == 2^32 mod span
+    uint32_t v;
+    do { v = rng_->next(); } while (v < tail);
+    Data dat(static_cast<int>(v % span), true);
     log_line("Pushing random number to stack ", dat);
     st_.push(dat);
   }

@@ -22,6 +22,7 @@ class CydDisplay : public lgfx::LGFX_Device {
 public:
   CydDisplay();
   bool beginTouch(bool force_recalibrate = false);
+  int  checkTouch() { return 0; }
   void reinitTouch() { }
 private:
   lgfx::Panel_sdl panel_;
@@ -37,6 +38,13 @@ public:
   // Loads the stored touch calibration, or runs the four-corner routine if
   // there is none.
   bool beginTouch(bool force_recalibrate = false);
+
+  // Tap three targets and report the worst miss, in pixels. The calibration
+  // itself cannot be made finer -- setTouchCalibrate stores the four corners
+  // and nothing else, and the library already averages sixteen stabilised
+  // readings at each -- so the useful thing is being able to see whether the
+  // one you have is any good.
+  int checkTouch();
 
   // The SD card and the touch controller share the VSPI host on this board
   // (on different pins), so anything that claims the bus for the card must
