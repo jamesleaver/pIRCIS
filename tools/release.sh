@@ -58,11 +58,31 @@ for env in st7796 ili9488; do
 # does not reset on its own: hold BOOT, tap EN, release BOOT.
 set -eu
 PORT="\${1:-}"
-[ -n "\$PORT" ] || { echo "usage: ./flash.sh /dev/cu.usbserial-XXXX"; exit 2; }
+if [ -z "\$PORT" ]; then
+  echo "usage: ./flash.sh <port>"
+  echo
+  echo "The serial ports on this machine:"
+  ls /dev/cu.* 2>/dev/null | grep -v -e Bluetooth -e debug-console -e wlan-debug \\
+    | sed 's/^/  /' || echo "  none found -- is the board plugged in?"
+  exit 2
+fi
+# esptool 5 renamed most of these; the old spellings still work but print a
+# wall of deprecation warnings before the flash, which looks like a fault.
+# Fall back to the old names on esptool 4 and earlier.
+ESPTOOL=esptool
+command -v esptool >/dev/null 2>&1 || ESPTOOL=esptool.py
+if "\$ESPTOOL" version 2>/dev/null | grep -qE '^esptool v[5-9]'; then
+  MODE=(--flash-mode dio --flash-freq 40m --flash-size detect)
+  RESET=(--before default-reset --after hard-reset)
+  WRITE=write-flash
+else
+  MODE=(--flash_mode dio --flash_freq 40m --flash_size detect)
+  RESET=(--before default_reset --after hard_reset)
+  WRITE=write_flash
+fi
 cd "\$(dirname "\$0")"
-esptool.py --chip esp32 --port "\$PORT" --baud 460800 \\
-  --before default_reset --after hard_reset write_flash -z \\
-  --flash_mode dio --flash_freq 40m --flash_size detect \\
+"\$ESPTOOL" --chip esp32 --port "\$PORT" --baud 460800 \\
+  "\${RESET[@]}" "\$WRITE" -z "\${MODE[@]}" \\
   $BOOTLOADER_OFFSET bootloader.bin \\
   $PARTITIONS_OFFSET partitions.bin \\
   $APP_OFFSET firmware.bin
@@ -72,7 +92,10 @@ FLASH
   cat > "$out/README.txt" <<TXT
 pIRCIS $VERSION -- $env panel
 
-  ./flash.sh /dev/cu.usbserial-XXXX
+  ./flash.sh <port>
+
+Run it with no arguments and it lists the serial ports it can see. On a Mac
+the board is usually /dev/cu.usbserial-something; ls /dev/cu.* shows them all.
 
 or by hand:
 

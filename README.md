@@ -30,14 +30,32 @@ yourself.
 
 ### From a release
 
-Download the archive for your panel, check it against the published hashes,
-and flash it. Nothing to install but [esptool](https://pypi.org/project/esptool/).
+Download both the archive for your panel and `SHA256SUMS` from the release,
+then:
 
 ```bash
 shasum -a 256 -c SHA256SUMS          # or sha256sum -c on Linux
 unzip pircis-1.1.0-st7796.zip
 cd pircis-1.1.0-st7796
-./flash.sh /dev/cu.usbserial-XXXX    # pio device list, if you are not sure
+```
+
+Flashing needs [esptool](https://pypi.org/project/esptool/). On a recent macOS
+`pip install` refuses to touch the system Python, so put it in a virtual
+environment — and remember it is only available while that environment is
+active, which means running the first line again in a new terminal:
+
+```bash
+python3 -m venv ~/.venvs/esptool
+source ~/.venvs/esptool/bin/activate
+pip install esptool
+```
+
+Then flash. Run it with no argument first and it lists the serial ports it can
+see; the board is usually the `usbserial` one:
+
+```bash
+./flash.sh
+./flash.sh /dev/cu.usbserial-240
 ```
 
 The 4" Freenove boards ship with one of two display controllers. If the screen
