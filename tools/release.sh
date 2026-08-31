@@ -35,6 +35,9 @@ BOOTLOADER_OFFSET=0x1000
 PARTITIONS_OFFSET=0x8000
 APP_OFFSET=0x10000
 
+# macOS ships shasum, Linux (and so CI) ships sha256sum; same output format.
+if command -v sha256sum >/dev/null; then SHA=(sha256sum); else SHA=(shasum -a 256); fi
+
 rm -rf "$DIST"
 mkdir -p "$DIST"
 
@@ -87,16 +90,25 @@ drives.
 Verify the download against SHA256SUMS before flashing:
 
   shasum -a 256 -c SHA256SUMS     (or: sha256sum -c SHA256SUMS)
+
+That checks the three images in this directory. To check the archive you
+downloaded, run the same command against the SHA256SUMS published beside it
+on the releases page.
 TXT
+
+  # A manifest INSIDE the archive, covering the three images, so the check
+  # still works once someone has unzipped it.
+  ( cd "$out" && "${SHA[@]}" bootloader.bin partitions.bin firmware.bin > SHA256SUMS )
 
   ( cd "$DIST" && zip -qr "pircis-$VERSION-$env.zip" "pircis-$VERSION-$env" )
 done
 
-# One manifest over everything, images and archives alike. macOS ships
-# shasum, Linux (and so CI) ships sha256sum; both write the same format.
-if command -v sha256sum >/dev/null; then SHA=(sha256sum); else SHA=(shasum -a 256); fi
-( cd "$DIST" && find . -type f \( -name '*.bin' -o -name '*.zip' \) \
-    | sort | xargs "${SHA[@]}" > SHA256SUMS )
+# The release manifest covers exactly what is PUBLISHED -- the archives, and
+# nothing else. It used to list the loose images as well, which are only ever
+# inside an archive: anyone following the README got two OK lines and six
+# "FAILED open or read" for files that were never uploaded, which reads like a
+# corrupt release rather than a manifest describing the wrong thing.
+( cd "$DIST" && "${SHA[@]}" *.zip > SHA256SUMS )
 
 echo
 echo "pIRCIS $VERSION"
