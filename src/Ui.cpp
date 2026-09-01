@@ -180,6 +180,9 @@ bool  g_edGridOnly = false;
 // Scrolling the grid does not change what a program has printed, and clearing
 // the output to redraw it identically is just a flicker.
 bool  g_runGridOnly = false;
+// The editor's keyboard, without the grid above it. Cycling between the IRCIS
+// page and the letter pages changes thirty keys and nothing else.
+bool  g_edKeysOnly = false;
 // Narrower still: the handful of cells a keystroke or a cursor move actually
 // touched. Up to three -- the character replaced, the cell the cursor left,
 // the cell it arrived on. If the window scrolls under the cursor the whole
@@ -235,6 +238,27 @@ void saveCurrentProgram();
 // stores it lives in. Saving over that one is what you meant; saving over any
 // other is worth a question.
 std::string g_progFile;
+// Which folder PROG is showing. Empty is the top of the list, where the
+// folders live. One level and no deeper, so there is always exactly one way
+// back up and no breadcrumb to draw.
+std::string g_progDir;
+// The folders across both stores, and how many programs are in each.
+std::vector<std::string> g_progFolders;
+std::vector<int>         g_progFolderCount;
+
+// A stored name is "Counting/odds" or just "odds"; these split it.
+std::string folderOf(const std::string& path) {
+  const std::size_t sl = path.find('/');
+  return sl == std::string::npos ? std::string() : path.substr(0, sl);
+}
+std::string leafOf(const std::string& path) {
+  const std::size_t sl = path.find('/');
+  return sl == std::string::npos ? path : path.substr(sl + 1);
+}
+// A leaf saved into whichever folder is open.
+std::string inProgDir(const std::string& leaf) {
+  return g_progDir.empty() ? leaf : g_progDir + "/" + leaf;
+}
 plat::Where g_progWhere = plat::Where::Device;
 
 // A run has finished and its output has not been looked at yet.
@@ -406,7 +430,14 @@ int zoomBottom() {
   // readout and the arrows were drawn on top of it -- which is why scrolling
   // wiped "no output yet", and why the readout repainting afterwards looked
   // like the program being redrawn.
-  if (!zoomOnly() || runViewNone()) return kTabY - shiftRowH();
+  //
+  // The readout has to come off the height whenever it is SHOWN, not only for
+  // a program small enough to be zoom-only. Asking about zoomOnly() here meant
+  // a taller program in ZOOM was measured as if it ran all the way down to the
+  // tab bar: the readout was then drawn over its last rows, and because
+  // zoomRows() had counted those rows as visible, maxGridRow() was short by
+  // exactly as many and the last line could not be scrolled to at all.
+  if (runViewNone()) return kTabY - shiftRowH();
   return runnerListY() - 2 - shiftRowH();
 }
 
@@ -592,6 +623,30 @@ int slotAtCell(int row, int col) {
   return -1;
 }
 
+// Every cell a runner has stood on, kept so the path can be drawn behind the
+// program. Copied out of the run task once per repaint; reading it a cell at a
+// time would take the mutex a thousand times a frame.
+char g_trace[prog::kMaxRows * prog::kMaxCols];
+// What is actually painted, so a frame only has to repaint the cells that
+// became visited since the last one. A runner at QUICK crosses hundreds of
+// cells between frames and drawRunners only restores the handful it left, so
+// without this the path appears in fragments wherever a repaint happened to
+// land.
+char g_traceShown[prog::kMaxRows * prog::kMaxCols];
+int  g_traceCols = 0;
+
+void refreshTrace() {
+  g_traceCols = Store::tracePath() ? run::visitsInto(g_trace, sizeof(g_trace)) : 0;
+}
+bool traced(int row, int col) {
+  if (g_traceCols <= 0 || row < 0 || col < 0 || col >= g_traceCols) return false;
+  const unsigned long i = (unsigned long)row * g_traceCols + col;
+  return i < sizeof(g_trace) && g_trace[i] != 0;
+}
+uint16_t blend565(uint16_t from, uint16_t to, int num, int den);
+// A wash rather than a fill: the character has to stay readable on top of it.
+uint16_t traceBg() { return blend565(theme::accent, theme::bg, 2, 5); }
+
 void drawCell(int row, int col, uint16_t fg, uint16_t bg) {
   int x, y;
   if (!cellPos(row, col, x, y)) return;
@@ -613,6 +668,10 @@ void drawGrid() {
 #if defined(SK_HOST)
   ++g_gridPaints;
 #endif
+  refreshTrace();
+  // The whole grid is about to be painted, so what is shown becomes what is
+  // known.
+  std::memcpy(g_traceShown, g_trace, sizeof(g_traceShown));
   gfx.setTextDatum(textdatum_t::top_left);
 
   // Both views place every glyph on the grid individually, so the cell
@@ -643,14 +702,15 @@ void drawGrid() {
       if (!cellPos(r, c, x, y)) continue;
       // Every cell is painted, blanks included: drawing only the non-blank
       // ones leaves the previous row's glyph-box overflow behind.
-      gfx.fillRect(x, y, cellW(), cellH(), theme::bg);
+      const uint16_t cellBg = traced(r, c) ? traceBg() : theme::bg;
+      gfx.fillRect(x, y, cellW(), cellH(), cellBg);
       uint16_t fg = ch[0] == '.' ? theme::blank
                   : g_edit.cellModified(r, c) ? theme::edited
                   : (slotAtCell(r, c) >= 0 ? theme::accent : theme::text);
       // The entry marker is only meaningful when the entry point can move.
-      if (Store::startEditable() && r == run::startRow() && c == run::startCol())
+      if (Store::gridTap() != Store::kTapNothing && r == run::startRow() && c == run::startCol())
         gfx.drawRect(x, y, cellW(), cellH(), theme::edited);
-      gfx.setTextColor(fg, theme::bg);
+      gfx.setTextColor(fg, cellBg);
       placeGlyph(ch, x, y);
     }
   }
@@ -659,7 +719,7 @@ void drawGrid() {
 
   // The entry point's heading, drawn AFTER the grid: it sits in the margin of
   // a neighbouring cell, and that cell's own background fill would erase it.
-  if (Store::startEditable()) {
+  if (Store::gridTap() != Store::kTapNothing) {
     int sx, sy;
     if (cellPos(run::startRow(), run::startCol(), sx, sy)) {
       const int w = cellW(), h = cellH();
@@ -691,7 +751,7 @@ void restoreCell(int row, int col) {
   bool mod = g_edit.cellModified(row, col);
   uint16_t fg = g_edit.cell(row, col) == '.' ? theme::blank
               : mod ? theme::edited : (slot >= 0 ? theme::accent : theme::text);
-  drawCell(row, col, fg, theme::bg);
+  drawCell(row, col, fg, traced(row, col) ? traceBg() : theme::bg);
 }
 
 // Scale an RGB565 colour toward black, for the fading tails.
@@ -720,6 +780,24 @@ uint16_t dim565(uint16_t c, int num, int den) {
 
 
 void drawRunners(const run::Snapshot& snap) {
+  refreshTrace();      // the path grows while the run is going
+  if (g_traceCols > 0) {
+    // Only the newly-walked cells, and only the ones on screen.
+    const int rowTo = g_gridRow + gridRowsShown() < g_edit.rows()
+                    ? g_gridRow + gridRowsShown() : g_edit.rows();
+    const int from = (g_view == View::Zoom) ? g_scrollCol : g_wideShift;
+    int to = from + ((g_view == View::Zoom) ? kZoomCols : kWideCols);
+    if (to > g_edit.cols()) to = g_edit.cols();
+    for (int r = g_gridRow; r < rowTo; ++r)
+      for (int c = from; c < to; ++c) {
+        const unsigned long i = (unsigned long)r * g_traceCols + c;
+        if (i >= sizeof(g_trace) || c >= g_traceCols) continue;
+        if (g_trace[i] && !g_traceShown[i]) {
+          g_traceShown[i] = g_trace[i];
+          restoreCell(r, c);
+        }
+      }
+  }
   for (const auto& p : g_prevRunners) restoreCell(p.row, p.col);
   g_prevRunners.clear();
 
@@ -799,9 +877,9 @@ const char* speedName(run::Speed s) {
 // the screen; the tab draws the triangle or the bars to say so. That leaves
 // the strip to the four buttons that have nowhere else to live, and they get
 // the freed width -- 68 px each normally, 34 with the single-step buttons on
-// (SYS > DEBUG), against 44 and 26 before.
+// (SYS > STEP BUTTONS), against 44 and 26 before.
 constexpr int kTransportX = kScreenW - 142;
-inline bool steps() { return Store::debugMode(); }
+inline bool steps() { return Store::stepButtons(); }
 Btn btnEnd()   { return steps() ? Btn{ kScreenW -  34, 2, 34, 18, "", theme::text, theme::panel }
                                 : Btn{ kScreenW -  70, 2, 68, 18, "", theme::text, theme::panel }; }
 Btn btnFwd()   { return { kScreenW -  70, 2, 34, 18, "", theme::text, theme::panel }; }
@@ -1199,6 +1277,18 @@ void drawRunnerList(const run::Snapshot& snap) {
       clabel(12, y, snap.step == 0 ? "Press play to begin IRCIS."
                                    : "No output yet.",
              snap.step == 0 ? theme::accent : theme::dim);
+      // The commonest way a first program does nothing at all: the cell the
+      // runner starts on is blank, so it sets off over empty cells and leaves
+      // the grid without ever reaching a command. The editor knows this before
+      // you press play, so it may as well say so.
+      if (snap.step == 0) {
+        const int sr = run::startRow(), sc = run::startCol();
+        if (sr >= 0 && sr < g_edit.rows() && sc >= 0 && sc < g_edit.cols() &&
+            g_edit.cell(sr, sc) == '.')
+          clabel(12, y + kContentH,
+                 "The start cell is blank; the runner sets off looking.",
+                 theme::dim);
+      }
       return;
     }
     // Wrap to the screen, then keep the last four lines: the tail is where
@@ -1391,8 +1481,23 @@ const char* const kEdKeysMain =
 // The letter pages carry ~ and , as well. A view tag needs both, and neither
 // can live on the IRCIS page: that page is the characters IRCIS reads, and a
 // tag works precisely because IRCIS reads neither of these.
-const char* const kEdKeysUpper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ~,";
-const char* const kEdKeysLower = "abcdefghijklmnopqrstuvwxyz~,";
+//
+// And a space, which is not the same as the blank. `.` is an empty cell; a
+// space inside a string is the character a space, so without one on the
+// keyboard "Hello World" could only ever be written Hello.World. It is drawn
+// as an underscore, the way the picker draws its own space key -- a blank key
+// on a blank background is not a key anyone can see.
+// Laid out as a QWERTY keyboard rather than A-to-Z. Three rows of ten, which
+// matches the IRCIS page, so the grid above does not jump when you switch
+// between them -- and ten columns makes each key 48 px, wider than the IRCIS
+// page's 43. Alphabetical order in fourteen narrow columns was neither
+// familiar nor comfortable to hit.
+const char* const kEdKeysUpper = "QWERTYUIOP"
+                                 "ASDFGHJKL~"
+                                 " ZXCVBNM,.";
+const char* const kEdKeysLower = "qwertyuiop"
+                                 "asdfghjkl~"
+                                 " zxcvbnm,.";
 
 constexpr int kEdKeyCols  = 11;
 constexpr int kEdKeyRows  = 3;
@@ -1401,9 +1506,9 @@ constexpr int kEdKeyH     = 26;
 // The letters need only two rows of thirteen, which makes those keys bigger
 // than the working ones. Nothing is spent on a switch key: the EDIT tab does
 // the switching, the way the RUN tab does play and pause.
-constexpr int kEdAbcCols  = 14;
-constexpr int kEdAbcRows  = 2;
-constexpr int kEdAbcW     = kScreenW / kEdAbcCols;     // 34
+constexpr int kEdAbcCols  = 10;
+constexpr int kEdAbcRows  = 3;     // the same depth as the IRCIS page
+constexpr int kEdAbcW     = kScreenW / kEdAbcCols;     // 48
 constexpr int kEdAbcH     = 26;
 int g_edKb = 0;                                        // 0 IRCIS, 1 ABC, 2 abc
 
@@ -1530,11 +1635,8 @@ void drawProgEditGrid() {
     for (int c = g_edCol; c < colTo; ++c) drawEdCell(r, c);
 }
 
-void drawProgEdit() {
-  gfx.fillRect(0, kBodyY, kScreenW, kBodyH, theme::bg);
-  edFollow();
-  drawProgEditGrid();
-
+void drawProgEditKeys() {
+  gfx.fillRect(0, kEdKeyY, kScreenW, kTabY - kEdKeyY, theme::bg);
   gfx.setTextDatum(textdatum_t::middle_center);
   const int kw = edKeyW(), kh = edKeyH();
   for (int r = 0; r < edKeyRows(); ++r) {
@@ -1557,16 +1659,22 @@ void drawProgEdit() {
       // The key is set in the same face and size the grid uses, so what you
       // tap looks like what lands in the cell. It used to be the 5 x 7 pixel
       // font at double size, which matched nothing else on the device.
-      char lbl[2] = { k, 0 };
+      char lbl[2] = { k == ' ' ? '_' : k, 0 };
       useContentFont(true);
       gfx.setTextColor(command ? theme::accent : theme::text, kbg);
       gfx.drawString(lbl, x + kw / 2, y + kh / 2);
     }
   }
   gfx.setTextSize(1);
-
   gfx.setTextDatum(textdatum_t::top_left);
   gfx.setFont(&fonts::Font0);
+}
+
+void drawProgEdit() {
+  gfx.fillRect(0, kBodyY, kScreenW, kBodyH, theme::bg);
+  edFollow();
+  drawProgEditGrid();
+  drawProgEditKeys();
 }
 
 void openSizeDialog();
@@ -1785,7 +1893,7 @@ void doUndo() {
   g_edit.setCell(e.row, e.col, e.was);
   g_curRow = e.row; g_curCol = e.col;      // show what moved
   touchEdCell(g_curRow, g_curCol);
-  markEdited();
+  markCellEdited(e.row, e.col, e.was);
   g_edHeadOnly = true; g_dirty = true;
 }
 void doRedo() {
@@ -1795,7 +1903,7 @@ void doRedo() {
   g_edit.setCell(e.row, e.col, e.now);
   g_curRow = e.row; g_curCol = e.col;
   touchEdCell(g_curRow, g_curCol);
-  markEdited();
+  markCellEdited(e.row, e.col, e.now);
   g_edHeadOnly = true; g_dirty = true;
 }
 
@@ -1849,7 +1957,7 @@ void handleProgEditTouch(int x, int y) {
     const char was = g_edit.cell(g_curRow, g_curCol);
     if (g_edit.setCell(g_curRow, g_curCol, k)) {
       noteEdit(g_curRow, g_curCol, was, k);
-      markEdited();
+      markCellEdited(g_curRow, g_curCol, k);
       touchEdCell(g_curRow, g_curCol);        // the character just replaced
       if (g_curCol < g_edit.cols() - 1) ++g_curCol;
       else if (g_curRow < g_edit.rows() - 1) { g_curCol = 0; ++g_curRow; }
@@ -2076,6 +2184,51 @@ constexpr int kOutHeaderH = 3 * kContentH + 4;
 constexpr int kOutFootH = kContentH + 4;
 Btn btnOutPgUp()   { return { kScreenW - 62, kTabY - kOutFootH, 28, kContentH + 2, "^" }; }
 Btn btnOutPgDn()   { return { kScreenW - 32, kTabY - kOutFootH, 28, kContentH + 2, "v" }; }
+// Stepping back through what the device has already printed. On the left, so
+// they are nowhere near the page arrows on the right.
+Btn btnOutOlder()  { return { 4,  kTabY - kOutFootH, 28, kContentH + 2, "<" }; }
+Btn btnOutNewer()  { return { 34, kTabY - kOutFootH, 28, kContentH + 2, ">" }; }
+
+// The runs this device has finished, most recent last. SD LOG already writes
+// every completed run to the card, but only the web view ever read them back
+// and a card is optional -- so the last few are kept here as well, where the
+// device can show its own history with nothing plugged in.
+//
+// Capped on both counts: this is for looking back at what a program printed,
+// not a log. An output longer than the cap is kept up to it and marked.
+constexpr int         kHistoryMax   = 10;
+constexpr std::size_t kHistoryBytes = 1024;
+struct PastRun {
+  std::string name;
+  std::string out;
+  uint32_t    step    = 0;
+  uint8_t     runners = 0;
+  bool        clipped = false;
+};
+std::vector<PastRun> g_history;
+// -1 is the run that just happened; otherwise an index into g_history.
+int g_histView = -1;
+
+void recordRun(const run::Snapshot& snap, const std::string& out,
+               const char* name) {
+  PastRun r;
+  r.name    = name ? name : "";
+  r.step    = snap.step;
+  r.runners = snap.runnersCreated;
+  r.clipped = out.size() > kHistoryBytes;
+  r.out     = r.clipped ? out.substr(0, kHistoryBytes) : out;
+  g_history.push_back(std::move(r));
+  if ((int)g_history.size() > kHistoryMax) g_history.erase(g_history.begin());
+}
+
+// What the OUT page is showing: the live output, or one out of the history.
+const std::string& shownOutput() {
+  static std::string live;
+  if (g_histView >= 0 && g_histView < (int)g_history.size())
+    return g_history[g_histView].out;
+  live = run::output();
+  return live;
+}
 
 struct LineSpan { uint32_t start; uint16_t len; };
 
@@ -2110,7 +2263,20 @@ void drawOutHeader() {
     // The parameter columns only mean anything for a packed program. For any
     // other one, name the program and say how the run went -- which is what
     // the dialog that used to appear over this page was for.
-    char what[64];
+    char what[80];
+    if (g_histView >= 0 && g_histView < (int)g_history.size()) {
+      // A past run: its own name and figures, not the loaded program's.
+      const PastRun& h = g_history[g_histView];
+      snprintf(what, sizeof(what), "%s", h.name.c_str());
+      clabel(4, kBodyY + 1, what, theme::dim);
+      char how[80];
+      snprintf(how, sizeof(how), "%u steps   %u runner%s%s",
+               (unsigned)h.step, (unsigned)h.runners, h.runners == 1 ? "" : "s",
+               h.clipped ? "   (output clipped)" : "");
+      clabel(4, kBodyY + 1 + kContentH, how, theme::dim);
+      gfx.drawFastHLine(0, kBodyY + kOutHeaderH - 2, kScreenW, theme::line);
+      return;
+    }
     snprintf(what, sizeof(what), "%s   %d x %d",
              g_ranGrid.programName(), g_ranGrid.rows(), g_ranGrid.cols());
     clabel(4, kBodyY + 1, what, theme::accent);
@@ -2134,6 +2300,14 @@ void drawOutHeader() {
                  (unsigned)snap.runnersCreated, snap.runnersCreated == 1 ? "" : "s",
                  (unsigned)snap.deaths);
       clabel(4, kBodyY + 1 + kContentH, how, theme::dim);
+
+      // RUN TO END stops after five million steps rather than spinning for
+      // ever. Without this line that looks exactly like a program that ended
+      // on its own, which is the one thing it is not. Only the give-up is
+      // worth a line: "running", "paused" and "stepped" are all visible from
+      // the transport already.
+      if (!snap.finished && std::strncmp(snap.lastEvent, "stopped:", 8) == 0)
+        clabel(4, kBodyY + 1 + 2 * kContentH, snap.lastEvent, theme::warn);
     }
     gfx.drawFastHLine(0, kBodyY + kOutHeaderH - 2, kScreenW, theme::line);
     return;
@@ -2182,7 +2356,7 @@ void drawOut() {
   int cw = kContentBigW, ch = kContentBigH;
   int cols = (kScreenW - 8) / cw;
 
-  std::string text = run::output();
+  std::string text = shownOutput();
   std::vector<LineSpan> spans = wrapSpans(text, cols);
   g_outTotal = (int)spans.size();
   if (spans.empty()) {
@@ -2199,7 +2373,10 @@ void drawOut() {
   };
   g_outLines = linesFor(0);
   const bool scrolls = g_outTotal > g_outLines;
-  if (scrolls) g_outLines = linesFor(kOutFootH);
+  // The footer also carries the history arrows, so it is needed as soon as
+  // there is anything to step back to.
+  const bool foot = scrolls || !g_history.empty();
+  if (foot) g_outLines = linesFor(kOutFootH);
 
   std::vector<run::Chunk> chunks =
       (g_ranGrid.isPacked() && Store::outputColour()) ? run::chunks() : std::vector<run::Chunk>();
@@ -2227,7 +2404,7 @@ void drawOut() {
   // so this only moves the short ones.
   const int shown  = g_outTotal - g_outTop < g_outLines
                        ? g_outTotal - g_outTop : g_outLines;
-  const int room   = (kTabY - 2 - (scrolls ? kOutFootH : 0)) - top;
+  const int room   = (kTabY - 2 - (foot ? kOutFootH : 0)) - top;
   int oy = top + (room - shown * ch) / 2;
   if (oy < top) oy = top;
 
@@ -2267,7 +2444,25 @@ void drawOut() {
     char where[64];
     const int last = g_outTop + g_outLines < g_outTotal ? g_outTop + g_outLines : g_outTotal;
     snprintf(where, sizeof(where), "lines %d-%d of %d", g_outTop + 1, last, g_outTotal);
-    clabel(4, kTabY - kOutFootH + 2, where, theme::dim);
+    // Right-aligned beside its own arrows, leaving the left of the footer to
+    // say which run you are looking at.
+    gfx.setFont(&fonts::Font0);
+    gfx.setTextDatum(textdatum_t::top_right);
+    gfx.setTextColor(theme::dim, theme::bg);
+    gfx.drawString(where, btnOutPgUp().x - 8, kTabY - kOutFootH + 2);
+    gfx.setTextDatum(textdatum_t::top_left);
+  }
+
+  if (!g_history.empty()) {
+    const int n = (int)g_history.size();
+    drawBtn(btnOutOlder(), false, g_histView != 0);
+    drawBtn(btnOutNewer(), false, g_histView >= 0);
+    char which[64];
+    if (g_histView < 0) snprintf(which, sizeof(which), "this run");
+    else                snprintf(which, sizeof(which), "run %d of %d back",
+                                 n - g_histView, n);
+    clabel(68, kTabY - kOutFootH + 2, which,
+           g_histView < 0 ? theme::dim : theme::accent);
   }
 }
 
@@ -2305,6 +2500,28 @@ bool splitProgramText(const std::string& text,
 
 void applyViewTags(const std::string& text);
 
+// Every keystroke used to copy the whole program through the mutex and rebuild
+// the machine -- once per character typed. A burst of typing is worth one
+// rebuild, not twenty, so the reload waits for a short gap in the typing.
+// Nothing on screen waits with it: the grid is drawn from g_edit either way,
+// and an edited program restarts from the top whenever the reload lands.
+constexpr uint32_t kEditQuietMs = 180;
+uint32_t g_editDirtyAt    = 0;
+bool     g_editReloadDue  = false;   // the whole grid changed
+bool     g_editRebuildDue = false;   // single cells already sent; just rebuild
+
+// force: the caller is about to need the machine to match the grid -- running
+// it, stepping it, or leaving the page -- so the wait is over.
+void flushEdits(bool force = false) {
+  if (!g_editReloadDue && !g_editRebuildDue) return;
+  if (!force && (uint32_t)(plat::millis() - g_editDirtyAt) < kEditQuietMs) return;
+  // A reload carries the grid with it; a rebuild does not need to, because
+  // the cells went across one at a time as they were typed.
+  if (g_editReloadDue) run::load(g_edit);
+  else                 run::rebuild();
+  g_editReloadDue = g_editRebuildDue = false;
+}
+
 void afterProgramChange() {
   // A different program: its cells are not the ones the history is about.
   clearUndo();
@@ -2316,6 +2533,7 @@ void afterProgramChange() {
   g_curRow = g_curCol = 0;
   g_edRow = g_edCol = 0;
   syncViewToProgram();
+  g_histView = -1;      // a new program means the live run, not one looked back at
   // After syncViewToProgram, so a program that asks for a view gets it rather
   // than having it chosen for it.
   applyViewTags(g_edit.text());
@@ -2359,9 +2577,12 @@ void afterProgramChange() {
 void applyViewTags(const std::string& text) {
   Store::setRunView(0);                 // the output, underneath
   Store::setDebugMode(false);
+  Store::setTracePath(false);
   Store::setRunSpeed(1);                // medium
   run::setSpeed(run::Speed::Medium);
-  Store::setStartEditable(false);
+  // A tag that names no start puts the runner back at the top left. It does
+  // not touch GRID TAP: that is the reader's setting, not the program's.
+  Store::setStartPoint(0, 0, 'E');
   run::setStart(0, 0, 'E');
 
   const std::size_t at = text.find('~');
@@ -2407,7 +2628,10 @@ void applyViewTags(const std::string& text) {
       if (row >= g_edit.rows()) row = g_edit.rows() - 1;
       if (col < 0) col = 0;
       if (row < 0) row = 0;
-      Store::setStartEditable(true);
+      // A program asking to start somewhere needs that honoured, so a device
+      // set to NOTHING is moved up to letting the start be placed.
+      if (Store::gridTap() == Store::kTapNothing)
+        Store::setGridTap(Store::kTapStart);
       Store::setStartPoint(col, row, dir);
       run::setStart(col, row, dir);
       continue;
@@ -2419,6 +2643,10 @@ void applyViewTags(const std::string& text) {
       // s m q f, in order. 'r' would have been the obvious letter for the
       // third one, but r is an IRCIS command -- push a random number -- and a
       // tag can sit on a cell a runner crosses, where it would be executed.
+      // Keep the path on screen. Its own group, so it composes with any of
+      // the others; 't' is not an IRCIS command, so a runner crossing it steps
+      // straight over.
+      case 't': Store::setTracePath(true); break;
       case 's': setSpeed(0, run::Speed::Slow);   break;
       case 'm': setSpeed(1, run::Speed::Medium); break;
       case 'q': setSpeed(2, run::Speed::Quick);  break;
@@ -2426,6 +2654,80 @@ void applyViewTags(const std::string& text) {
       default: break;                   // anything else is just a character
     }
   }
+}
+
+// The other direction: what the device is showing right now, written the way
+// a tag would say it. Getting `~nq3,1N` right by hand on a touchscreen is
+// unpleasant, and it is the same information the device already has.
+//
+// A tag speaks for every setting, so anything left at its default needs no
+// letter -- which makes a bare "~" mean exactly what no tag at all means.
+std::string currentViewTag() {
+  std::string t = "~";
+  if (bandRunners())      t += 'd';
+  else if (runViewNone()) t += 'n';
+  if (Store::tracePath()) t += 't';
+  switch (Store::runSpeed()) {
+    case 0: t += 's'; break;
+    case 2: t += 'q'; break;
+    case 3: t += 'f'; break;
+    default: break;                     // medium is the default
+  }
+  const int  sc = run::startCol(), sr = run::startRow();
+  const char sd = run::startDir();
+  if (sc != 0 || sr != 0 || sd != 'E') {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d,%d", sc, sr);
+    t += buf;
+    if (sd != 'E') t += sd;
+  }
+  return t;
+}
+
+// The tag the loaded program carries, or "" if it has none. A tag ends at the
+// first blank, exactly as the reader above ends it.
+std::string existingViewTag() {
+  for (int r = 0; r < g_edit.rows(); ++r)
+    for (int c = 0; c < g_edit.cols(); ++c)
+      if (g_edit.cell(r, c) == '~') {
+        std::string t;
+        for (int e = c; e < g_edit.cols() && g_edit.cell(r, e) != '.'; ++e)
+          t += g_edit.cell(r, e);
+        return t;
+      }
+  return std::string();
+}
+
+// Put `tag` into the grid, taking out whatever tag was there first. False if
+// there is no run of blanks long enough to hold it.
+bool writeViewTag(const std::string& tag) {
+  const int rows = g_edit.rows(), cols = g_edit.cols();
+  for (int r = 0; r < rows; ++r)
+    for (int c = 0; c < cols; ++c)
+      if (g_edit.cell(r, c) == '~') {
+        int e = c;
+        while (e < cols && g_edit.cell(r, e) != '.') ++e;
+        for (int i = c; i < e; ++i) g_edit.setCell(r, i, '.');
+      }
+  if (tag == "~") return true;          // every setting at its default: no tag
+  const int n = (int)tag.size();
+  // The end of the last row first: it is where the bundled programs keep
+  // theirs, and the least likely place for a runner to be walking.
+  for (int r = rows - 1; r >= 0; --r) {
+    int blanks = 0;
+    for (int c = cols - 1; c >= 0 && g_edit.cell(r, c) == '.'; --c) ++blanks;
+    if (blanks < n) continue;
+    for (int i = 0; i < n; ++i) g_edit.setCell(r, cols - n + i, tag[i]);
+    return true;
+  }
+  return false;
+}
+
+// Worth offering only when it would actually change the program.
+bool viewTagDiffers() {
+  const std::string now = currentViewTag(), had = existingViewTag();
+  if (now == "~") return !had.empty();
+  return now != had;
 }
 
 // `name` is taken before the machine is handed the program, not after. It
@@ -2501,9 +2803,12 @@ void saveProgramTo(plat::Where w) {
     message("No card", "Insert an SD card to save programs there.");
     return;
   }
-  const std::string name = fileNameFor(g_edit.programName());
-  if (name.empty()) { promptSaveAs(w); return; }
-  auto write = [name, w] {
+  const std::string leaf = fileNameFor(g_edit.programName());
+  if (leaf.empty()) { promptSaveAs(w); return; }
+  // Into whichever folder PROG has open, so saving puts the program where you
+  // were already looking rather than somewhere you then have to find.
+  const std::string name = inProgDir(leaf);
+  auto write = [name, leaf, w] {
     if (!plat::progWrite(w, name, g_edit.text())) {
       message("Save failed", std::string("Could not write to the ") + whereName(w) + ".");
       return;
@@ -2514,7 +2819,7 @@ void saveProgramTo(plat::Where w) {
     // back past a version you had deliberately kept.
     g_edit.adoptBaseline();
     clearUndo();
-    g_edit.setProgramName(name);
+    g_edit.setProgramName(leaf);       // the title bar shows the name, not the path
     g_progFile  = name;
     g_progWhere = w;
     refreshProgFiles();
@@ -2559,9 +2864,27 @@ std::string builtInText(int i) {
 int writeBuiltIns(bool overwrite) {
   int written = 0;
   for (int i = prog::kFirstExample; i < prog::programCount(); ++i) {
-    if (prog::programAt(i).packed) continue;          // never the packed one
-    std::string name = fileNameFor(prog::programAt(i).name);
-    if (name.empty()) continue;
+    const prog::ProgramDef& d = prog::programAt(i);
+    if (d.packed) continue;                           // never the packed one
+    const std::string leaf = fileNameFor(d.name);
+    if (leaf.empty()) continue;
+    // Each built-in goes in the folder its table names, which is what gives
+    // PROG something to open at the top level.
+    std::string name = leaf;
+    if (d.folder && *d.folder) {
+      name = std::string(d.folder) + "/" + leaf;
+      // Builds before folders existed wrote this same program loose at the
+      // top of the store. Left there it would show up twice, once in its
+      // folder and once above it, so the flat copy goes when the folder one
+      // is written -- and only then, so a failed write cannot lose it.
+      if (overwrite && plat::progWrite(plat::Where::Device, name, builtInText(i))) {
+        std::string stale;
+        if (plat::progRead(plat::Where::Device, leaf, stale))
+          plat::progDelete(plat::Where::Device, leaf);
+        ++written;
+        continue;
+      }
+    }
     std::string existing;
     if (!overwrite && plat::progRead(plat::Where::Device, name, existing)) continue;
     if (plat::progWrite(plat::Where::Device, name, builtInText(i))) ++written;
@@ -2593,8 +2916,28 @@ void refreshProgFiles() {
   if (g_progFile.empty() && !g_edit.isScratch() && !g_edit.isPacked()) {
     const std::string name = fileNameFor(g_edit.programName());
     for (const std::string& f : g_devFiles)
-      if (f == name) { g_progFile = name; g_progWhere = plat::Where::Device; break; }
+      if (leafOf(f) == name) { g_progFile = f; g_progWhere = plat::Where::Device; break; }
   }
+
+  // The folders are whatever the two stores between them contain, counted so
+  // a folder row can say how much is inside without opening it.
+  g_progFolders.clear();
+  g_progFolderCount.clear();
+  std::vector<std::string> dirs;
+  for (const std::vector<std::string>* v : { &g_devFiles, &g_cardFiles })
+    for (const std::string& f : *v) {
+      const std::string d = folderOf(f);
+      if (!d.empty()) dirs.push_back(d);
+    }
+  std::sort(dirs.begin(), dirs.end());
+  for (const std::string& d : dirs) {
+    if (!g_progFolders.empty() && g_progFolders.back() == d) ++g_progFolderCount.back();
+    else { g_progFolders.push_back(d); g_progFolderCount.push_back(1); }
+  }
+  // A folder that has just been emptied should not keep the page inside it.
+  if (!g_progDir.empty() &&
+      !std::binary_search(g_progFolders.begin(), g_progFolders.end(), g_progDir))
+    g_progDir.clear();
 }
 
 void promptSaveAs(plat::Where w) {
@@ -2602,7 +2945,7 @@ void promptSaveAs(plat::Where w) {
              fileNameFor(g_edit.programName()), 24,
              [w](const std::string& v) {
                if (v.empty()) return;
-               if (!plat::progWrite(w, v, g_edit.text())) {
+               if (!plat::progWrite(w, inProgDir(v), g_edit.text())) {
                  message("Save failed",
                          std::string("Could not write to the ") + whereName(w) + ".");
                  return;
@@ -2610,11 +2953,12 @@ void promptSaveAs(plat::Where w) {
                // The program is now that file, edits and all.
                g_edit.adoptBaseline();
                clearUndo();
+               const std::string path = inProgDir(v);
                g_edit.setProgramName(v);
-               g_progFile  = v;
+               g_progFile  = path;
                g_progWhere = w;
                refreshProgFiles();
-               message("Saved", v + ".txt on the " + whereName(w));
+               message("Saved", path + ".txt on the " + whereName(w));
              },
              kKbSplit);
 }
@@ -2655,9 +2999,10 @@ Btn btnSysSd()      { return sysTile(3, 0, "SD LOG: OFF"); }
 Btn btnSysDebug()   { return sysTile(1, 1, "DIAGNOSTICS"); }
 // What the RUN page shows under the program: OUTPUT, RUNNERS or NOTHING.
 Btn btnSysBand()    { return sysTile(1, 0, "UNDER GRID: OUTPUT"); }
-Btn btnSysCal()     { return sysTile(2, 1, "RECALIBRATE TOUCH"); }
-// Named for what it actually controls rather than "advanced".
-Btn btnSysStart()   { return sysTile(2, 0, "START POINT: FIXED"); }
+Btn btnSysCal()     { return sysTile(2, 1, "CHECK TOUCH"); }
+Btn btnSysSteps()   { return sysTile(4, 0, "STEP BUTTONS: OFF"); }
+// What a tap on the RUN grid does, which is one thing at a time.
+Btn btnSysStart()   { return sysTile(2, 0, "GRID TAP: NOTHING"); }
 Btn btnSysRestore() { return sysTile(3, 1, "RESTORE BUILT-INS"); }
 // Everything below here is anchored to the foot of the page rather than to a
 // row of the settings grid: the pages that tell you about the device, and
@@ -2713,9 +3058,9 @@ Btn progTile(int i) {
 // device with no card. Rows are built by one function and both drawn and
 // hit-tested from it, so the list and the taps cannot drift apart.
 struct ProgRow {
-  enum Kind { Packed, SaveDev, SaveCard, Discard, NewProg, File };
+  enum Kind { Packed, SaveDev, SaveCard, Discard, TagView, NewProg, Up, Folder, File };
   Kind kind;
-  int  index;              // File: into that store's list
+  int  index;              // File: into that store's list. Folder: into g_progFolders
   plat::Where where;       // File: which store the row came from
 };
 
@@ -2731,7 +3076,11 @@ void buildProgActions(std::vector<ProgRow>& out) {
   const bool card = plat::sdPresent();
   // A packed program is the one thing here that is never a file, so it is listed on
   // its own above everything else.
-  if (Store::unlocked())
+  // Inside a folder the way out is the first thing on the page, above the
+  // rows that write to it, so leaving never means scrolling.
+  if (!g_progDir.empty())
+    out.push_back({ ProgRow::Up, 0, plat::Where::Device });
+  if (Store::unlocked() && g_progDir.empty())
     out.push_back({ ProgRow::Packed, prog::kPackedIndex, plat::Where::Device });
   out.push_back({ ProgRow::SaveDev,  0, plat::Where::Device });
   if (card) out.push_back({ ProgRow::SaveCard, 0, plat::Where::Card });
@@ -2739,24 +3088,35 @@ void buildProgActions(std::vector<ProgRow>& out) {
   // option sitting next to Save.
   if (g_edit.modifiedCells() > 0)
     out.push_back({ ProgRow::Discard, 0, plat::Where::Device });
+  // Only when it would change something, the same way Discard only appears
+  // when there is something to discard.
+  if (viewTagDiffers())
+    out.push_back({ ProgRow::TagView, 0, plat::Where::Device });
   out.push_back({ ProgRow::NewProg, 0, plat::Where::Device });
 }
 
 // And the files themselves, which are what scrolls.
 void buildProgRows(std::vector<ProgRow>& out) {
   out.clear();
+  // At the top of the list the folders come first, newest question first:
+  // which kind of program, then which one.
+  if (g_progDir.empty())
+    for (int i = 0; i < (int)g_progFolders.size(); ++i)
+      out.push_back({ ProgRow::Folder, i, plat::Where::Device });
   // One list, in name order, whichever store a program is in -- looking for a
   // program by name should not mean knowing where it was saved first. The
   // icon down the left says which store each one is in.
   const std::size_t firstFile = out.size();
   for (int i = 0; i < (int)g_devFiles.size(); ++i)
-    out.push_back({ ProgRow::File, i, plat::Where::Device });
+    if (folderOf(g_devFiles[i]) == g_progDir)
+      out.push_back({ ProgRow::File, i, plat::Where::Device });
   for (int i = 0; i < (int)g_cardFiles.size(); ++i)
-    out.push_back({ ProgRow::File, i, plat::Where::Card });
+    if (folderOf(g_cardFiles[i]) == g_progDir)
+      out.push_back({ ProgRow::File, i, plat::Where::Card });
   std::sort(out.begin() + firstFile, out.end(),
             [](const ProgRow& a, const ProgRow& b) {
-              const std::string& na = filesIn(a.where)[a.index];
-              const std::string& nb = filesIn(b.where)[b.index];
+              const std::string na = leafOf(filesIn(a.where)[a.index]);
+              const std::string nb = leafOf(filesIn(b.where)[b.index]);
               // Case-insensitive, so MyThing sorts beside mything rather than
               // ahead of every lower-case name on the device.
               const int c = strcasecmp(na.c_str(), nb.c_str());
@@ -2781,6 +3141,13 @@ void drawStoreMark(int x, int y, plat::Where w, uint16_t c) {
   }
 }
 
+// A folder gets a mark of its own, at the same 9 x 11 as the store marks so
+// every name on the page starts at the same x.
+void drawFolderMark(int x, int y, uint16_t c) {
+  gfx.fillRect(x, y + 3, 9, 8, c);                  // the body
+  gfx.fillRect(x, y + 1, 4, 2, c);                  // and its tab
+}
+
 // On the LEFT. It used to sit at the right end of the row, which is where a
 // thumb travelling down the list lands, and deleting a program by mis-tapping
 // a scroll is not a mistake worth making available.
@@ -2792,7 +3159,7 @@ Btn progDel(int i) {
 // A row's tile, narrowed to leave room for the delete button when it has one.
 Btn progRowTile(const ProgRow& r, int shown) {
   Btn b = progTile(shown);
-  if (r.kind == ProgRow::File) { b.x = 36; b.w = kScreenW - 40; }
+  if (r.kind == ProgRow::File) { b.x = 36; b.w = kScreenW - 40; }  // room for X
   return b;
 }
 
@@ -2847,14 +3214,42 @@ void drawProg() {
         edge = theme::warn; fg = theme::warn;
         break;
       }
+      case ProgRow::TagView: {
+        static std::string tag;
+        tag = currentViewTag();
+        name = "Save this view in the program";
+        hint = tag == "~" ? "clear the tag" : tag.c_str();
+        edge = theme::accent; fg = theme::accent;
+        break;
+      }
       case ProgRow::NewProg:
         name = "New program..."; hint = "choose a size";
         edge = theme::good; fg = theme::good;
         break;
-      default:
-        name = filesIn(r.where)[r.index].c_str();
+      case ProgRow::Up: {
+        static char buf[40];
+        snprintf(buf, sizeof(buf), "%s", g_progDir.c_str());
+        name = "Back"; hint = buf;
+        edge = theme::dim;
+        break;
+      }
+      case ProgRow::Folder: {
+        static char buf[24];
+        const int n = g_progFolderCount[r.index];
+        snprintf(buf, sizeof(buf), "%d program%s", n, n == 1 ? "" : "s");
+        name = g_progFolders[r.index].c_str();
+        hint = buf;
+        break;
+      }
+      default: {
+        // The leaf only: inside Counting you are looking at odds, not at
+        // Counting/odds, which you can already see at the top of the page.
+        static std::string leaf;
+        leaf = leafOf(filesIn(r.where)[r.index]);
+        name = leaf.c_str();
         on   = (g_progWhere == r.where && g_progFile == filesIn(r.where)[r.index]);
         break;
+      }
     }
 
     gfx.fillRoundRect(b.x, b.y, b.w, b.h, 3, on ? theme::accent : theme::panel);
@@ -2864,6 +3259,10 @@ void drawProg() {
     if (r.kind == ProgRow::File) {
       drawStoreMark(b.x + 6, b.y + (b.h - 11) / 2, r.where,
                     on ? theme::bg : theme::dim);
+      textX = b.x + 20;
+    }
+    else if (r.kind == ProgRow::Folder) {
+      drawFolderMark(b.x + 6, b.y + (b.h - 11) / 2, theme::accent);
       textX = b.x + 20;
     }
     clabel(textX, b.y + (b.h - kContentH) / 2 + 1, name, on ? theme::bg : fg, bg);
@@ -2880,6 +3279,15 @@ void drawProg() {
   for (const ProgRow& r : actions) drawRow(r, shown++);
   for (int i = g_progTop; i < total && shown < progVisible(); ++i, ++shown)
     drawRow(files[i], shown);
+
+  // Delete everything and the page was three action rows and silence, with
+  // nothing to say where the programs went or how to get them back.
+  if (total == 0)
+    clabel(6, kBodyY + 8 + shown * kProgRowH,
+           g_progDir.empty()
+             ? "No programs. SYS > RESTORE BUILT-INS puts the bundled ones back."
+             : "This folder is empty.",
+           theme::dim);
 
   if (maxTop > 0) {
     drawBtn(btnProgUp(),   false, g_progTop > 0);
@@ -2948,12 +3356,47 @@ void handleProgTouch(int x, int y) {
       case ProgRow::SaveDev:  saveProgramTo(plat::Where::Device); return;
       case ProgRow::SaveCard: saveProgramTo(plat::Where::Card);   return;
 
+      // Opening and leaving a folder changes the list and nothing else, so
+      // only the list is repainted.
+      case ProgRow::Folder:
+        g_progDir  = g_progFolders[r.index];
+        g_progTop  = 0;
+        g_bodyOnly = true;
+        g_dirty    = true;
+        return;
+
+      case ProgRow::Up:
+        g_progDir.clear();
+        g_progTop  = 0;
+        g_bodyOnly = true;
+        g_dirty    = true;
+        return;
+
       case ProgRow::Discard:
         confirm("Discard changes?",
                 "The program goes back to the last version saved, and every "
                 "edit since is lost.",
                 [] { g_edit.revertAll(); clearUndo(); markEdited(); });
         return;
+
+      case ProgRow::TagView: {
+        const std::string tag = currentViewTag();
+        if (!writeViewTag(tag)) {
+          message("No room for a tag",
+                  "A tag needs a run of blank cells at the end of a row, and "
+                  "this program has none long enough.");
+          return;
+        }
+        markEdited();
+        refreshProgFiles();
+        message(tag == "~" ? "Tag cleared" : "View saved",
+                tag == "~"
+                  ? "Every setting is at its default, so the program no longer "
+                    "carries a tag."
+                  : "The program now asks for " + tag +
+                    ". Save it to keep that.");
+        return;
+      }
 
       case ProgRow::NewProg:
         g_sizeIsNew = true;
@@ -2981,7 +3424,8 @@ void handleProgTouch(int x, int y) {
           message("Load failed", "Could not read that file.");
           return;
         }
-        if (!loadProgramText(text, name.c_str())) {
+        // The title bar gets the name; the folder is context, not part of it.
+        if (!loadProgramText(text, leafOf(name).c_str())) {
           message("Not a program", "That file is empty, or too big for the grid.");
           return;
         }
@@ -3039,11 +3483,19 @@ void drawSys() {
 
   tile(btnSysRestore());
 
+  Btn sb = btnSysSteps();
+  std::string sbl = std::string("STEP BUTTONS: ")
+                  + (Store::stepButtons() ? "ON" : "OFF");
+  sb.label = sbl.c_str();
+  tile(sb, Store::stepButtons());
+
   Btn st = btnSysStart();
-  std::string stl = std::string("START POINT: ")
-                  + (Store::startEditable() ? "FREE" : "FIXED");
+  const int gt = Store::gridTap();
+  std::string stl = std::string("GRID TAP: ")
+                  + (gt == Store::kTapInspector ? "INSPECTOR"
+                   : gt == Store::kTapStart     ? "START POINT" : "NOTHING");
   st.label = stl.c_str();
-  tile(st, Store::startEditable());
+  tile(st, gt != Store::kTapNothing);
 
   if (Store::unlocked()) { tile(btnSysInfo()); tile(btnSysExit()); }
   tile(btnSysIrcis());
@@ -3312,7 +3764,7 @@ void drawCellModal() {
 
   drawBtn(btnCellSet());
   drawBtn(btnCellRevert(), false, cur != orig);
-  if (Store::startEditable()) {
+  if (Store::gridTap() != Store::kTapNothing) {
     // Pressing START again cycles the direction, so one button sets both.
     Btn stb = btnCellStart();
     bool isStart = (run::startRow() == g_cellRow && run::startCol() == g_cellCol);
@@ -3426,6 +3878,17 @@ void drawDebugSystem(int y) {
   clabel(20, y, buf, theme::dim, theme::panel); y += kContentH;
   snprintf(buf, sizeof(buf), "out-of-bounds %lu   stack UB %lu", snap.oobReads, snap.ubReads);
   clabel(20, y, buf, (snap.oobReads || snap.ubReads) ? theme::bad : theme::good, theme::panel);
+  y += kContentH;
+
+  // The interpreter records why every runner died and, until now, nothing but
+  // the serial console ever said so. Deaths at '!' or off the edge are how a
+  // program ends and are left out; what is left is a real fault.
+  for (int i = 0; i < snap.deathNoteCount; ++i) {
+    const run::DeathNote& d = snap.deathNotes[i];
+    snprintf(buf, sizeof(buf), "runner %d at %u: %s",
+             (int)d.id, (unsigned)d.step, d.why);
+    clabel(20, y, buf, theme::bad, theme::panel); y += kContentH;
+  }
 }
 
 void drawDebug() {
@@ -3920,6 +4383,9 @@ void announceUnlock() {
   // better uncoloured until you ask for the colouring.
   Store::setRunView(0);
   Store::setOutputColour(false);
+  // The inspector is the tool this mode is for, so the grid tap opens it
+  // rather than leaving the reader to find the setting first.
+  Store::setGridTap(Store::kTapInspector);
   g_outLine = 0;
   g_runnerTop = 0;
 
@@ -3989,6 +4455,7 @@ void handleTabs(int x, int y) {
     // Tapping the tab you are already on is a shortcut for the play button --
     // the run controls are at the top of the screen, the tab bar at the bottom.
     if (tabAt(i) == Tab::Run && g_tab == Tab::Run) {
+      flushEdits(true);
       if (run::snapshot().running) run::cmdPause();
       else                         run::cmdRun();
       // The grid is the same grid either way. A restart winds the step count
@@ -4002,14 +4469,15 @@ void handleTabs(int x, int y) {
     // navigating nowhere. The tab says which one the tap will bring up.
     if (tabAt(i) == Tab::Edit && g_tab == Tab::Edit && !Store::unlocked()) {
       g_edKb = (g_edKb + 1) % 3;
-      // The letter pages are two rows deep against the IRCIS page's three, so
-      // the grid above moves and has to be redrawn -- but the status bar does
-      // not, and repainting it made switching keyboards blink.
-      g_bodyOnly = true;
+      // Both pages are three rows deep now, so the grid above does not move
+      // and only the keys themselves change. The tab names the keyboard, so
+      // that repaints too.
+      g_edKeysOnly = true;
       g_tabsOnly = true;
       g_dirty = true;
       return;
     }
+    flushEdits(true);            // leaving the page: the machine catches up now
     g_tab = tabAt(i);
     // The card is only read on entry, not on every repaint.
     if (g_tab == Tab::Prog) refreshProgFiles();
@@ -4033,6 +4501,7 @@ void handleRunTouch(int x, int y) {
       // The dedicated reset, not a reload: buildMachine already clears the
       // output, the timer, the runners and the step count, and this avoids
       // copying the whole program back through the mutex to say so.
+      flushEdits(true);
       run::cmdReset();
       g_follow = true;
       // The grid is untouched: reset moves the runners back to the start and
@@ -4046,9 +4515,9 @@ void handleRunTouch(int x, int y) {
       // watch below would then paint the state we are going to -- the grid
       // twice for one press. Let the watch do it, once, when it is true.
     }
-    else if (steps() && hit(btnBack(), x, y)) { run::cmdStepBack(); g_dirty = true; }
-    else if (steps() && hit(btnFwd(), x, y))  { run::cmdStep(1); }
-    else if (hit(btnEnd(), x, y))   { run::cmdRunToEnd(); g_dirty = true; }
+    else if (steps() && hit(btnBack(), x, y)) { flushEdits(true); run::cmdStepBack(); g_dirty = true; }
+    else if (steps() && hit(btnFwd(), x, y))  { flushEdits(true); run::cmdStep(1); }
+    else if (hit(btnEnd(), x, y))   { flushEdits(true); run::cmdRunToEnd(); g_dirty = true; }
     else if (hit(btnSpeed(), x, y)) {
       int n = ((int)run::speed() + 1) % 4;
       run::setSpeed((run::Speed)n);
@@ -4092,14 +4561,32 @@ void handleRunTouch(int x, int y) {
 
     int slot = slotAtCell(r, c);
     if (slot >= 0) { openSlotEditor(slot); return; }   // straight to the parameter
-    // The inspector is pack-agnostic already: slotAtCell() returns -1 for an
-    // unpacked program and drawCellModal() guards every line that needs a
-    // pack, so a plain program gets the same panel without the parameter
-    // names. In plain mode it is gated on START POINT: FREE -- which is what
-    // used to make a tap on the grid do anything at all. That tap moved the
-    // entry point and a second tap turned it, with nothing on screen saying
-    // so; the inspector's START button does both and is labelled.
-    if (!Store::unlocked() && !Store::startEditable()) return;
+    // What the tap does is GRID TAP's business, and it can only be one of
+    // these. The inspector is pack-agnostic already -- slotAtCell() returns
+    // -1 for an unpacked program and drawCellModal() guards every line that
+    // needs a pack -- so a plain program gets the same panel without the
+    // parameter names.
+    const int mode = Store::gridTap();
+    if (mode == Store::kTapNothing) return;
+
+    if (mode == Store::kTapStart) {
+      // Tap a cell to start there, tap it again to turn the runner. The
+      // chevron beside the cell says which way it will set off.
+      if (r == run::startRow() && c == run::startCol()) {
+        const char* order = "ESWN";              // clockwise from east
+        const char* at = std::strchr(order, run::startDir());
+        char next = at && at[1] ? at[1] : order[0];
+        run::setStart(c, r, next);
+        Store::setStartPoint(c, r, next);
+      }
+      else {
+        run::setStart(c, r, run::startDir());
+        Store::setStartPoint(c, r, run::startDir());
+      }
+      markEdited();       // the run restarts from the new entry point
+      return;
+    }
+
     g_cellRow = r; g_cellCol = c;
     g_modal = Modal::Cell;
     g_dirty = true;
@@ -4181,12 +4668,29 @@ void handleOutTouch(int x, int y) {
   if (plat::sdPresent() && hit(btnOutSd(), x, y)) {
     std::string path;
     run::loadedGridInto(g_ranGrid);
-    if (sinks::saveRunToSd(run::output(), g_ranGrid, path))
+    if (sinks::saveRunToSd(shownOutput(), g_ranGrid, path))
       message("Saved", path);
     else
       message("SD failed", "Could not write to the card.");
     return;
   }
+  if (!g_history.empty()) {
+    const int n = (int)g_history.size();
+    // Older: from the live run into the most recent stored one, then back.
+    if (hit(btnOutOlder(), x, y)) {
+      const int next = g_histView < 0 ? n - 1 : g_histView - 1;
+      if (next >= 0) { g_histView = next; g_outTop = 0; g_bodyOnly = true; g_dirty = true; }
+      return;
+    }
+    if (hit(btnOutNewer(), x, y)) {
+      if (g_histView >= 0) {
+        g_histView = (g_histView + 1 >= n) ? -1 : g_histView + 1;
+        g_outTop = 0; g_bodyOnly = true; g_dirty = true;
+      }
+      return;
+    }
+  }
+
   // A page at a time, leaving one line of overlap so nothing is skipped over.
   const int page = g_outLines > 1 ? g_outLines - 1 : 1;
   if (hit(btnOutPgUp(), x, y)) {
@@ -4261,45 +4765,64 @@ void handleSysTouch(int x, int y) {
   else if (Store::unlocked() && hit(btnSysInfo(), x, y))
                                      { g_modal = Modal::Info; g_dialogPage = 0; g_dirty = true; }
   else if (hit(btnSysIrcis(), x, y)) { g_modal = Modal::Ircis;  g_dialogPage = 0; g_dirty = true; }
+  else if (hit(btnSysSteps(), x, y)) {
+    Store::setStepButtons(!Store::stepButtons());
+    g_bodyOnly = true;
+    g_dirty = true;
+  }
   else if (hit(btnSysRead(), x, y))  { g_modal = Modal::Device; g_dialogPage = 0; g_dirty = true; }
   else if (hit(btnSysStart(), x, y)) {
-    const bool free = !Store::startEditable();
-    Store::setStartEditable(free);
-    if (!free) {
-      // FIXED means the program starts where IRCIS would start it.
+    const int next = (Store::gridTap() + 1) % 3;   // nothing -> start -> inspector
+    Store::setGridTap(next);
+    if (next == Store::kTapNothing) {
+      // NOTHING also means the program starts where IRCIS would start it.
       run::setStart(0, 0, 'E');
       Store::setStartPoint(0, 0, 'E');
-      run::load(g_edit);
-      markLoaded();
+      markEdited();
     }
+    g_bodyOnly = true;
     g_dirty = true;
   }
   else if (hit(btnSysCal(), x, y)) {
-    confirm("Recalibrate touch?",
-            "Tap the four corner markers, then three rings to check the result.",
-            [] {
-              Store::clearTouchCalibration();
-              gfx.beginTouch(true);
-              // Say how well it went. The calibration cannot be made finer --
-              // it is the four corners and nothing else -- so the useful thing
-              // is knowing whether the one you just did is any good, rather
-              // than finding out later on a keyboard.
-              const int miss = gfx.checkTouch();
-              char body[120];
-              if (miss <= 6)
-                snprintf(body, sizeof(body),
-                         "Within %d pixels. Comfortably inside a key.", miss);
-              else if (miss <= 14)
-                snprintf(body, sizeof(body),
-                         "Out by %d pixels. Usable, but a key is about 43 "
-                         "wide -- worth another go.", miss);
-              else
-                snprintf(body, sizeof(body),
-                         "Out by %d pixels, which is more than half a key. "
-                         "Run it again and press the very centre of each "
-                         "corner marker.", miss);
-              message(miss <= 6 ? "Calibrated" : "Calibrated, roughly", body);
-            });
+    // Checking used to mean recalibrating: the only way to find out whether
+    // the calibration was any good was to throw it away and do another one,
+    // and then read the number that came out. Now the tile measures first and
+    // offers the recalibration afterwards, so a bad key press can be told from
+    // a bad build without losing a calibration that was fine.
+    const int miss = gfx.checkTouch();
+    char body[200];
+    const char* title;
+    if (miss <= 6) {
+      title = "Touch is good";
+      snprintf(body, sizeof(body),
+               "Within %d pixels, comfortably inside a key. Recalibrate anyway?",
+               miss);
+    }
+    else if (miss <= 14) {
+      title = "Touch is usable";
+      snprintf(body, sizeof(body),
+               "Out by %d pixels. A key is about 43 wide, so this works but is "
+               "worth another go. Recalibrate now?", miss);
+    }
+    else {
+      title = "Touch is out";
+      snprintf(body, sizeof(body),
+               "Out by %d pixels, more than half a key. Recalibrate now, and "
+               "press the very centre of each corner marker.", miss);
+    }
+    confirm(title, body, [] {
+      Store::clearTouchCalibration();
+      gfx.beginTouch(true);
+      // And measure the new one, so the answer to "is that better?" does not
+      // need a second trip through the menu.
+      const int after = gfx.checkTouch();
+      char done[140];
+      snprintf(done, sizeof(done),
+               after <= 6 ? "Within %d pixels. Comfortably inside a key."
+                          : "Out by %d pixels. Press the very centre of each "
+                            "corner marker if you run it again.", after);
+      message(after <= 6 ? "Calibrated" : "Calibrated, roughly", done);
+    });
   }
 
   else if (hit(btnSysRestore(), x, y)) {
@@ -4467,7 +4990,7 @@ void handleCellTouch(int x, int y) {
                  if (was == v[0]) return;                 // no change, no edit
                  g_edit.setCell(r, c, v[0]);
                  noteEdit(r, c, was, v[0]);
-                 markEdited();
+                 markCellEdited(r, c, v[0]);
                },
                kKbSplit);
     g_pickerBack = Modal::Cell;      // back to the inspector, not out to RUN
@@ -4481,11 +5004,11 @@ void handleCellTouch(int x, int y) {
     if (was != orig) {
       g_edit.setCell(g_cellRow, g_cellCol, orig);
       noteEdit(g_cellRow, g_cellCol, was, orig);
-      markEdited();
+      markCellEdited(g_cellRow, g_cellCol, orig);
     }
     return;
   }
-  if (Store::startEditable() && hit(btnCellStart(), x, y)) {
+  if (Store::gridTap() != Store::kTapNothing && hit(btnCellStart(), x, y)) {
     const char* order = "ESWN";
     char dir = 'E';
     if (run::startRow() == g_cellRow && run::startCol() == g_cellCol) {
@@ -4679,7 +5202,21 @@ prog::Program& editGrid() { return g_edit; }
 // Every edit is pushed into the interpreter immediately and the run restarts.
 // There is no "pending" state to forget about -- what is on screen is always
 // what will run.
-void markEdited() { g_rebuildPending = true; run::load(g_edit); }
+void markEdited() {
+  g_rebuildPending = true;
+  g_editReloadDue  = true;
+  g_editDirtyAt    = plat::millis();
+}
+
+void applyEditsNow() { flushEdits(true); }
+
+void markCellEdited(int row, int col, char ch) {
+  g_rebuildPending = true;
+  run::setCell(row, col, ch);        // three bytes across the queue, not three KB
+  g_editRebuildDue = true;
+  g_editDirtyAt    = plat::millis();
+}
+
 void markLoaded() { g_dirty = true; }
 void repaint() { g_dirty = true; }
 void injectTap(int x, int y) { onTap(x, y); }
@@ -4761,7 +5298,7 @@ void begin() {
   Store::startPoint(sc, sr, sd);
   // A stored entry point only applies while it is allowed to move; otherwise
   // the program starts where IRCIS would start it, whatever was saved.
-  if (!Store::startEditable()) { sc = 0; sr = 0; sd = 'E'; }
+  if (Store::gridTap() == Store::kTapNothing) { sc = 0; sr = 0; sd = 'E'; }
   run::setStart(sc, sr, sd);
   run::setSpeed((run::Speed)Store::runSpeed());
   // Locked, the packed program is not in the list, so open on an example.
@@ -4799,6 +5336,9 @@ void tick() {
   int32_t tx, ty;
   bool touched = readTouch(tx, ty);
   uint32_t now = plat::millis();
+
+  // A pause in the typing is what makes the deferred rebuild land.
+  flushEdits();
 
   if (touched && !g_wasTouched) {
     g_pressX = tx; g_pressY = ty; g_dragLastX = tx; g_dragLastY = ty; g_dragged = false;
@@ -4884,6 +5424,11 @@ void tick() {
     const std::string& out = run::output();
     const bool printed = out.find_first_not_of(" \t\r\n") != std::string::npos;
     if (printed) {
+      // Only runs that printed something: a watcher finishing in silence
+      // would otherwise push a run you might want back out of the list.
+      run::loadedGridInto(g_ranGrid);
+      recordRun(snap, out, g_ranGrid.programName());
+      g_histView = -1;             // a new run is what you are looking at
       // Stay where you are. Being thrown onto another page the moment a run
       // ends takes the grid away at exactly the moment you were watching it;
       // the OUT tab wears a dot instead, and the RUN tab's glyph becomes the
@@ -4914,6 +5459,11 @@ void tick() {
       drawRunners(snap);
       drawHeader(snap);      g_headerSig = headerSignature(snap);
       drawRunnerList(snap);  g_bandSig   = bandSignature(snap);
+      // Resetting a running program stops it, so the RUN tab has to come off
+      // the pause bars. This path repainted the grid and the header and left
+      // the tab bar alone, so a reset mid-run left it saying pause for a run
+      // that was no longer going. Only the tab that changed is redrawn.
+      drawTabs();
       g_dirty = false; g_headerOnly = false; g_tabsOnly = false;
       g_bodyOnly = false; g_bandOnly = false;
       g_edGridOnly = false; g_edHeadOnly = false;
@@ -4948,7 +5498,7 @@ void tick() {
     const bool anyPart = g_modal == Modal::None && !tabChanged &&
                          (g_headerOnly || g_bandOnly || g_bodyOnly ||
                           g_edGridOnly || g_edHeadOnly || g_tabsOnly ||
-                          g_runGridOnly || g_edCellCount > 0);
+                          g_runGridOnly || g_edKeysOnly || g_edCellCount > 0);
     if (g_modal == Modal::None) { lastDrawnTab = g_tab; everDrawn = true; }
     if (!anyPart) {
 #if defined(SK_HOST)
@@ -4987,6 +5537,8 @@ void tick() {
       }
       if (g_edHeadOnly && g_tab == Tab::Edit && !Store::unlocked())
         drawEdHeadBits();
+      if (g_edKeysOnly && g_tab == Tab::Edit && !Store::unlocked())
+        drawProgEditKeys();
     }
     if (g_tabsOnly) drawTabs();
     g_dirty = false;
@@ -4997,6 +5549,7 @@ void tick() {
     g_edGridOnly = false;
     g_edHeadOnly = false;
     g_runGridOnly = false;
+    g_edKeysOnly = false;
     g_edCellCount = 0;
     lastDraw = now;
     g_lastRunPaintMs = now;
@@ -5008,7 +5561,17 @@ void tick() {
   if (now - lastDraw < 33) return;
   lastDraw = now;
 
-  if (g_modal != Modal::None) return;
+  // Every modal used to stop the clock here. That is right for all of them
+  // but one: DIAGNOSTICS exists to show heap, steps and steps/sec moving, and
+  // it was showing whatever they happened to be when it opened. It gets a
+  // repaint on a slower cadence of its own; the rest still cost nothing.
+  if (g_modal != Modal::None) {
+    if (g_modal == Modal::Debug) {
+      static uint32_t lastDiag = 0;
+      if ((uint32_t)(now - lastDiag) >= 500) { lastDiag = now; drawDebug(); }
+    }
+    return;
+  }
 
   if (g_tab == Tab::Run) {
     // A rebuild -- reset, restart, an edit re-running -- happens on the run

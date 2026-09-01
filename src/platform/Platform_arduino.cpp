@@ -227,11 +227,28 @@ namespace {
   const char* kProgDir = "/pircis/programs";
 
   // FAT-safe and short. Anything else is refused rather than mangled.
-  bool safeName(const std::string& n) {
+  bool safeLeaf(const std::string& n) {
     if (n.empty() || n.size() > 24) return false;
     for (char c : n)
       if (!(isalnum((unsigned char)c) || c == '_' || c == '-')) return false;
     return true;
+  }
+
+  // A name may carry one folder in front of it -- "Counting/odds" -- and no
+  // more. One level is what the PROG list can show without a breadcrumb, and
+  // deeper nesting on seventy-odd files buys nothing but taps.
+  bool safeName(const std::string& n) {
+    const std::size_t slash = n.find('/');
+    if (slash == std::string::npos) return safeLeaf(n);
+    return n.find('/', slash + 1) == std::string::npos
+        && safeLeaf(n.substr(0, slash)) && safeLeaf(n.substr(slash + 1));
+  }
+
+  // Entries come back from LittleFS as full paths and from SD as bare names,
+  // so take the last component either way.
+  std::string leafOf(const std::string& p) {
+    const std::size_t s = p.find_last_of('/');
+    return s == std::string::npos ? p : p.substr(s + 1);
   }
 
   // Claim the card's bus, do one job, hand it back. Kept as a single helper so
@@ -316,17 +333,34 @@ bool runRead(const std::string& name, std::string& textOut) {
   });
 }
 
+// Names come back the way they are addressed: "odds" at the top, and
+// "Counting/odds" one folder down. Folders are not descended past the first
+// level, so a stray deep directory is ignored rather than half-listed.
 bool progList(Where w, std::vector<std::string>& namesOut) {
   namesOut.clear();
   return withStore(w, [&](fs::FS& fs, const char* dir) {
     File d = fs.open(dir);
     if (!d) return false;
-    while (File e = d.openNextFile()) {
-      std::string n = e.name();
-      std::size_t slash = n.find_last_of('/');
-      if (slash != std::string::npos) n = n.substr(slash + 1);
+    auto addTxt = [&](const std::string& raw, const std::string& prefix) {
+      const std::string n = leafOf(raw);
       if (n.size() > 4 && n.compare(n.size() - 4, 4, ".txt") == 0)
-        namesOut.push_back(n.substr(0, n.size() - 4));
+        namesOut.push_back(prefix + n.substr(0, n.size() - 4));
+    };
+    while (File e = d.openNextFile()) {
+      if (e.isDirectory()) {
+        const std::string sub = leafOf(e.name());
+        if (safeLeaf(sub)) {
+          File s = fs.open((std::string(dir) + "/" + sub).c_str());
+          if (s) {
+            while (File f = s.openNextFile()) {
+              if (!f.isDirectory()) addTxt(f.name(), sub + "/");
+              f.close();
+            }
+            s.close();
+          }
+        }
+      }
+      else addTxt(e.name(), "");
       e.close();
     }
     d.close();
@@ -349,6 +383,11 @@ bool progRead(Where w, const std::string& name, std::string& textOut) {
 bool progWrite(Where w, const std::string& name, const std::string& text) {
   if (!safeName(name)) return false;
   return withStore(w, [&](fs::FS& fs, const char* dir) {
+    const std::size_t slash = name.find('/');
+    if (slash != std::string::npos) {
+      const std::string sub = std::string(dir) + "/" + name.substr(0, slash);
+      if (!fs.exists(sub.c_str())) fs.mkdir(sub.c_str());
+    }
     File f = fs.open(progPath(dir, name).c_str(), FILE_WRITE);
     if (!f) return false;
     f.write(reinterpret_cast<const uint8_t*>(text.data()), text.size());

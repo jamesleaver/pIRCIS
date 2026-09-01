@@ -69,6 +69,17 @@ namespace run {
     bool isInt;
   };
 
+  // Dying is ordinary in IRCIS: a runner reaches '!' or walks off the grid,
+  // and both are how programs are meant to end. A death for any other reason
+  // is the only diagnostic the language offers, so those are the ones carried
+  // -- a handful of them, because this is a diagnostic and not a log.
+  static constexpr int kMaxDeathNotes = 4;
+  struct DeathNote {
+    int8_t   id;
+    uint32_t step;
+    char     why[40];
+  };
+
   struct Snapshot {
     uint32_t step = 0;
     bool     running = false;
@@ -82,6 +93,8 @@ namespace run {
     unsigned long oobReads = 0;
     unsigned long ubReads = 0;
     char     lastEvent[56] = {0};
+    uint8_t   deathNoteCount = 0;
+    DeathNote deathNotes[kMaxDeathNotes] = {};
   };
 
   void begin();
@@ -94,6 +107,14 @@ namespace run {
   int  startCol();
   int  startRow();
   char startDir();
+
+  // One cell of the loaded grid, without copying the grid to get at it. The
+  // machine is deliberately NOT rebuilt: the editor sends a burst of these
+  // while you type and then asks for a single rebuild, which is the expensive
+  // half. Out-of-range coordinates are ignored.
+  void setCell(int row, int col, char ch);
+  // Rebuild the machine from the loaded grid as it now stands.
+  void rebuild();
 
   void cmdRun();
   void cmdPause();
@@ -126,6 +147,10 @@ namespace run {
 
   // 0 = never executed, else 'N'/'E'/'W'/'S' of the first execution.
   char visitAt(int row, int col);
+  // The whole map at once, into a caller-owned buffer. Returns the column
+  // stride, or 0 if nothing has run. visitAt() takes the mutex per cell, which
+  // is a thousand locks per repaint -- far too many to do while drawing.
+  int visitsInto(char* out, unsigned long n);
 
   // The program's globals as of the last publish, sorted by name.
   std::vector<GlobalVar> globals();

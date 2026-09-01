@@ -75,18 +75,34 @@ namespace Store {
 
   // Lets the character inspector move the entry point and its direction.
   // Off by default: a program is normally run as it stands.
-  bool startEditable();
-  void setStartEditable(bool on);
+  // What a tap on the RUN grid does. One setting, because a tap can only do
+  // one of these and the old START POINT: FREE/FIXED was quietly deciding
+  // both whether the start could move and whether the inspector opened.
+  enum { kTapNothing = 0, kTapStart = 1, kTapInspector = 2 };
+  int  gridTap();
+  void setGridTap(int mode);
+
 
   // Where the runner enters the grid: column, row, and one of N/E/S/W.
   void startPoint(int& col, int& row, char& dir);
   void setStartPoint(int col, int row, char dir);
 
+  // Show the step-back / step-forward buttons on the RUN transport. A reader's
+  // setting like GRID TAP, not a property of the program, so loading one does
+  // not turn it off.
+  bool stepButtons();
+  void setStepButtons(bool on);
+
+  // Keep every cell a runner has stood on tinted, so the path builds up on
+  // screen instead of fading. Off by default; the '~t' view tag turns it on.
+  bool tracePath();
+  void setTracePath(bool on);
+
   int  gridView();                // RUN tab view: 1 = wide, 2 = zoom
   void setGridView(int view);
 
-  // User-defined entries on the SETS tab. kind: 0 = MODE, 1 = key set,
-  // 2 = IV, 3 = J. Stored as one space-separated string.
+  // User-defined entries on the SETS tab, one list per parameter column the
+  // packed program declares. Stored as one space-separated string.
   static constexpr int kMaxCustom = 9;
   std::string customSet(int kind, int index);              // "" when absent
   int  customSetCount(int kind);

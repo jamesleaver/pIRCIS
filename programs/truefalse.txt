@@ -1,0 +1,6 @@
+>r?"eurt"####....v......
+..>"eslaf"#####v........
+...............>.>"."#!.
+..a branch whose two arms meet again:
+..each prints a counted number of
+..characters, so both can reach one tail.

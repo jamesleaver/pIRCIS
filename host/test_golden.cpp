@@ -33,10 +33,30 @@ int main() {
   check(prog::programAt(prog::kFirstExample).name[0] != '\0',
         "the first always-available program has a name");
 
+  // Every built-in is written into a folder, and PROG only descends one
+  // level: a program whose folder went missing would land loose at the top of
+  // the list, and one with a slash in its folder would never be reachable.
+  {
+    int foldered = 0, deep = 0;
+    for (int i = prog::kFirstExample; i < prog::programCount(); ++i) {
+      const char* d = prog::programAt(i).folder;
+      if (!d || !*d) continue;
+      ++foldered;
+      if (std::string(d).find('/') != std::string::npos) ++deep;
+    }
+    check(foldered == prog::kExampleCount, "every built-in names a folder");
+    check(deep == 0, "and no folder is more than one level");
+  }
+
   // Dice keeps its runners orbiting on purpose, so that it stays on screen to
   // be counted. It still has to load at its declared shape and read nothing
   // out of bounds -- it just never finishes, and that is the point of it.
-  auto endless = [](const char* name) { return std::string(name) == "Dice Roll"; };
+  auto endless = [](const char* name) {
+    const std::string n(name);
+    // Dice Roll orbits its ring for ever, and Dumb Pi prints invented digits
+    // until something stops it. Neither is a program that ends.
+    return n == "Dice Roll" || n == "Dumb Pi";
+  };
 
   for (int i = 1; i < prog::programCount(); ++i) {
     const prog::ProgramDef& def = prog::programAt(i);

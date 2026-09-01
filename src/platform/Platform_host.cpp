@@ -210,25 +210,51 @@ namespace {
   std::string storeRoot(Where w) { return w == Where::Device ? kDevDir : kSdDir; }
   std::string progDir(Where w)   { return storeRoot(w) + "/programs"; }
   // Keep names to something every filesystem and the SD FAT driver accept.
-  bool safeName(const std::string& n) {
+  bool safeLeaf(const std::string& n) {
     if (n.empty() || n.size() > 24) return false;
     for (char c : n)
       if (!(std::isalnum((unsigned char)c) || c == '_' || c == '-')) return false;
     return true;
   }
+
+  // One folder in front of the name and no more, matching the device.
+  bool safeName(const std::string& n) {
+    const std::size_t slash = n.find('/');
+    if (slash == std::string::npos) return safeLeaf(n);
+    return n.find('/', slash + 1) == std::string::npos
+        && safeLeaf(n.substr(0, slash)) && safeLeaf(n.substr(slash + 1));
+  }
+
+  bool isTxt(const std::string& n) {
+    return n.size() > 4 && n.compare(n.size() - 4, 4, ".txt") == 0;
+  }
 }
 
 bool progStoreReady(Where w) { return w == Where::Device || sdPresent(); }
 
+// Bare "odds" at the top, "Counting/odds" one folder down. One level only,
+// the same as the board.
 bool progList(Where w, std::vector<std::string>& namesOut) {
   namesOut.clear();
   if (!progStoreReady(w)) return false;
-  DIR* d = ::opendir(progDir(w).c_str());
+  const std::string root = progDir(w);
+  DIR* d = ::opendir(root.c_str());
   if (!d) return true;                    // no directory yet is not an error
   while (struct dirent* e = ::readdir(d)) {
-    std::string n = e->d_name;
-    if (n.size() > 4 && n.compare(n.size() - 4, 4, ".txt") == 0)
-      namesOut.push_back(n.substr(0, n.size() - 4));
+    const std::string n = e->d_name;
+    if (n == "." || n == "..") continue;
+    struct stat st{};
+    if (::stat((root + "/" + n).c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+      if (!safeLeaf(n)) continue;
+      if (DIR* sub = ::opendir((root + "/" + n).c_str())) {
+        while (struct dirent* f = ::readdir(sub)) {
+          const std::string fn = f->d_name;
+          if (isTxt(fn)) namesOut.push_back(n + "/" + fn.substr(0, fn.size() - 4));
+        }
+        ::closedir(sub);
+      }
+    }
+    else if (isTxt(n)) namesOut.push_back(n.substr(0, n.size() - 4));
   }
   ::closedir(d);
   std::sort(namesOut.begin(), namesOut.end());
@@ -270,6 +296,9 @@ bool progWrite(Where w, const std::string& name, const std::string& text) {
   if (!safeName(name) || !progStoreReady(w)) return false;
   ::mkdir(storeRoot(w).c_str(), 0755);
   ::mkdir(progDir(w).c_str(), 0755);
+  const std::size_t slash = name.find('/');
+  if (slash != std::string::npos)
+    ::mkdir((progDir(w) + "/" + name.substr(0, slash)).c_str(), 0755);
   std::ofstream f(progDir(w) + "/" + name + ".txt", std::ios::binary | std::ios::trunc);
   if (!f) return false;
   f.write(text.data(), (std::streamsize)text.size());

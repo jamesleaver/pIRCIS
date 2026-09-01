@@ -18,7 +18,8 @@
 namespace run {
 namespace {
 
-  enum class Cmd : uint8_t { Run, Pause, Step, Reset, Load, StepBack, RunToEnd };
+  enum class Cmd : uint8_t { Run, Pause, Step, Reset, Load, StepBack, RunToEnd,
+                            SetCell, Rebuild };
   struct Command { Cmd cmd; uint32_t arg; };
 
   plat::Mutex        g_mutex;
@@ -151,6 +152,22 @@ int  g_visitCols = 0;
       v.alive = false;
       v.diedStep = d.step;
     }
+    // '!' and walking off the edge are how a program is supposed to stop, so
+    // neither is worth a line. Anything else is a real fault and is the only
+    // explanation the interpreter will ever give for it.
+    g_snap.deathNoteCount = 0;
+    for (const auto& d : g_machine->deaths()) {
+      if (g_snap.deathNoteCount >= kMaxDeathNotes) break;
+      if (d.error.empty() ||
+          d.error == "End character reached" ||
+          d.error == "Runner went outside grid") continue;
+      DeathNote& note = g_snap.deathNotes[g_snap.deathNoteCount++];
+      note.id   = (int8_t)d.runner_id;
+      note.step = d.step;
+      std::strncpy(note.why, d.error.c_str(), sizeof(note.why) - 1);
+      note.why[sizeof(note.why) - 1] = 0;
+    }
+
     std::size_t n = g_machine->runner_count();
     g_snap.runnerCount = (uint8_t)(n > kMaxRunners ? kMaxRunners : n);
     for (std::size_t i = 0; i < n; ++i) {
@@ -285,6 +302,21 @@ int  g_visitCols = 0;
             if (pending) { g_seed = plat::randomSeed(); buildMachine(next); }
             break;
           }
+          // Row, column and character packed into the one word the queue
+          // carries. The grid is at most 32 x 96, so a byte each is plenty.
+          case Cmd::SetCell: {
+            plat::Guard g(g_mutex);
+            g_loaded.setCell((int)((c.arg >> 16) & 0xFF),
+                             (int)((c.arg >> 8) & 0xFF),
+                             (char)(c.arg & 0xFF));
+            break;
+          }
+
+          case Cmd::Rebuild:
+            g_seed = plat::randomSeed();
+            buildMachine(g_loaded);
+            break;
+
           case Cmd::Reset:
             g_seed = plat::randomSeed();   // back to the top means a new race
             buildMachine(g_loaded);
@@ -377,6 +409,12 @@ int  g_visitCols = 0;
     send(Cmd::Load);
   }
 
+  void setCell(int row, int col, char ch) {
+    if (row < 0 || row > 0xFF || col < 0 || col > 0xFF) return;
+    send(Cmd::SetCell, ((uint32_t)row << 16) | ((uint32_t)col << 8) | (uint8_t)ch);
+  }
+  void rebuild() { send(Cmd::Rebuild); }
+
   void cmdRun()   { send(Cmd::Run); }
   void cmdPause() { send(Cmd::Pause); }
   void cmdStep(uint32_t steps) { send(Cmd::Step, steps); }
@@ -416,6 +454,14 @@ int  g_visitCols = 0;
     plat::Guard g(g_mutex);
     return g_visits[i];
   }
+  int visitsInto(char* out, unsigned long n) {
+    plat::Guard g(g_mutex);
+    if (g_visitCols <= 0) return 0;
+    unsigned long have = sizeof(g_visits);
+    std::memcpy(out, g_visits, n < have ? n : have);
+    return g_visitCols;
+  }
+
   std::vector<GlobalVar> globals() { plat::Guard g(g_mutex); return g_globals; }
   std::vector<Chunk> chunks() { plat::Guard g(g_mutex); return g_chunks; }
 }

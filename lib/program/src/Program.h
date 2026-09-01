@@ -26,6 +26,10 @@ namespace prog {
   // bundled IRCIS examples.
   struct ProgramDef {
     const char* name;
+    // Which folder it is written into on the device -- one level, or empty
+    // for the top of the list. The packed program has none: it is never
+    // written to a filesystem at all.
+    const char* folder;
     const char* const* rows;
     int rows_n;
     int cols_n;

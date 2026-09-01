@@ -142,10 +142,11 @@ void handleCommand(std::string line) {
 
   if (cmd == "help" || cmd == "?") printHelp();
   else if (cmd == "quit" || cmd == "exit") g_quit = true;
-  else if (cmd == "run")   run::cmdRun();
+  else if (cmd == "run")   { ui::applyEditsNow(); run::cmdRun(); }
   else if (cmd == "pause") run::cmdPause();
   else if (cmd == "reset") { run::load(s); ui::markLoaded(); }
-  else if (cmd == "step")  run::cmdStep(line.empty() ? 1 : (uint32_t)std::atol(line.c_str()));
+  else if (cmd == "step")  { ui::applyEditsNow();
+                             run::cmdStep(line.empty() ? 1 : (uint32_t)std::atol(line.c_str())); }
   else if (cmd == "speed") {
     std::string v = nextToken(line);
     if (v == "slow") run::setSpeed(run::Speed::Slow);
@@ -173,7 +174,7 @@ void handleCommand(std::string line) {
     int c = std::atoi(nextToken(line).c_str());
     std::string ch = nextToken(line);
     if (ch.size() != 1 || !s.setCell(r, c, ch[0])) plat::logln("usage: cell <row> <col> <char>");
-    else { ui::markEdited(); plat::logf("(%d,%d) = %c\n", r, c, ch[0]); }
+    else { ui::markCellEdited(r, c, ch[0]); plat::logf("(%d,%d) = %c\n", r, c, ch[0]); }
   }
   else if (cmd == "revert") {
     std::string id = nextToken(line);
@@ -284,7 +285,11 @@ void handleCommand(std::string line) {
     plat::Where w = splitWhere(name);
     std::string text;
     if (!plat::progRead(w, name, text)) { plat::logln("no such program"); return; }
-    if (!ui::loadProgramTextPublic(text, name.c_str())) plat::logln("not a usable program");
+    // The name is the leaf: "Coin-Flip", not "Deciding/Coin-Flip". The folder
+    // is where it lives, not what it is called.
+    const std::size_t sl = name.find('/');
+    const std::string leaf = sl == std::string::npos ? name : name.substr(sl + 1);
+    if (!ui::loadProgramTextPublic(text, leaf.c_str())) plat::logln("not a usable program");
     else {
       // The name goes in with the program, so one load does it.
       plat::logf("loaded %s (%d x %d), %d edited cell%s\n", name.c_str(),
@@ -327,7 +332,7 @@ void handleCommand(std::string line) {
                Store::runView() == 0 ? "output" : "none",
                Store::debugMode() ? "on" : "off",
                sp[Store::runSpeed() & 3],
-               sc, sr, sd, Store::startEditable() ? "" : " (fixed)");
+               sc, sr, sd, Store::gridTap() != Store::kTapNothing ? "" : " (fixed)");
   }
   else if (cmd == "gridpaints") plat::logf("full repaints: %lu, grid repaints: %lu, band repaints: %lu, machine rebuilds: %u\n", ui::fullPaints(), ui::gridPaints(), ui::bandPaints(), (unsigned)run::buildVersion());
   else if (cmd == "dragv") {

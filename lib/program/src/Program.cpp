@@ -48,17 +48,17 @@ namespace prog {
     ProgramDef packedDef() {
       int rows = 0, cols = 0;
       const uint8_t* cells = nullptr;
-      if (!pack::grid(rows, cols, cells)) return { "", nullptr, 0, 0, false };
+      if (!pack::grid(rows, cols, cells)) return { "", "", nullptr, 0, 0, false };
       if (rows > kMaxRows) rows = kMaxRows;
       for (int r = 0; r < rows; ++r)
         g_packedRows[r] = (const char*)cells + (std::size_t)r * cols;
-      return { pack::gridName(), g_packedRows, rows, cols, true };
+      return { pack::gridName(), "", g_packedRows, rows, cols, true };
     }
 
     ProgramDef makeTable(int i) {
       if (i == kPackedIndex) return packedDef();
       const ExampleDef& e = kExamples[i - 1];
-      return { e.name, e.rows, e.rows_n, e.cols_n, false };
+      return { e.name, e.folder, e.rows, e.rows_n, e.cols_n, false };
     }
   }
 
@@ -205,7 +205,7 @@ namespace prog {
     // Mirror IRCIS exactly (Runner::process_integer_buffer): read up to the
     // first blank, and if every character is a digit the literal is DECIMAL;
     // any other base64 character makes it base64. Decoding unconditionally as
-    // base64 misreads '1921' as 14,146,997.
+    // base64 misreads '2024' as 14,372,280.
     std::string v = slotValue(slot);
     std::size_t n = 0;
     while (n < v.size() && ircis::isbase64(v[n])) ++n;
@@ -221,8 +221,8 @@ namespace prog {
     if (slot < 0 || slot >= prog::slotCount()) return false;
     if (value < 0) return false;
     // Prefer the decimal spelling when it fits. IRCIS reads an all-digit
-    // literal as decimal, and '1921' is a great deal easier to read back off
-    // the grid than 'eB'.
+    // literal as decimal, and '2024' is a great deal easier to read back off
+    // the grid than 'fo'.
     std::string dec = std::to_string(value);
     if (static_cast<int>(dec.size()) <= prog::slot(slot).len) return setSlotValue(slot, dec);
     std::string enc = ircis::base64_encode_int(value);

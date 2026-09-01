@@ -161,6 +161,12 @@ void factoryReset() { plat::kv::clearAll(); }
 int  runView() { int v = plat::kv::getInt("runview", 0); return (v < 0 || v > 1) ? 0 : v; }
 void setRunView(int v) { plat::kv::putInt("runview", v); }
 
+bool stepButtons() { return plat::kv::getBool("stepbtn", false); }
+void setStepButtons(bool on) { plat::kv::putBool("stepbtn", on); }
+
+bool tracePath() { return plat::kv::getBool("trace", false); }
+void setTracePath(bool on) { plat::kv::putBool("trace", on); }
+
 bool debugMode() { return plat::kv::getBool("dbg", false); }
 void setDebugMode(bool on) { plat::kv::putBool("dbg", on); }
 
@@ -175,9 +181,19 @@ void setUnlocked(bool on) {
   if (!on) { plat::kv::remove("pk"); pack::close(); }
 }
 
-bool startEditable() { return plat::kv::getBool("adv", false); }
-void setStartEditable(bool on) { plat::kv::putBool("adv", on); }
-
+int gridTap() {
+  // Devices from before this was a three-way stored a bool under "adv": set
+  // meant the inspector opened on a tap, clear meant nothing happened. Read
+  // that when the new key is absent, so an existing device keeps its setting.
+  const int fallback = plat::kv::getBool("adv", false) ? kTapInspector : kTapNothing;
+  const int v = plat::kv::getInt("gtap", fallback);
+  return (v < kTapNothing || v > kTapInspector) ? kTapNothing : v;
+}
+void setGridTap(int mode) {
+  if (mode < kTapNothing || mode > kTapInspector) mode = kTapNothing;
+  plat::kv::putInt("gtap", mode);
+  plat::kv::putBool("adv", mode != kTapNothing);   // keep the old key in step
+}
 void startPoint(int& col, int& row, char& dir) {
   col = plat::kv::getInt("stx", 0);
   row = plat::kv::getInt("sty", 0);

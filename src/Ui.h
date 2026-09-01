@@ -20,6 +20,12 @@ namespace ui {
   // so the screen and the terminal never disagree.
   prog::Program& editGrid();
   void markEdited();      // note unsaved edits and force a repaint
+  // One cell changed: push just that cell to the run task and let the machine
+  // rebuild once the typing stops, rather than copying the whole program.
+  void markCellEdited(int row, int col, char ch);
+  // Apply any deferred edit immediately. The console can run a program without
+  // going through the UI, and it must not run a stale one.
+  void applyEditsNow();
   void markLoaded();      // the working grid is now the one the machine is running
   void repaint();
   void showMessage(const std::string& title, const std::string& body);

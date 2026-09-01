@@ -1,55 +1,70 @@
 # pIRCIS
 
-An IRCIS interpreter for a Freenove FNK0114S — a 4.0" 320x480 ST7796 touch
-display, driven landscape at 480x320. Choose a program, watch the runners walk
-it a step at a time, and edit it on the device.
+A pocket computer for writing and watching **IRCIS** programs, running on a
+cheap 4" ESP32 touchscreen. Pick a program, hit play, and watch the runners
+walk across the grid one step at a time. Edit it on the device with a stylus.
+No computer needed once it is flashed.
 
 The `p` is for pocket.
 
-IRCIS — "I Run Chars I See" — is a 2D esolang by
-[Arjun Nair (batman-nair)](https://github.com/batman-nair/IRCIS). The program is
-a grid, one instruction per cell; a runner walks it in a straight line until
-told to turn, and can split into several runners at once.
+IRCIS — *"I Run Chars I See"* — is a two-dimensional esolang by
+[Arjun Nair (batman-nair)](https://github.com/batman-nair/IRCIS). A program is
+a grid of characters, one instruction per cell. A *runner* walks it in a
+straight line until something tells it to turn, and it can split into several
+runners going different ways at once.
 
-| | |
-|---|---|
-| ![hello running](shots/hello.gif) | ![dumb-clock running](shots/gifs/clock.gif) |
-| Hello World, whole on screen at the large font. | Dumb Clock, which pretends to tell the time. |
-| ![hello output](shots/hello_out.png) | ![programs](shots/programs.png) |
-| What it printed, centred, with how the run went. | Every program on the device: a chip mark for its own storage, a notched card for the SD slot. |
-| ![editor](shots/editor.png) | ![letters](shots/editor_abc.png) |
-| The editor. Everything you write IRCIS with. | Tapping `EDIT` again cycles to the capitals and then the lower case. |
-| ![system](shots/system.png) | |
-| Settings, with the About pages. `UNDER GRID` chooses what the RUN page shows beneath the program. | |
+<p align="center">
+  <img src="shots/board.jpg" alt="pIRCIS running on the board" width="520">
+</p>
 
-## Getting started
+<p align="center">
+  <img src="shots/motto.gif" alt="the motto program drawing IRCIS" width="480">
+</p>
 
-Grab a 4.0" 320x480 ESP32 board, also known as a CYD (cheap yellow display).
+That second one is a real program running. Five runners walk the shape of the
+letters and spell out **IRCIS** as they go, then the program prints what it
+stands for. The letters are not in the grid — they only exist as the paths the
+runners take.
 
-There are two ways to get started: flash a build from
-[Releases](https://github.com/jamesleaver/pIRCIS/releases), or build it
-yourself (which may be the easiest option).
+## What you need
 
-The 4" Freenove boards ship with one of two display controllers. Everything
-here was developed against an ST7796 board, which is the only one I have. **The
-`ili9488` build has never been run on hardware.**  If you have an ILI9488 board,
-I would be glad to hear whether it works.
+- A 4.0" 320x480 ESP32 touch display — a Freenove FNK0114S, or any of the
+  "cheap yellow display" boards of that size. Driven landscape at 480x320.
+- A USB cable.
+- Optionally a microSD card, for saving programs and run logs.
 
-### From a release
+These boards ship with one of two display controllers. Everything here was
+built against an **ST7796**, which is the one I have. There is an `ili9488`
+build too, but **I have never run it on hardware** — if you have one of those
+boards I would love to know whether it works.
 
-Download both the archive for your panel and `SHA256SUMS` from the release,
-then:
+## Getting it on the board
+
+The easiest way is to build it yourself:
 
 ```bash
-shasum -a 256 -c SHA256SUMS          # or sha256sum -c on Linux
-unzip pircis-1.1.0-st7796.zip
-cd pircis-1.1.0-st7796
+git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+brew install platformio sdl2
+pio run -e st7796 -t upload -t monitor
 ```
 
-Flashing needs [esptool](https://pypi.org/project/esptool/). On a recent macOS
-`pip install` refuses to touch the system Python, so put it in a virtual
-environment — and remember it is only available while that environment is
-active, which means running the first line again in a new terminal:
+SDL2 is only for the desktop emulator — skip it if you just want to flash a
+board. On Linux, `pip install platformio` and `apt install libsdl2-dev`.
+
+If the screen stays dark or the colours look wrong, you have the other panel:
+use `-e ili9488` instead. If `upload` cannot find the board, check
+`pio device list` — if the port is not there at all you are missing the
+USB-serial driver, not anything to do with PlatformIO. And if it sits on
+`Connecting.....` forever, hold the **BOOT** button, tap **EN/RST**, then let go
+of BOOT.
+
+There are also prebuilt archives on
+[Releases](https://github.com/jamesleaver/pIRCIS/releases) if you would rather
+not build. Grab the zip for your panel plus `SHA256SUMS`, check it, unzip it,
+and run `./flash.sh` — with no arguments it lists the ports it can see.
+Flashing that way needs [esptool](https://pypi.org/project/esptool/), and on
+recent macOS you will need it in a virtual environment:
 
 ```bash
 python3 -m venv ~/.venvs/esptool
@@ -57,281 +72,291 @@ source ~/.venvs/esptool/bin/activate
 pip install esptool
 ```
 
-Then flash. Run it with no argument first and it lists the serial ports it can
-see; the board is usually the `usbserial` one:
-
-```bash
-./flash.sh
-./flash.sh /dev/cu.usbserial-240
-```
-
-### From source (easiest)
-
-```bash
-git clone https://github.com/jamesleaver/pIRCIS.git
-cd pIRCIS
-brew install platformio sdl2
-```
-
-SDL2 is only for the desktop emulator; leave it out if you are only flashing a
-board. On Linux use your own package manager (`pip install platformio`,
-`apt install libsdl2-dev`) — nothing else differs.
-
-Then pick one:
-
-```bash
-pio run -e st7796 -t upload -t monitor   # flash a board and watch the console
-pio run -e emulator -t exec              # run it on your Mac, no hardware
-cd host && make test                     # the tests: no PlatformIO, no board
-```
-
-If the display stays dark or the colours look inverted, that board has the
-other panel controller — use `-e ili9488`, bearing in mind that build is
-untested on real hardware (see above). If `upload` cannot find the board,
-check `pio device list`: if the port is not there at all, the USB-serial driver
-is missing rather than anything being wrong with PlatformIO.
-
 ## Using it
 
 Five tabs along the bottom: **RUN**, **OUT**, **EDIT**, **PROG**, **SYS**.
 
-### Load a program
+### PROG — pick a program
 
-**PROG** lists every program on the device, and scrolls. Twenty-two are
-bundled, including Arjun Nair's own `racetrack` from IRCIS: three runners go
-round a track and the output is the order they finish in, which is different
-every time.
-
-There are counting and arithmetic ones, four that use the random numbers -- a
-die roll, an invented clock time, a coin, six lottery numbers -- and four worth
-watching rather than reading. The same files are in [`programs/`](programs/),
-along with a few more GIFs of them in [`shots/gifs/`](shots/gifs/). Tap one and it
-loads; its name then appears as the title of the RUN page. **New program...**
-at the bottom gives you a blank grid at any size up to 32 x 96, every cell a `.`
-(the blank).
-
-### Run it
-
-**RUN** shows the grid. Play is the **RUN** tab itself: while you are on that
-page the tab draws `▶`, or `⏸️` once a run is going, and tapping it starts or
-pauses. It is the biggest target on the screen, which is the point — from any
-other tab the same tab still says RUN and still navigates.
-
-The rest of the transport is right-aligned in the status bar:
+Sixty-seven programs come with it, sorted into folders. Tap a folder to go in,
+**Back** to come out.
 
 | | |
 |---|---|
-| `\|◀` | reset: back to the top, output and timer cleared |
-| `▶\|` | run to the end as fast as it will go |
+| ![the folders](shots/programs.png) | ![inside a folder](shots/folder.png) |
 
-Two more — step back and step forward — appear when **SYS > UNDER GRID** is set
-to `RUNNERS`.
+Programs live in two places — the board's own flash and the SD card — and the
+list merges them. A chip mark means it is on the device, a notched card means
+it is on the SD card. Tap one to load it. `X` deletes it.
 
-What sits under the grid is **SYS > UNDER GRID**: the output as it is printed,
-the per-runner readout, or nothing at all if you would rather have the rows.
+The two **Save** rows write the current program to either store, into whichever
+folder you are looking at. **New program...** gives you an empty grid at any
+size up to 32 x 96.
 
-However fast you set it, a run always opens slowly enough to see the runners
-set off, then gets out of the way after a second or so. `FULL` skips the lead-in
-entirely — asking for FULL is asking for the answer, not for the performance.
+Nothing here is precious: edit a built-in program, save over it, rename it,
+delete it. `SYS > RESTORE BUILT-INS` puts the originals back and leaves
+anything you made alone.
 
-The speed button cycles **SLOW** (about 3 steps a second), **MED** (about 25),
-**QUICK** (about 2000) and **FULL**. At SLOW each runner leaves a fading trail.
+### RUN — watch it go
+
+The **RUN** tab is also the play button. While you are on that page it shows
+`▶`, or `⏸` once something is going, and tapping it starts or pauses. It is the
+biggest target on the screen, which is the point.
+
+<p align="center">
+  <img src="shots/hello.gif" alt="hello world running" width="420">
+</p>
+
+The rest of the transport sits in the status bar: reset back to the start,
+step, and run-to-the-end. Turn on **SYS > STEP BUTTONS** and you get two more —
+step back and step forward — so you can walk a program one tick at a time and
+back again. Stepping back rebuilds and replays, so it is instant early in a run
+and slow once you are thousands of steps in.
+
+Four speeds: **SLOW** (about 3 steps a second), **MED** (25), **QUICK** (2000)
+and **FULL**. At SLOW each runner leaves a short fading tail, which is how you
+follow what it is doing. However fast you set it, a run always starts slowly
+for a second so you can see the runners set off — except at FULL, where you are
+asking for the answer rather than the show.
 
 A program too wide to read gets a **ZOOM** button.
 
-Scroll buttons (`^` and `v`) appear when there is more than fits.
+### OUT — read what it printed
 
-### Read the output
+<p align="center">
+  <img src="shots/hello_out.png" alt="the output page" width="420">
+</p>
 
-When a run finishes, the **OUT** tab gets a dot to say there is something to
-look at. This tab will also show live output while a program is running.
+When a run finishes the **OUT** tab gets a dot and the RUN tab turns into a
+go-again arrow.
 
-**SAVE SD**, in the status bar, writes the whole run to the card;
-it only appears when there is a card in the slot.
+You can watch output being generated live on the **OUT** tab while a program is
+running.
 
-### Edit it
+It also keeps the **last ten runs**. The `<` and `>` buttons at the bottom step
+back through them, each with what it printed and how many steps it took.
 
-**EDIT** is a text editor for the loaded program. Tap a cell to put the cursor
-there, then type. `.` is the blank, so it doubles as delete.
+<p align="center">
+  <img src="shots/history.png" alt="stepping back through previous runs" width="420">
+</p>
 
-The keyboard is the thirty-three characters you actually write IRCIS with —
-movement, the blank, arithmetic, the digits, and the commands.
+**SAVE SD** writes whichever run you are looking at to the card. It only
+appears when there is a card in the slot.
 
-Tapping the **EDIT** tab while you are already on it cycles to the capitals
-and then the lower case, the way tapping **RUN** plays and pauses; the tab
-names the keyboard you are looking at. Commands are in the accent colour,
-so `V`, `R`, `v`, `r` and `p` read as commands on the letter pages too — they
-are base64 digits that also do a job.
+### EDIT — change it with your finger
 
-The status bar carries the program's name, its size, a `ZOOM` toggle, **SAVE**
-and **UNDO**/**REDO**. The name and size are buttons — one renames the program,
-the other reshapes it — and SAVE writes it back where it came from under that
-name, so renaming and saving sit next to each other. Saving over the file the
-program came from just saves; saving over a different one asks first, and once
-saved nothing in the program counts as an unsaved edit any more.
+Tap a cell to put the cursor there, then type. `.` is the blank, so it doubles
+as delete.
 
-UNDO and REDO go back through the last 128 cell edits.
+| | |
+|---|---|
+| ![the editor](shots/editor.png) | ![the letters](shots/editor_abc.png) |
 
-The size button asks which **side** to add to or take from — top, bottom, left
-or right.
+The main keyboard is the thirty-three characters you actually write IRCIS with.
+Tapping **EDIT** while you are already on it cycles to the capitals and then the
+lower case, laid out QWERTY. The tab tells you which keyboard you are looking
+at.
 
-**PROG** grows a **Discard changes** row whenever there is something to
-discard, which puts the program back to the last version saved.
+- **UNDO / REDO** go back through the last 128 cell edits.
+- The size button asks which **side** to add to or take from — top, bottom,
+  left or right — because "eleven rows" never said whether the new one lands
+  above your program or below it.
+- **PROG** grows a **Discard changes** row whenever there is something to throw
+  away.
 
-### Ask for a view
+### SYS — settings
 
-A program can say how it wants to be shown, in one short tag written anywhere
-in the grid. A tilde (`~`), then single letters:
+<p align="center">
+  <img src="shots/system.png" alt="the settings page" width="420">
+</p>
+
+WiFi, what sits under the grid, what tapping the grid does, SD logging, a
+day/night palette, and restoring the built-ins.
+
+**CHECK TOUCH** asks you to tap three rings and tells you how far out the worst
+one was, then offers to recalibrate. A key is about 43 px wide, so within six
+pixels is fine and much past fourteen is worth redoing.
+
+**DIAGNOSTICS** is live while you watch it: free heap, steps per second, and
+whether the run read anything out of bounds. If a runner died of anything other
+than reaching `!` or walking off the edge, the reason is listed there.
+
+## The programs
+
+Sixty-eight of them. The full list is in [`programs/`](programs/).
+
+| | |
+|---|---|
+| ![dice](shots/gifs/dice.gif) | ![dumb clock](shots/gifs/clock.gif) |
+| **Dice Roll** — rolls, prints the number, then puts exactly that many runners into a ring, so you can count the answer going round. | **Dumb Clock** — invents a plausible time and reads it out in words. |
+| ![racetrack](shots/gifs/racetrack.gif) | ![spiral](shots/spiral.gif) |
+| **Racetrack** — three runners, five random pit stops each. The finishing order determines the winner. | **Spiral** — one runner winding inward over every cell. Eight programs print nothing at all and are just worth watching. |
+
+A few are hiding what they do until you run them:
+
+<p align="center">
+  <img src="shots/insult.png" alt="a grid of nothing but numbers" width="420">
+</p>
+
+That is the whole of **Insult Machine**. There is not a letter in it — every
+word is carried as a number, because `%` prints an integer as base64 characters.
+**Dog Name** does the same but picks its numbers with two coin flips, and
+**Warning** does not even write the numbers down: each one is a quotient and a
+remainder, multiplied back out as it runs.
+
+**Morse Decoder** turns morse back into a word. The whole top row is yours: put
+one code per letter after the `'0.`, left to right — `1` for a dit, `2` for a
+dah — so `'1111.'1.'1211.'1211.'222.` gives HELLO. The row underneath says so on
+the device, with arrows pointing at where to type. It walks a binary tree for
+each letter. Five letters is the ceiling: the answer is built up in a single
+integer, and an int32 holds exactly five base64 characters.
+
+The rest are counting loops, times tables, one-of-four answer machines, the
+Morse alphabet on two screens, and ten correct digits of π out of Machin's
+formula — in a language with 32-bit integers and no arrays.
+
+## Telling a program how to show itself
+
+A program can say how it wants to be displayed, in one short tag written
+anywhere in the grid. A tilde, then single letters:
 
 ```
 under the grid:  n  nothing    d  runner readout
 speed:           s  slow   m  med   q  quick   f  full
+path:            t  keep every cell a runner has crossed tinted
 start position:  <col>,<row> and one of N E S W
 ```
 
-So `~nm3,1N` is: nothing underneath, medium, start at column 3 row 1 heading
-north. Order does not matter -- `~3,1Nmn` is the same tag.
+So `~nm3,1N` means: nothing underneath, medium speed, start at column 3 row 1
+heading north. Order does not matter. Anything you leave out goes back to the
+default, so most programs need no tag at all.
 
-Without a compass letter a start heads east. The comma is what marks a coordinate,
-and either side of it can be left off, so `~,2` starts at column 0 row 2.
-
-Anything a tag leaves out takes the default: the output under the grid, med,
-no runner readout, and starting at 0,0 heading east. **A program with no tag
-gets all of those**, so only a program wanting something unusual needs a tag.
+`t` is the interesting one. Normally a runner shows a short tail and the cells
+behind it go back to normal. With `t`, every cell any runner has stood on stays
+tinted — so the whole path builds up and stays on screen. That is what makes
+the banner at the top of this page work. Add it to `spiral` or `snake` and you
+get the same effect.
 
 None of the tag characters is an IRCIS command, so a runner that crosses one
-steps straight over it. It can sit on any blank cell in the middle of a program.
+just steps over it — a tag can sit on any blank cell in the middle of a
+program. And you do not have to type it: set the speed and view you want, then
+tap **PROG > Save this view in the program** and it writes the tag for you.
 
-### Keep it
+## Writing your own
 
-Programs live in two places, and **PROG** lists both together in one
-alphabetical list. A chip is for programs on the device's own storage,
-a notched card for those on an SD card.
+| Character | What it does |
+|:---:|---|
+| `< > ^ v` | Move the runner |
+| `+ - * / %` | Arithmetic, in *integer* mode |
+| `#` | Print the top of the stack |
+| `%` | Print the top of the stack as base64 characters |
+| `$` | Newline |
+| `!` | This runner stops |
+| `.` and space | Blank — the runner walks over it |
+| `"` | Toggle *stack* mode: characters get pushed as they are |
+| `'` | Start a number; a blank ends it |
+| `?` | If the top of the stack is non-zero carry on, otherwise turn |
+| `*` | Split into more runners |
+| `@n` / `&n` | Push the n'th item / pop n items |
+| `@name` / `&name` | Push a variable / set one |
+| `r` / `R` | Random 0 or 1 / random up to a limit |
+| `p` | Pause this runner for n ticks |
 
-Tap a program to load it, `X` to delete it, or one of the two **Save** rows at the top
-to write the current program to either store under the name in the status bar.
+Four things catch everyone out, me included:
 
-The device's own storage is a LittleFS filesystem on the board's spare flash,
-so it works with no card in the slot. The programs that ship with pIRCIS are
-copied into it the first time it starts, which makes them ordinary files:
-edit one, save over it, rename it, delete it. The originals stay in the
-firmware — `SYS > RESTORE BUILT-INS` writes them back, leaving anything you
-made yourself alone.
+- **Arithmetic takes the top of the stack as the left operand.** Push 10 then 3
+  and `'-.` gives -7, not 7.
+- **`?` does not pop.** It looks at the top and leaves it there, so a branch has
+  to clear up after itself.
+- **Text is pushed, so it comes out backwards.** Write it reversed in the grid.
+- **A cell holds one instruction.** A path that crosses one of its own turns
+  will take that turn again and loop for ever.
 
-Both stores hold plain `.txt`, one grid row per line.
-
-### Settings
-
-**SYS** is a page of settings — WiFi, what sits under the grid, the entry
-point, SD logging (when on, every completed run is written to the card), touch
-recalibration, a day/night palette, and restoring the built-in programs.
-
-Recalibrating touch ends by asking you to tap three rings and telling you how
-far out the worst one landed. A key is about 43 px wide, so within six pixels
-is comfortable and much beyond fourteen is worth doing again.
-
-**DIAGNOSTICS** is a live panel: free heap, largest allocatable block, steps
-per second, and whether the run read anything out of bounds. **DUMP GRID**,
-inside it, writes the loaded program and every edit to the serial console.
-
-**ABOUT THIS DEVICE** ends on a page saying which firmware is on the board —
-version, build stamp, image id and panel.
-
-**RESET ALL DATA** returns the device to how it flashed, built-in programs
-included.
-
-**START POINT** decides where execution begins. On `FIXED` it is always row 0,
-column 0, heading east. Set it `FREE` and tapping a character on RUN starts the
-program there; tapping it again turns it, and a chevron shows which way the
-runner will leave.
+The full command list and the language rules are in
+[Arjun Nair's README](https://github.com/batman-nair/IRCIS), which is where I
+learned all of this.
 
 ## Over serial and over WiFi
 
-The serial console (115200) drives the same working grid as the screen:
+The serial console (115200) drives the same grid as the screen:
 
 ```
 grid          print the loaded program
 cell 3 12 v   set one cell
-load          push the edits into the interpreter
 run
 out           print what it produced
-report        the whole run: program, output and statistics
+report        the whole run, with statistics
 ```
 
-`help` lists the rest. Output is mirrored to serial as it is produced, so a
-long run can be watched from a laptop.
+`help` lists the rest. Output is mirrored to serial as it appears, so you can
+watch a long run from a laptop.
 
-`SYS > WIFI` serves the device over the local network: the last run, an
-editable copy of the loaded program (paste one in and it runs on the device),
-the programs in both stores, the saved outputs, and the preset slots. Programs
-and presets can be loaded onto the device from there as well as read.
+`SYS > WIFI` serves the device on your network: the last run, an editable copy
+of the loaded program, both program stores, and the saved outputs. You can
+paste a program in from a browser and it runs on the device.
+
+**There is no password on any of it.** Anyone who can reach the board can read
+what is on the card and write a program onto it. That is fine for something on
+your own desk, but it should be your choice — turn WiFi off on a network you
+share.
 
 ## On your Mac, without hardware
 
-`pio run -e emulator -t exec` builds the **actual firmware** — the same
-interpreter, the same UI, the same console — against an SDL2 window standing in
-for the panel. The mouse is the touch screen; stdin is the serial port. Only a
-thin platform layer differs between the two builds, so what you exercise on the
-Mac is what runs on the board.
-
-Three commands exist only there, and make the UI scriptable:
-
-```
-tap <x> <y>        synthesise a touch
-shot run.ppm       dump the panel framebuffer
-page /outputs      render a web page and print it
+```bash
+pio run -e emulator -t exec
 ```
 
-There is also a command-line runner with no display at all:
+That builds the *actual firmware* — same interpreter, same UI, same console —
+against an SDL2 window standing in for the panel. The mouse is the touchscreen
+and stdin is the serial port. Every screenshot on this page was taken from it.
+
+Three extra commands make it scriptable: `tap <x> <y>`, `shot run.ppm` and
+`page /outputs`. There is a headless runner too:
 
 ```bash
 cd host && make
 ./sk_emu --grid myprogram.txt --stats
-./sk_emu --visits        # the execution/direction map of every cell
+./sk_emu --visits        # which cells ran, and which way the runner was going
 ```
 
-## Under the hood
-
-The interpreter is a **port, not a reimplementation**: `lib/ircis/` is
-batman-nair's IRCIS with the filesystem, iostreams and unbounded allocations
-taken out and nothing else changed. That matters because a program's behaviour
-can depend on how many steps it takes, so an interpreter that is merely
-functionally equivalent would not be safe to trust with one.
-
-So the port is checked rather than assumed. `cd host && make test` builds the
-same core for macOS and asserts that every bundled program loads at the shape
-its table declares, runs to completion, reads nothing out of bounds, and
-survives the editing model. `tools/ui_regression.sh` drives the emulator
-through a fixed tap sequence and compares ten screens byte for byte.
+## What's inside
 
 ```
-lib/ircis/    the interpreter core -- no filesystem, no iostream, bounded memory
-lib/program/  the program model -- variable-size grid, revertible
+lib/ircis/    the interpreter core
+lib/program/  the program model -- variable-size grid, revertible edits
 lib/pack/     SHA-256, TEA-CBC, and the content pack they open
 src/          firmware: display, touch UI, run task, NVS, SD, web view
-host/         command-line runner and tests (plain Makefile)
+host/         command-line runner and tests
 ```
 
-Build output goes to `~/.cache/pircis/build`, deliberately outside any
-cloud-synced folder: a file provider can re-materialise a stale object
-underneath a running build.
+`lib/ircis/` is a **port, not a reimplementation** — batman-nair's IRCIS with
+the filesystem, iostreams and unbounded allocations taken out, and nothing else
+changed. A program's behaviour can depend on how many steps it takes, so
+"functionally equivalent" would not be good enough.
 
-*(Some macOS Command Line Tools installs ship libc++ only inside the SDK, where
-clang does not look. Both builds detect that and work around it.)*
+`cd host && make test` builds the same core for macOS and checks that every
+bundled program loads at the size its table claims, runs to completion, and
+reads nothing out of bounds. `tools/ui_regression.sh` drives the emulator
+through a fixed set of taps and compares the screens byte for byte.
+`tools/make_shots.sh` regenerates every picture on this page.
+
+Build output goes to `~/.cache/pircis/build`, deliberately outside any
+cloud-synced folder — a file provider can quietly hand a stale object to a
+running build.
 
 ## One more program
 
 There is an IRCIS program on this device that the list does not show.
 
-It is encrypted and hidden, but can be decrypted and revealed with two
-words. Entered correctly into the device, the two words reveal an easter egg.
+It is encrypted, and two words open it. Enter them correctly and you get an
+easter egg.
 
 ## Copyright
 
 The firmware, UI, host tools and tests are **Copyright (c) 2026 James Leaver**,
 released under the [MIT License](LICENSE).
 
-Two things here are not mine: `lib/ircis/`, the interpreter core, is Arjun
+Two things here are not mine. `lib/ircis/`, the interpreter core, is Arjun
 Nair's ([batman-nair/IRCIS](https://github.com/batman-nair/IRCIS), MIT — see
-[`lib/ircis/LICENSE`](lib/ircis/LICENSE)); and LovyanGFX, fetched at build time
+[`lib/ircis/LICENSE`](lib/ircis/LICENSE)). LovyanGFX, fetched at build time
 rather than vendored, is lovyan03's (FreeBSD).
