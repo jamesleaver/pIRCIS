@@ -11,7 +11,7 @@
 // the build stamp, and used by tools/release.sh to name the artifacts, so a
 // binary on the Releases page and a device in your hand can be compared
 // without guessing. Bump it before cutting a release.
-#define PIRCIS_VERSION "1.1.0"
+#define PIRCIS_VERSION "1.2.0"
 
 // Which panel this binary drives. The 4" boards ship with either controller
 // and the wrong build shows a blank screen or inverted colours, so the device
