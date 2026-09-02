@@ -1,14 +1,15 @@
 # Programs
 
-Sixty-eight IRCIS programs, all of them bundled in the firmware. Copy them to
+Sixty-one IRCIS programs, all of them bundled in the firmware. Copy them to
 `/pircis/programs/` on an SD card, or paste one into the web editor, and they
 show up under **PROG**.
 
-On the device these are sorted into five folders -- Counting, Talking,
-Deciding, Watching and Showing-off -- which is how **PROG** opens. The folders
-are real directories in the device's own storage and on the card, so this
-listing and the device agree. In this repository they are kept flat, since
-`tools/gen_examples.py` is what assigns the folders.
+On the device these are sorted into five folders -- Counting, Talking, Deciding,
+Watching and Decoding -- which is how **PROG** opens. The headings below are
+those folders, the tables give the name each program shows under there, and
+where one is named in the prose the brackets say where to find it. The folders
+are directories here, in the device's own storage and on the card alike, so
+this listing, the repository and the device all agree.
 
 Every one was checked against Arjun Nair's own interpreter before it shipped.
 The ones that do not use `r`/`R` produce byte-identical output on the device.
@@ -16,126 +17,137 @@ The ones that do not use `r`/`R` produce byte-identical output on the device.
 **Where two programs would have been the same idea twice, they are not.** Nine
 programs used to flip one coin and print one of two words; there are two now,
 and they do it differently. Twelve answer machines used to walk the same ladder
-of four tests; six still do, four use a tree of coin flips instead, and two draw
-twice and combine the results. Six multiplication tables used to be one template
-with six constants, and are now six different routes to the same answer. What is
-left that still shares a shape does so because the shape is right.
+of four tests; one still does, one uses a tree of coin flips instead, and one
+draws twice and combines the results. Six multiplication tables used to be one
+template with six constants, and are now six different routes to the same
+answer. What is left that still shares a shape does so because the shape is
+right.
 
-`dice` is the one to try first. It rolls, prints "You have rolled N", and puts
-N runners into a ring -- so the number it printed is the number of coloured
-markers going round.
+[Dice Roll](Watching/Dice-Roll.txt) (Watching) is the one to try first. It
+rolls, prints "You have rolled N", and puts N runners into a ring -- so the
+number it printed is the number of coloured markers going round.
 
 ## Counting
 
-The print loop with a different sum in it. No two of these reach their answer the same way, which is the point of having more than one.
+The print loop with a different sum in it. No two of these reach their answer
+the same way, which is the point of having more than one.
 
 | Program | Size | Tag | What it does |
 |---|---|---|---|
-| `hello` | 2 x 18 |  | the loop in its barest form; read this one first |
-| `countdown` | 5 x 15 |  | 10 down to 1, then GO |
-| `count` | 5 x 20 |  | the skeleton with nothing added |
-| `odds` | 5 x 26 |  | doubles the counter and subtracts from a constant |
-| `evens` | 5 x 26 |  | the same trick, one off |
-| `threes` | 5 x 26 |  | multiplication, plainly |
-| `times7` | 5 x 26 |  | multiplication, with the multiplier held in a variable |
-| `nines` | 5 x 35 |  | a running total: nine added each pass, never multiplied |
-| `elevens` | 5 x 36 |  | ten times it plus one more of it -- two operations composed |
-| `doubles` | 5 x 29 |  | added to itself; no multiplication in it at all |
-| `quarters` | 5 x 35 |  | doubled by adding, then multiplied -- both operations together |
-| `gaps` | 5 x 25 |  | the only one whose counter climbs instead of falling |
-| `minusthree` | 5 x 33 |  | 30 down to 3 |
-| `backwards` | 5 x 27 |  | 20 down to 1 |
-| `squares` | 5 x 26 |  | the counter multiplied by itself |
-| `cubes` | 5 x 31 |  | three multiplications chained |
-| `oblong` | 5 x 32 |  | n(n+1) |
-| `triangle` | 5 x 25 |  | keeps a total across iterations |
-| `powers2` | 5 x 25 |  | 1 2 4 8 ... 512, doubling one variable |
-| `halving` | 5 x 25 |  | 1024 back down to 2 |
-| `halved` | 5 x 26 |  | dividend in a variable; 1024/3 lands on 341 |
-| `divisors` | 5 x 28 |  | dividend written into the sum, until 7 spoils it |
-| `leftover` | 5 x 28 |  | modulo -- the only one whose output does not climb |
-| `fib` | 5 x 27 |  | two variables swapped each pass |
-| `fahrenheit` | 5 x 34 |  | Celsius to Fahrenheit, and the one you might use |
-| `binary` | 8 x 22 |  | binary, least significant bit first (from upstream IRCIS) |
+| [Countdown](Counting/Countdown.txt) | 5 x 15 |  | 10 down to 1, then GO |
+| [Count to 20](Counting/Count-to-20.txt) | 5 x 20 |  | the skeleton with nothing added |
+| [Odd Numbers](Counting/Odd-Numbers.txt) | 5 x 26 |  | doubles the counter and subtracts from a constant |
+| [Even Numbers](Counting/Even-Numbers.txt) | 5 x 26 |  | the same trick, one off |
+| [Threes](Counting/Threes.txt) | 5 x 26 |  | multiplication, plainly |
+| [Seven Times](Counting/Seven-Times.txt) | 5 x 26 |  | multiplication, with the multiplier held in a variable |
+| [Nine Times](Counting/Nine-Times.txt) | 5 x 35 |  | a running total: nine added each pass, never multiplied |
+| [Eleven Times](Counting/Eleven-Times.txt) | 5 x 36 |  | ten times it plus one more of it -- two operations composed |
+| [Doubles](Counting/Doubles.txt) | 5 x 29 |  | added to itself; no multiplication in it at all |
+| [Quarters](Counting/Quarters.txt) | 5 x 35 |  | doubled by adding, then multiplied -- both operations together |
+| [Sevens Plus One](Counting/Sevens-Plus-One.txt) | 5 x 25 |  | the only one whose counter climbs instead of falling |
+| [Down By Three](Counting/Down-By-Three.txt) | 5 x 33 |  | 30 down to 3 |
+| [Backwards](Counting/Backwards.txt) | 5 x 27 |  | 20 down to 1 |
+| [Squares](Counting/Squares.txt) | 5 x 26 |  | the counter multiplied by itself |
+| [Cubes](Counting/Cubes.txt) | 5 x 31 |  | three multiplications chained |
+| [Oblong Numbers](Counting/Oblong-Numbers.txt) | 5 x 32 |  | n(n+1) |
+| [Running Total](Counting/Running-Total.txt) | 5 x 25 |  | keeps a total across iterations |
+| [Doubling](Counting/Doubling.txt) | 5 x 25 |  | 1 2 4 8 ... 512, doubling one variable |
+| [Halving](Counting/Halving.txt) | 5 x 25 |  | 1024 back down to 2 |
+| [Halving 1024](Counting/Halving-1024.txt) | 5 x 26 |  | dividend in a variable; 1024/3 lands on 341 |
+| [Divide 720](Counting/Divide-720.txt) | 5 x 28 |  | dividend written into the sum, until 7 spoils it |
+| [Leftovers](Counting/Leftovers.txt) | 5 x 28 |  | modulo -- the only one whose output does not climb |
+| [Fibonacci](Counting/Fibonacci.txt) | 5 x 27 |  | two variables swapped each pass |
+| [Fahrenheit](Counting/Fahrenheit.txt) | 5 x 34 |  | Celsius to Fahrenheit, and the one you might use |
+| [Pi](Counting/Pi.txt) | 6 x 77 |  | ten correct digits from Machin's formula, with 32-bit integers and no arrays |
 
 ## Talking
 
-A string laid backwards in the grid and walked out one character at a time. Ten of these share one shape, and it is the right one: printing fixed text has a single natural implementation, and what differs is what they say. `warning` and `motto` are the exceptions, and deliberately -- see below.
+A string laid backwards in the grid and walked out one character at a time.
+Most of these share one shape, and it is the right one: printing fixed text
+has a single natural implementation, and what differs is what they say. Three
+of them take the same string for a walk instead -- a snake, a wave and a
+spiral -- to show that the path the runner reads it along can be any shape at
+all, as long as the characters arrive in the right order.
+[Warning](Talking/Warning.txt) (Talking) is the other exception, and
+deliberately -- see below.
 
 | Program | Size | Tag | What it does |
 |---|---|---|---|
-| `sos` | 2 x 17 |  | three dots, three dashes, three dots |
-| `greeting` | 2 x 27 |  | a hello that names where it came from |
-| `lorem` | 2 x 50 |  | the pangram, for checking every glyph renders |
-| `pangram` | 2 x 46 |  | a second pangram, shorter and rarer |
-| `esolang` | 2 x 41 |  | a one-line manifesto |
-| `advice` | 2 x 31 |  | turn it off and on again |
-| `excuse` | 2 x 35 |  | an excuse in the language's own terms |
-| `motto` | 13 x 46 | `~nst` | five runners draw IRCIS by walking it, then it prints what that stands for |
-| `warning` | 4 x 72 |  | an honest self-assessment, and the only one here whose words are not in the grid |
-| `morse1` | 2 x 71 |  | the first half of the Morse alphabet, as a card |
-| `morse2` | 2 x 73 |  | the second half |
+| [Hello World](Talking/Hello-World.txt) | 2 x 18 |  | the loop in its barest form; read this one first |
+| [SOS](Talking/SOS.txt) | 2 x 17 |  | three dots, three dashes, three dots |
+| [Greeting](Talking/Greeting.txt) | 6 x 31 |  | the string read along a square wave: across, down, across, up |
+| [Quick Brown Fox](Talking/Quick-Brown-Fox.txt) | 2 x 50 |  | the pangram, for checking every glyph renders |
+| [Liquor Jugs](Talking/Liquor-Jugs.txt) | 2 x 46 |  | a second pangram, shorter and rarer |
+| [Two Dimensions](Talking/Two-Dimensions.txt) | 4 x 17 |  | the string read boustrophedon: one row east, the next west |
+| [Advice](Talking/Advice.txt) | 7 x 14 |  | the string read along a spiral, closing on the print loop at its centre |
+| [Excuse](Talking/Excuse.txt) | 2 x 35 |  | an excuse in the language's own terms |
+| [Warning](Talking/Warning.txt) | 4 x 72 |  | an honest self-assessment, and the only one here whose words are not in the grid |
+| [Morse A to M](Talking/Morse-A-to-M.txt) | 2 x 71 |  | the first half of the Morse alphabet, as a card |
+| [Morse N to Z](Talking/Morse-N-to-Z.txt) | 2 x 73 |  | the second half |
 
 ## Deciding
 
-Anything that picks, and there are four different ways of picking here: no branch at all, a branch whose arms meet again, a tree of coin flips, and a ladder of tests. Where two programs would have been the same idea twice, there is now one.
+Anything that picks, and there are four different ways of picking here: no
+branch at all, a branch whose arms meet again, a tree of coin flips, and a
+ladder of tests. One program for each way of doing it.
 
 | Program | Size | Tag | What it does |
 |---|---|---|---|
-| `coin` | 4 x 36 |  | no branch at all: one random bit picks between two constants that % prints as HEADS and TAILS |
-| `truefalse` | 6 x 41 |  | two arms that meet again -- each prints a counted number of characters, so both reach one tail |
-| `eightball` | 11 x 31 |  | two coin flips make a tree with four leaves |
-| `weather` | 11 x 34 |  | a tree as well, with no regard for the season |
-| `mood` | 11 x 33 |  | a tree; tells you how you are feeling |
-| `verdict` | 11 x 26 |  | a tree; guilty or not |
-| `dogname` | 15 x 34 |  | two draws, and not a readable word in it: sixteen names out of eight hidden strings |
-| `band` | 15 x 32 |  | two draws again, and it occasionally names itself |
-| `fortune` | 15 x 72 |  | a ladder of four tests -- fortune-cookie lines |
-| `excuses` | 15 x 76 |  | a ladder; a different reason each run |
-| `horoscope` | 15 x 69 |  | a ladder; vague enough to always be true |
-| `compliment` | 15 x 67 |  | a ladder; says something nice |
-| `lunch` | 15 x 65 |  | a ladder; decides lunch so you do not have to |
-| `advice2` | 15 x 72 |  | a ladder, with a wider bench than `advice` |
-| `lotto` | 5 x 21 |  | six numbers from 1 to 49, out of one bounded random |
-| `clock` | 10 x 25 |  | invents a time and reads it out in words; the device has no clock, which is the joke |
+| [Coin Flip](Deciding/Coin-Flip.txt) | 4 x 36 |  | no branch at all: one random bit picks between two constants that % prints as HEADS and TAILS |
+| [True Or False](Deciding/True-Or-False.txt) | 6 x 41 |  | two arms that meet again -- each prints a counted number of characters, so both reach one tail |
+| [Magic Eight Ball](Deciding/Magic-Eight-Ball.txt) | 11 x 31 |  | two coin flips make a tree with four leaves |
+| [Dog Name](Deciding/Dog-Name.txt) | 15 x 34 |  | two draws, and not a readable word in it: sixteen names out of eight hidden strings |
+| [Fortune](Deciding/Fortune.txt) | 15 x 72 |  | a ladder of four tests -- fortune-cookie lines |
+| [Dumb Clock](Deciding/Dumb-Clock.txt) | 10 x 25 |  | invents a time and reads it out in words; the device has no clock, which is the joke |
 
 ## Watching
 
-No output -- the runners are the point. Each carries a view tag asking for nothing under the grid and a slow run, because at SLOW a runner leaves a fading trail and the trail is the whole point.
+The runners are the point. The first eight print nothing at all, and carry a
+view tag asking for nothing under the grid and a slow run, because at SLOW a
+runner leaves a fading trail and the trail is what you are there for. The rest
+do print something -- a motto, a winner, a die roll, six lottery numbers --
+but what happens on the grid while they get there is the show.
 
 | Program | Size | Tag | What it does |
 |---|---|---|---|
-| `spiral` | 10 x 31 | `~ns` | winds inward over every cell |
-| `bounce` | 7 x 28 | `~ns` | ricochets off the walls |
-| `snake` | 10 x 30 | `~ns` | the boustrophedon weave |
-| `serpent` | 9 x 28 | `~ns` | a longer weave with a doubled-back tail |
-| `staircase` | 8 x 28 | `~ns` | steps diagonally down |
-| `circuit` | 8 x 28 | `~ns` | a closed loop, lapped forever |
-| `comb` | 6 x 28 | `~ns` | down each tooth and back up |
-| `fourways` | 5 x 28 | `~ns` | one split sends four runners out at once |
+| [Spiral](Watching/Spiral.txt) | 10 x 31 | `~ns` | winds inward over every cell |
+| [Bounce](Watching/Bounce.txt) | 7 x 28 | `~ns` | a ball zigzags to the right, rebounding off the top and bottom |
+| [Snake](Watching/Snake.txt) | 10 x 30 | `~ns` | the boustrophedon weave |
+| [Serpent](Watching/Serpent.txt) | 10 x 30 | `~ns` | the weave turned on its side: down one column, up the one after next |
+| [Staircase](Watching/Staircase.txt) | 8 x 28 | `~ns` | steps diagonally down |
+| [Circuit](Watching/Circuit.txt) | 8 x 28 | `~ns` | a closed loop, lapped forever |
+| [Comb](Watching/Comb.txt) | 6 x 29 | `~ns` | along the spine, down each tooth and back up the next |
+| [Four Ways](Watching/Four-Ways.txt) | 7 x 28 | `~ns13,3` | the runner starts on a split with an arrow on every side, and four go out at once |
+| [Motto](Watching/Motto.txt) | 13 x 46 | `~nst` | five runners draw IRCIS by walking it, then it prints what that stands for |
+| [Race](Watching/Race.txt) | 10 x 32 | `~ns` | four runners with random handicaps, on one screen |
+| [Racetrack](Watching/Racetrack.txt) | 15 x 80 | `~nm` | three runners, five random pit stops each, identical lanes and cancelling handicaps |
+| [Dice Roll](Watching/Dice-Roll.txt) | 9 x 28 |  | rolls, prints the number, then puts that many runners into a ring |
+| [Dumb Pi](Watching/Dumb-Pi.txt) | 8 x 77 |  | eight real digits, then it makes the rest up, forever |
+| [Nothing To See](Watching/Nothing-To-See.txt) | 10 x 45 |  | a paragraph of plain English insisting it does nothing. Column 29, read downward, is `'ircis.%!` |
+| [Lottery](Watching/Lottery.txt) | 5 x 21 |  | six numbers from 1 to 49, out of one bounded random |
 
-## Showing off
+## Decoding
 
-Programs that get somewhere the language was not built to go.
+Programs about how things are written down: words stored as numbers, the sum
+that turns a number back into a word, a count written out in binary, and the
+one program here that reads what you type.
 
 | Program | Size | Tag | What it does |
 |---|---|---|---|
-| `insult` | 4 x 73 |  | a grid of nothing but numbers, each decoding through base64 into a word |
-| `pi` | 6 x 77 |  | ten correct digits from Machin's formula, with 32-bit integers and no arrays |
-| `racetrack` | 15 x 80 | `~nm` | three runners, five random pit stops each, identical lanes and cancelling handicaps |
-| `dumbpi` | 8 x 77 |  | eight real digits, then it makes the rest up, forever |
-| `dice` | 9 x 28 |  | rolls, prints the number, then puts that many runners into a ring |
-| `race` | 10 x 32 | `~ns` | four runners with random handicaps, on one screen |
-| `morsedecode` | 28 x 96 |  | type dits and dahs on the top row, get the word back |
+| [Insult Machine](Decoding/Insult-Machine.txt) | 4 x 73 |  | a grid of nothing but numbers, each decoding through base64 into a word |
+| [Base 64](Decoding/Base-64.txt) | 14 x 75 |  | works out `HEADS` from its digit values by hand, then writes `'HEADS.` and gets the same number |
+| [Morse Decoder](Decoding/Morse-Decoder.txt) | 28 x 96 |  | type dits and dahs on the top row, get the word back |
+| [Binary](Decoding/Binary.txt) | 8 x 22 |  | binary, least significant bit first (from upstream IRCIS) |
 
 ## The morse decoder
 
-`morsedecode` is the binary tree from
-[101computing](https://www.101computing.net/morse-code-using-a-binary-tree/),
-in the array form: start at index 1, and for each symbol do
-`index = index*2 + bit`. Every code lands on its own number, and those numbers
-run 2 to 29, so the letters sit in the classic flattened order --
-`ETIANMSURWDKGOHVF+L+PJBXCYZQ`. The answer is the index-th one.
+[Morse Decoder](Decoding/Morse-Decoder.txt) (Decoding) is the binary tree
+from
+[101computing](https://www.101computing.net/morse-code-using-a-binary-tree/), in
+the array form: start at index 1, and for each symbol do `index = index*2 +
+bit`. Every code lands on its own number, and those numbers run 2 to 29, so the
+letters sit in the classic flattened order -- `ETIANMSURWDKGOHVF+L+PJBXCYZQ`.
+The answer is the index-th one.
 
 The whole of row 0 is the input, and the three rows under it say what to type.
 The runner never reads them: it comes down the right-hand end of row 0 and falls
@@ -171,30 +183,34 @@ them:
 
 - **No branch.** If every outcome is at most five characters, a random draw can
   be turned into the answer with arithmetic and printed with `%`, which reads
-  the integer as base64. `coin` is one line and has no `?` in it.
-- **A branch that meets again.** `?` tests the top of the stack without popping,
-  so each arm has a leftover to drop. If an arm prints a *counted* number of
-  characters rather than looping until the stack runs dry, it comes out alive
-  and the arms can share a tail. `truefalse` does this.
+  the integer as base64. [Coin Flip](Deciding/Coin-Flip.txt) (Deciding) is one
+  line and has no `?` in it.
+- **A branch that meets again.** `?` tests the top of the stack without
+  popping, so each arm has a leftover to drop. If an arm prints a *counted*
+  number of characters rather than looping until the stack runs dry, it comes
+  out alive and the arms can share a tail. [True Or
+  False](Deciding/True-Or-False.txt) (Deciding) does this.
 - **A tree.** Two flips make four leaves. The leaves come out on four different
   columns, all to the left of where the printers start, so a leaf can fall past
-  the printers above it. `eightball` is the smallest example.
+  the printers above it. [Magic Eight Ball](Deciding/Magic-Eight-Ball.txt)
+  (Deciding) is the smallest example.
 - **A ladder.** One bounded random into a variable, then one test per outcome,
   each rung stepping it down. The widest of the four, and the one that scales
-  past four outcomes. `fortune` and five others.
+  past four outcomes. [Fortune](Deciding/Fortune.txt) (Deciding) walks one.
 
-`dogname` and `band` do it twice over: four firsts and four seconds give sixteen
-answers out of eight strings, which no single pick of four can manage.
+[Dog Name](Deciding/Dog-Name.txt) (Deciding) does it twice over: four firsts
+and four seconds give sixteen answers out of eight strings, which no single
+pick of four can manage.
 
 ## A fourth: put the text in the path
 
-`motto` has no text in it at all. Row 0 is a rule of `>` that the first runner
-walks east along; at each letter a `*` splits one runner downward, and that
-runner walks the shape of a letter. The strokes are blank cells -- a runner
-crossing a blank keeps going -- so only the turns need a character, and the
-letterform is the trajectory rather than the picture. The `~t` tag keeps every
-cell a runner has stood on tinted, so five letters get drawn at once and stay
-drawn.
+[Motto](Watching/Motto.txt) (Watching) has no text in it at all. Row 0 is a rule
+of `>` that the first runner walks east along; at each letter a `*` splits one
+runner downward, and that runner walks the shape of a letter. The strokes are
+blank cells -- a runner crossing a blank keeps going -- so only the turns need a
+character, and the letterform is the trajectory rather than the picture. The
+`~t` tag keeps every cell a runner has stood on tinted, so five letters get
+drawn at once and stay drawn.
 
 Two things constrain the shapes, and both are worth knowing before trying your
 own. `*` splits only towards a neighbour holding that direction's own arrow, so
@@ -210,15 +226,17 @@ Three of these give nothing away until you run them. Each hides its text a
 different way, and all three lean on `%`, which prints an integer as base64 --
 so a word can be carried as a number instead of as itself.
 
-- **`insult`** is a flat list of constants. Every word in the message is one
-  number, printed in order, and the grid holds nothing but digits.
-- **`dogname`** does the same, but which constants get printed is decided by
-  two coin flips, so it hides sixteen answers rather than one. You can see it
-  choosing; you cannot see what it is choosing between.
-- **`warning`** does not even write the constants down. Each is stored as a
-  quotient and a remainder and multiplied back out at run time, so the numbers
-  you can read are not the numbers being printed. It is the longest and busiest
-  program in the set, and it announces that it does nothing.
+- [Insult Machine](Decoding/Insult-Machine.txt) (Decoding) is a flat list
+  of constants. Every word in the message is one number, printed in order, and
+  the grid holds nothing but digits. - [Dog Name](Deciding/Dog-Name.txt)
+  (Deciding) does the same, but which constants get printed is decided by two
+  coin flips, so it hides sixteen answers rather than one. You can see it
+  choosing; you cannot see what it is choosing between. -
+  [Warning](Talking/Warning.txt) (Talking) does not even write the constants
+  down. Each is stored as a quotient and a remainder and multiplied back out at
+  run time, so the numbers you can read are not the numbers being printed. It is
+  the longest and busiest program in the set, and it announces that it does
+  nothing.
 
 One catch worth knowing if you try it: `%` strips leading zeros, and in base64
 zero is the letter `A`. A chunk beginning with `A` comes out a character short,
@@ -229,8 +247,9 @@ which is why the dog is no longer called Admiral.
 Most are the same shape: a counter in a global, a body that runs east along one
 row and back west along the next, and a `?` that drops into an exit lane when
 the counter reaches zero. Reading a westward row means reading it right to left,
-which is why those rows look like `^?.N&.-'.N@.1'<`. `gaps` is the exception --
-its counter climbs and the test is against the limit.
+which is why those rows look like `^?.N&.-'.N@.1'<`. [Sevens Plus
+One](Counting/Sevens-Plus-One.txt) (Counting) is the exception -- its counter
+climbs and the test is against the limit.
 
 Two things worth knowing if you write your own:
 
@@ -241,7 +260,9 @@ Two things worth knowing if you write your own:
 
 ## Credit
 
-`binary` is from [Arjun Nair's IRCIS](https://github.com/batman-nair/IRCIS)
-unchanged. `racetrack` began as his example too, but is a rebuild rather than
-his file -- his is 19 x 70, this one is 15 x 80 to fill the screen in WIDE, and
-the lanes were reworked so the race is actually fair. The rest are new.
+[Binary](Decoding/Binary.txt) (Decoding) is from [Arjun Nair's
+IRCIS](https://github.com/batman-nair/IRCIS) unchanged.
+[Racetrack](Watching/Racetrack.txt) (Watching) began as his example too,
+but is a rebuild rather than his file -- his is 19 x 70, this one is 15 x 80 to
+fill the screen in WIDE, and the lanes were reworked so the race is actually
+fair. The rest are new.

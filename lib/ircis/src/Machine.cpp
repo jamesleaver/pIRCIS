@@ -56,7 +56,9 @@ namespace ircis {
       }
       else {
         Logger::log_line("Runner ", r.get_id(), " died.");
-        deaths_.push_back({r.get_id(), step_number_, r.steps_taken(), r.error()});
+        deaths_.push_back({r.get_id(), step_number_, r.steps_taken(), r.error(),
+                           static_cast<int>(r.position().get_y()),
+                           static_cast<int>(r.position().get_x())});
         dead_runner_steps_ += r.steps_taken();
         stack_ub_reads_ += r.stack().ub_reads();
         runner_list_.erase(runner_list_.begin() + i);
@@ -73,7 +75,12 @@ namespace ircis {
     }
 
     if (!keep_moving) {
-      log_->print_line(" ");
+      // Upstream prints a space and a newline here, which on a terminal puts
+      // a blank line after the run. Here the output is a buffer that the
+      // screen, the saved file and the web page all show, and for a program
+      // whose output already ended in a newline it became a second, blank
+      // line that appeared the moment the run finished and moved everything
+      // above it. The program's own output is left exactly as it printed it.
       Logger::log_line_dbg("Ircis has finished running!");
       finished_ = true;
     }

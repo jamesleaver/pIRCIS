@@ -73,15 +73,15 @@ namespace prog {
       built = true;
       builtOpen = pack::isOpen();
     }
-    if (index < 0 || index >= 1 + kExampleCount) index = kFirstExample;
+    if (index < 0 || index >= 1 + kExampleCount) index = kOpeningExample;
     return cache[index];
   }
 
   int programCount() { return 1 + kExampleCount; }
 
   void Program::loadProgram(int index) {
-    if (index < 0 || index >= programCount()) index = kFirstExample;
-    if (index == kPackedIndex && !pack::isOpen()) index = kFirstExample;
+    if (index < 0 || index >= programCount()) index = kOpeningExample;
+    if (index == kPackedIndex && !pack::isOpen()) index = kOpeningExample;
     prog_ = index;
     name_.clear();                       // back to the table's own name
     const ProgramDef& d = programAt(prog_);

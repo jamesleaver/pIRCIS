@@ -156,14 +156,18 @@ int  g_visitCols = 0;
     // neither is worth a line. Anything else is a real fault and is the only
     // explanation the interpreter will ever give for it.
     g_snap.deathNoteCount = 0;
+    g_snap.deathNoteTotal = 0;
     for (const auto& d : g_machine->deaths()) {
-      if (g_snap.deathNoteCount >= kMaxDeathNotes) break;
       if (d.error.empty() ||
           d.error == "End character reached" ||
           d.error == "Runner went outside grid") continue;
+      ++g_snap.deathNoteTotal;
+      if (g_snap.deathNoteCount >= kMaxDeathNotes) continue;
       DeathNote& note = g_snap.deathNotes[g_snap.deathNoteCount++];
       note.id   = (int8_t)d.runner_id;
       note.step = d.step;
+      note.row  = (int16_t)d.row;
+      note.col  = (int16_t)d.col;
       std::strncpy(note.why, d.error.c_str(), sizeof(note.why) - 1);
       note.why[sizeof(note.why) - 1] = 0;
     }
@@ -212,6 +216,10 @@ int  g_visitCols = 0;
   // half a minute and you can still see where the runners are.
   // Steps per slice, and how long the run task sleeps between slices. One step
   // per slice is what makes SLOW and FAST watchable: the pause is the point.
+  // Set while the UI is drawing, so the machine waits for the picture rather
+  // than running on behind it.
+  volatile bool g_held = false;
+
   uint32_t budgetFor(Speed s) {
     switch (s) {
       case Speed::Slow:  return 1;
@@ -269,8 +277,8 @@ int  g_visitCols = 0;
         setEvent(buf);
         plat::logf("\n[run] finished at step %u\n", (unsigned)g_machine->step_number());
         for (const auto& e : d)
-          plat::logf("[run] runner %d died at step %u: %s\n",
-                     e.runner_id, (unsigned)e.step, e.error.c_str());
+          plat::logf("[run] runner %d died at step %u, row %d col %d: %s\n",
+                     e.runner_id, (unsigned)e.step, e.row, e.col, e.error.c_str());
         return;
       }
     }
@@ -391,13 +399,13 @@ int  g_visitCols = 0;
       }
 
       Speed sp = g_speed;   // single byte; volatile read is enough on both targets
-      if (g_running) {
+      if (g_running && !g_held) {
         const uint32_t n = easedBudget(sp);
         runSteps(n);
         if (g_sinceStart < kEaseSteps) g_sinceStart += n;
       }
       publish();
-      plat::taskYield(g_running ? easedDelay(sp) : 20);
+      plat::taskYield(g_running && !g_held ? easedDelay(sp) : 5);
     }
   }
 }
@@ -464,4 +472,6 @@ int  g_visitCols = 0;
 
   std::vector<GlobalVar> globals() { plat::Guard g(g_mutex); return g_globals; }
   std::vector<Chunk> chunks() { plat::Guard g(g_mutex); return g_chunks; }
+
+  void hold(bool on) { g_held = on; }
 }

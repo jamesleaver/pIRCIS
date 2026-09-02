@@ -90,6 +90,12 @@ bool CydDisplay::beginTouch(bool force_recalibrate) {
   drawString("tap each corner marker", width() / 2, height() / 2 + 4);
   calibrateTouch(params, theme::accent, theme::bg, 20);
   Store::saveTouchCalibration(params);
+  // The prompt stayed up while the rest of start-up ran behind it, asking
+  // for corners that had already been tapped. Say what is happening instead.
+  fillScreen(theme::bg);
+  setTextColor(theme::dim, theme::bg);
+  drawString("Loading", width() / 2, height() / 2);
+  setTextDatum(textdatum_t::top_left);
   return true;
 }
 

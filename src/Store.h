@@ -87,6 +87,12 @@ namespace Store {
   void startPoint(int& col, int& row, char& dir);
   void setStartPoint(int col, int row, char dir);
 
+  // Type into the grid from a real keyboard instead of the on-screen one,
+  // which then takes no room and the program gets those rows. Only means
+  // anything where plat::haveKeyboard() is true -- the emulator, today.
+  bool hardwareKeys();
+  void setHardwareKeys(bool on);
+
   // Show the step-back / step-forward buttons on the RUN transport. A reader's
   // setting like GRID TAP, not a property of the program, so loading one does
   // not turn it off.
@@ -95,6 +101,8 @@ namespace Store {
 
   // Keep every cell a runner has stood on tinted, so the path builds up on
   // screen instead of fading. Off by default; the '~t' view tag turns it on.
+  bool followRunners();
+  void setFollowRunners(bool on);
   bool tracePath();
   void setTracePath(bool on);
 

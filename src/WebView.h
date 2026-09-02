@@ -29,4 +29,6 @@ namespace web {
   bool running();
   bool available();
   std::string ipAddress();
+  // When a browser last asked for a page, in plat::millis() terms; 0 if never.
+  uint32_t lastServedMs();
 }

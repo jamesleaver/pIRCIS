@@ -40,6 +40,9 @@ namespace ircis {
     uint32_t step;
     unsigned long runner_steps;
     std::string error;
+    // Where it was standing when it died. Added for pIRCIS: the interpreter
+    // does not use it, and recording it does not change how anything runs.
+    int row = -1, col = -1;
   };
 
   // Was Ircis::Ircis. Steps all runners; returns false once all are dead.

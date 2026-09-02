@@ -77,7 +77,10 @@ namespace run {
   struct DeathNote {
     int8_t   id;
     uint32_t step;
-    char     why[40];
+    int16_t  row, col;        // where it was standing
+    // The longest message the interpreter produces is 56 characters, and a
+    // truncated reason is worse than useless when it is the only clue there is.
+    char     why[64];
   };
 
   struct Snapshot {
@@ -94,6 +97,9 @@ namespace run {
     unsigned long ubReads = 0;
     char     lastEvent[56] = {0};
     uint8_t   deathNoteCount = 0;
+    // Faults in total, which can exceed the notes kept, so the panel can say
+    // how many it is not showing rather than how many it had room to store.
+    uint16_t  deathNoteTotal = 0;
     DeathNote deathNotes[kMaxDeathNotes] = {};
   };
 
@@ -118,6 +124,12 @@ namespace run {
 
   void cmdRun();
   void cmdPause();
+  // Stop stepping while the screen is being repainted. At SLOW and MEDIUM a
+  // full repaint takes longer than the gap between steps, so the runners moved
+  // several cells behind the picture being drawn and could not be followed --
+  // which is the whole point of those speeds. Held, not paused: the transport
+  // and the tab glyph do not change.
+  void hold(bool on);
   void cmdStep(uint32_t steps);
   void cmdReset();
   // Rewind one step. The interpreter has no undo, so this rebuilds the machine

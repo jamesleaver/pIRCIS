@@ -68,25 +68,28 @@ static constexpr int kBodyH   = kTabY - kHeaderH;
 
 // Two ways to look at a program too wide to read whole.
 //
-// WIDE shows 80 columns in one unbroken block, so a runner crossing the middle
-// does not jump between blocks. Eighty is what the panel gives at a legible
-// pitch -- 80 x 6 = 480 exactly -- and the `<` and `>` buttons shift the window
-// so a wider program's remaining columns can still be reached.
-static constexpr int kWideCols  = 80;
+// WIDE shows as many columns as fit in one unbroken block, so a runner
+// crossing the middle does not jump between blocks. The edge bars shift the
+// window so a wider program's remaining columns can still be reached.
+// Scrolling is done with bars along the edges of the program. A bar is drawn
+// over the outermost row or column, and only when there is something that way
+// to reach -- so the row it covers is the one you are scrolling away from, and
+// a program with nowhere to go shows every row it has.
+static constexpr int kEdgeBar   = 16;
 static constexpr int kWideCellW = 6;     // built-in font, its natural 1 px gap
 static constexpr int kWideCellH = 15;
-static constexpr int kWideX     = (kScreenW - kWideCols * kWideCellW) / 2;
-static constexpr int kWideY     = kHeaderH + 3;   // tight under the status bar
-static constexpr int kWideH     = 11 * kWideCellH;
+static constexpr int kWideCols  = kScreenW / kWideCellW;                    // 80
+// Level with the editor's grid, so the program does not shift by a pixel when
+// you move between the two pages.
+static constexpr int kWideY     = kHeaderH + 4;
 
-// ZOOM gives up fitting the width and makes the text big instead: 34 columns
-// at a time, panned by dragging or by following a runner. This is the
-// view for reading the program carefully, so it owns the whole body and the
-// cells are generously spaced -- FreeMono12pt (regular, not bold) at a 14 px
-// pitch leaves 4-5 px between letters instead of them crowding.
-static constexpr int kZoomCellW = 14;
-static constexpr int kZoomCellH = 23;
-static constexpr int kZoomCols  = kScreenW / kZoomCellW;      // 34
-static constexpr int kZoomX     = (kScreenW - kZoomCols * kZoomCellW) / 2;
-static constexpr int kZoomY     = kHeaderH + (kBodyH - 11 * kZoomCellH) / 2;
-static constexpr int kZoomH     = 11 * kZoomCellH;
+// ZOOM gives up fitting the width and makes the text big instead: a quarter of
+// the columns at a time, panned by the edge bars or by following a runner. This
+// is the view for reading the program carefully: FreeMono12pt (regular, not
+// bold) in a cell wide enough to tap.
+// The zoomed cell is the same on RUN and on EDIT. It is sized to be tapped,
+// which the editor needs, and using one size means a program does not change
+// size when you move between the two pages.
+static constexpr int kZoomCellW = 24;
+static constexpr int kZoomCellH = 26;
+static constexpr int kZoomCols  = kScreenW / kZoomCellW;                   // 34

@@ -18,6 +18,9 @@
 
 #include "App.h"
 
+#include <cstdio>
+#include <cstdlib>
+
 // Mirrors lgfx::Panel_sdl::main(), with one addition: that helper pumps SDL
 // until every window is closed, so a `quit` from the console would end the
 // user thread and leave the window up with nothing driving it. Here the
@@ -29,6 +32,11 @@ static int userFunc(bool* running) {
 }
 
 int main(int, char**) {
+  // LovyanGFX's SDL panel takes r and l to rotate the window and 1-6 to scale
+  // it, with no modifier at all, so typing an r into a program spun the screen.
+  // Putting them behind the left alt key gives the characters back and keeps
+  // the shortcuts for anyone who wants them.
+  lgfx::Panel_sdl::setShortcutKeymod(KMOD_LALT);
   if (lgfx::Panel_sdl::setup() != 0) return 1;
 
   bool running = true;
@@ -38,7 +46,13 @@ int main(int, char**) {
 
   running = false;
   SDL_WaitThread(thread, nullptr);
-  return lgfx::Panel_sdl::close();
+  const int rc = lgfx::Panel_sdl::close();
+  // The console reader is a detached thread sitting in a blocking read. Coming
+  // out of main runs the static destructors underneath it, and the next thing
+  // it touches is a mutex that no longer exists, which aborts on the way out.
+  // Nothing is left to write by this point, so leave without them.
+  std::fflush(nullptr);
+  std::_Exit(rc);
 }
 
 #endif

@@ -86,18 +86,18 @@ mkdir -p "$SHOTS/gifs"
 
 # The banner first: motto draws IRCIS by walking it, which is the one clip
 # that explains the language and the device in the same breath.
-gif motto     Talking/Motto           medium 64 0.30 "$SHOTS"
-gif hello     Counting/Hello-World    medium 46 0.16 "$SHOTS"
+gif motto     Watching/Motto           medium 64 0.30 "$SHOTS"
+gif hello     Talking/Hello-World    medium 46 0.16 "$SHOTS"
 gif spiral    Watching/Spiral         medium 60 0.16 "$SHOTS"
 # These run for a few hundred steps. At FULL the run is over before the first
 # frame lands and the clip is a still of the output; at MEDIUM with wider
 # spacing the whole run fits and the last frames are the result.
 gif clock     Deciding/Dumb-Clock     medium 64 0.20 "$SHOTS/gifs"
-gif dice      Showing-off/Dice-Roll   medium 64 0.20 "$SHOTS/gifs"
-gif race      Showing-off/Race        medium 72 0.20 "$SHOTS/gifs"
-gif racetrack Showing-off/Racetrack   medium 80 0.22 "$SHOTS/gifs"
+gif dice      Watching/Dice-Roll   medium 64 0.20 "$SHOTS/gifs"
+gif race      Watching/Race        medium 72 0.20 "$SHOTS/gifs"
+gif racetrack Watching/Racetrack   medium 80 0.22 "$SHOTS/gifs"
 
-still hello_out  "$SHOTS" "     progload Counting/Hello-World" "     speed full" "0.3  tap 48 306" "3    tap 144 306" "1    shot shot.ppm"
+still hello_out  "$SHOTS" "     progload Talking/Hello-World" "     speed full" "0.3  tap 48 306" "3    tap 144 306" "1    shot shot.ppm"
 still programs   "$SHOTS" "     tap 336 306" "1    shot shot.ppm"
 # and one level in, so the folders are shown doing something
 still folder     "$SHOTS" "     tap 336 306" "0.6  tap 240 115" "1    shot shot.ppm"
@@ -105,7 +105,7 @@ still editor     "$SHOTS" "     tap 240 306" "1    shot shot.ppm"
 still editor_abc "$SHOTS" "     tap 240 306" "0.4  tap 240 306" "1    shot shot.ppm"
 still system     "$SHOTS" "     tap 432 306" "1    shot shot.ppm"
 # A grid with no readable text in it at all.
-still insult     "$SHOTS" "     progload Showing-off/Insult-Machine" "1    shot shot.ppm"
+still insult     "$SHOTS" "     progload Decoding/Insult-Machine" "1    shot shot.ppm"
 # The run history: three programs, then step back through them.
 still history    "$SHOTS" "     progload Counting/Countdown" "     speed full" "0.3  tap 48 306" \
                           "1.5  progload Deciding/Coin-Flip" "     speed full" "0.3  tap 48 306" \

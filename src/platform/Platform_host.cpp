@@ -9,6 +9,8 @@
 
 #include "Platform.h"
 
+#include <SDL.h>
+
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -307,8 +309,100 @@ bool progWrite(Where w, const std::string& name, const std::string& text) {
 
 bool progDelete(Where w, const std::string& name) {
   if (!safeName(name) || !progStoreReady(w)) return false;
-  return ::remove((progDir(w) + "/" + name + ".txt").c_str()) == 0;
+  const bool ok = ::remove((progDir(w) + "/" + name + ".txt").c_str()) == 0;
+  // The folder goes with its last program; rmdir on a non-empty one fails.
+  const std::size_t slash = name.find('/');
+  if (ok && slash != std::string::npos)
+    ::rmdir((progDir(w) + "/" + name.substr(0, slash)).c_str());
+  return ok;
 }
+
+
+// --- the keyboard the emulator is sitting on ------------------------------
+//
+// LovyanGFX's SDL panel pumps the event queue itself and only maps keys to
+// GPIO pins, so text never reaches us. SDL_AddEventWatch sees each event as it
+// is posted without consuming it, which leaves the panel's own handling alone.
+namespace {
+  std::mutex        g_keyMx;
+  std::vector<char> g_keys;          // small enough that a vector is a queue
+
+  void pushKey(char c) {
+    std::lock_guard<std::mutex> g(g_keyMx);
+    if (g_keys.size() < 64) g_keys.push_back(c);
+  }
+
+  int keyWatch(void*, SDL_Event* e) {
+    if (e->type == SDL_TEXTINPUT) {
+      for (const char* p = e->text.text; *p; ++p)
+        if (*p >= 0x20 && *p < 0x7f) pushKey(*p);
+    }
+    else if (e->type == SDL_KEYDOWN) {
+      const SDL_Keymod m = (SDL_Keymod)e->key.keysym.mod;
+      const bool chord = (m & (KMOD_CTRL | KMOD_GUI)) != 0;   // ctrl or cmd
+      const bool shift = (m & KMOD_SHIFT) != 0;
+      if (chord) {
+        // A chord never produces SDL_TEXTINPUT, so these cannot collide with
+        // a character being typed into the grid.
+        switch (e->key.keysym.sym) {
+          case SDLK_s: pushKey(kKeySave); break;
+          case SDLK_z: pushKey(shift ? kKeyRedo : kKeyUndo); break;
+          case SDLK_y: pushKey(kKeyRedo); break;
+          case SDLK_r: pushKey(kKeyRun);  break;
+          case SDLK_n: pushKey(kKeyName); break;
+          case SDLK_g: pushKey(kKeyZoom); break;
+          case SDLK_v: pushKey(kKeyPaste); break;
+          // Cmd-Shift-? is the question mark, which is the same symbol as the
+          // editor's help button. Reaches the shortcut list from the one page
+          // where a bare key cannot, because there they go into the program.
+          case SDLK_SLASH:
+          case SDLK_QUESTION: if (shift) pushKey(kKeyHelp); break;
+          default: break;
+        }
+        return 1;
+      }
+      switch (e->key.keysym.sym) {
+        case SDLK_BACKSPACE: pushKey('\b'); break;
+        case SDLK_RETURN:    pushKey('\r'); break;
+        case SDLK_UP:        pushKey(kKeyUp); break;
+        case SDLK_DOWN:      pushKey(kKeyDown); break;
+        case SDLK_LEFT:      pushKey(kKeyLeft); break;
+        case SDLK_RIGHT:     pushKey(kKeyRight); break;
+        case SDLK_TAB:       pushKey(shift ? kKeyBack : kKeyTab); break;
+        case SDLK_ESCAPE:    pushKey(kKeyEsc); break;
+        case SDLK_F1:        pushKey(kKeyHelp); break;
+        // Space is left to SDL_TEXTINPUT, which delivers it as an ordinary
+        // 0x20. Pushing it here as well would insert it twice. The UI decides
+        // what a space means: a blank in the grid, a press anywhere else.
+        default: break;
+      }
+    }
+    return 1;                        // 1 keeps the event in the queue
+  }
+}
+
+char pollKey() {
+  static bool armed = false;
+  if (!armed) { armed = true; SDL_AddEventWatch(keyWatch, nullptr); SDL_StartTextInput(); }
+  std::lock_guard<std::mutex> g(g_keyMx);
+  if (g_keys.empty()) return 0;
+  const char c = g_keys.front();
+  g_keys.erase(g_keys.begin());
+  return c;
+}
+
+void injectKey(char c) { pushKey(c); }
+
+std::string clipboard() {
+  if (!SDL_HasClipboardText()) return std::string();
+  char* p = SDL_GetClipboardText();
+  if (!p) return std::string();
+  std::string s(p);
+  SDL_free(p);
+  return s;
+}
+
+bool haveKeyboard() { return true; }
 
 
 namespace { bool g_powerOff = false; }

@@ -39,7 +39,8 @@ namespace prog {
   // Index 0 comes from the content pack. While the pack is closed there is no
   // such program: it is absent from the list and cannot be loaded.
   constexpr int kPackedIndex = 0;
-  // The first program that is always available.
+  // The first program that is always available. Everything from here to
+  // programCount() is a bundled one, which is what iterating them means.
   constexpr int kFirstExample = 1;
   // A program the user built here rather than one from the table. It has no
   // baseline to revert to, so every cell starts and reverts to '.' (blank).
@@ -76,7 +77,7 @@ namespace prog {
   // revertible because the baseline can never be overwritten.
   class Program {
   public:
-    Program() { loadProgram(pack::isOpen() ? kPackedIndex : kFirstExample); }
+    Program() { loadProgram(pack::isOpen() ? kPackedIndex : kOpeningExample); }
 
     // Swap in a different program. Discards any edits: they are expressed as
     // offsets into a specific baseline and mean nothing against another one.

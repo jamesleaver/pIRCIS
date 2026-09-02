@@ -61,8 +61,11 @@ sleep 2.5
 # below moves to a DIFFERENT tab. Do not "re-select" the current one.
 default_scene() {
   cat <<'SCENE'
-# The welcome dialog is up at power-on; capture it, then tap it away.
-1    shot 00a_splash.ppm
+# The welcome dialog is up at power-on; capture it, then tap it away. The wait
+# is generous because this is the first frame after start-up: the program is
+# still being loaded behind the panel, and catching it mid-load made this shot
+# differ every few runs.
+2    shot 00a_splash.ppm
      tap 240 160
      speed slow
 1    shot 00_locked_run.ppm
@@ -86,8 +89,54 @@ default_scene() {
 1    shot 00f_locked_done.ppm
      tap 144 306
 1    shot 00g_locked_out.ppm
+# A program wider and taller than the window (Decoding > Morse-Decoder, its fourth entry,
+# 28 x 96), on both pages and in both views. The pairs are also compared band
+# for band below: the program has to land on the same pixels whichever page is
+# showing it. PROG is still inside the folder the earlier steps opened, so
+# Back first.
+     tap 336 306
+     tap 360 63
+     tap 240 141
+     tap 240 167
+1    reset
+1    shot 01_wide_run.ppm
+     tap 240 306
+1    shot 01_wide_edit.ppm
+     tap 253 11
+1    shot 02_zoom_edit.ppm
+     tap 48 306
+1    shot 02_zoom_run.ppm
+     tap 466 120
+1    shot 03_zoom_run_right.ppm
+     tap 240 306
+1    shot 03_zoom_edit_right.ppm
 1.5  quit
 SCENE
+}
+
+# The program band (between the header and the readout or keyboard) of a RUN
+# shot and the EDIT shot taken straight after it. They may differ in one cell
+# only -- the runner on one page, the cursor on the other -- so every
+# differing pixel has to fit inside a single cell's rectangle.
+same_band() {
+  python3 - "$1" "$2" <<'PYCHK'
+import re, sys
+def load(p):
+    f = open(p, 'rb').read()
+    m = re.match(rb'P6\s+(\d+)\s+(\d+)\s+(\d+)\s', f)
+    return f, int(m.group(1)), m.end()
+a, w, oa = load(sys.argv[1]); b, _, ob = load(sys.argv[2])
+xs, ys = [], []
+for y in range(26, 209):
+    for x in range(w):
+        i, j = oa + (y * w + x) * 3, ob + (y * w + x) * 3
+        if a[i:i+3] != b[j:j+3]: xs.append(x); ys.append(y)
+if not xs: sys.exit(0)
+bw, bh = max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+if bw <= 24 and bh <= 26: sys.exit(0)
+print("    differences span %dx%d px, more than one cell" % (bw, bh))
+sys.exit(1)
+PYCHK
 }
 
 # Each line is "<delay> <command>" or just "<command>".
@@ -152,6 +201,14 @@ else
       echo "  FAIL  $f differs"
       cp "$f" "$GOLD/../ui_actual_$f"
       status=1
+    fi
+  done
+  for pair in "01_wide_run 01_wide_edit" "02_zoom_run 02_zoom_edit" \
+              "03_zoom_run_right 03_zoom_edit_right"; do
+    set -- $pair
+    if [ -f "$1.ppm" ] && [ -f "$2.ppm" ]; then
+      if same_band "$1.ppm" "$2.ppm"; then echo "  ok    $1 = $2 (program band)"
+      else echo "  FAIL  $1 and $2 show the program differently"; status=1; fi
     fi
   done
   [ $status -eq 0 ] && echo "UI regression passed (${#shots[@]} screens)" \

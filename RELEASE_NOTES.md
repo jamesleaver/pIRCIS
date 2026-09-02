@@ -1,7 +1,7 @@
-# pIRCIS 1.2.0
+# pIRCIS 1.3.0
 
-Sixty-eight programs instead of twenty-two, folders to find them in, and a
-long list of small fixes to things that were quietly annoying.
+The screen stopped flickering, the two program pages became one program,
+and a learning guide arrived.
 
 ## Flash it without building it
 
@@ -11,7 +11,7 @@ image. All you need is [esptool](https://pypi.org/project/esptool/):
 
 ```bash
 shasum -a 256 -c SHA256SUMS
-unzip pircis-1.2.0-st7796.zip && cd pircis-1.2.0-st7796
+unzip pircis-1.3.0-st7796.zip && cd pircis-1.3.0-st7796
 ./flash.sh /dev/cu.usbserial-XXXX
 ```
 
@@ -23,51 +23,67 @@ The `ili9488` archive still has not been run on hardware — development is on
 an ST7796, the only board I have. If you have the other one I would be glad
 to hear whether it works.
 
-## Programs are in folders now
+## A guide to IRCIS
 
-**PROG** opens on Counting, Talking, Deciding, Watching and Showing-off, each
-saying how many are inside. Sixty-eight in one alphabetical list was twelve
-screens of scrolling. They are real directories on both the device and the
-card, so the folders you see on the board are the folders you see on a
-computer. Your own saved programs are left where they are.
+[LEARN.md](LEARN.md) teaches the language from the first runner to a worked
+reading of a whole program, in twenty short sections. Every example in it is
+run against the interpreter before a release, so what it says a program
+prints is what it prints. It names the bundled programs the way the device
+does and says which folder each is in.
 
-## Forty-six new programs
+## RUN and EDIT show the same program
 
-Worth a look:
+They used to be two layouts of the same thing, a few pixels and a row apart,
+with their own zoom. Now there is one: switch between them and nothing moves,
+including the ZOOM button. ZOOM is the same size on both, small arrows on the
+grid's edges scroll a program larger than the window, and FOLLOW RUNNER works
+in both views. Opening EDIT pauses the run, and nothing in a running program
+can be edited until it is paused.
 
-- **Morse Decoder** — type dits and dahs, get a word back. It walks a binary
-  tree for each letter.
-- **Pi** — ten correct digits out of Machin's formula, in a language with
-  32-bit integers and no arrays.
-- **Motto** — draws IRCIS on the screen by walking the shape of the letters,
-  then prints what it stands for.
-- **Insult Machine**, **Dog Name** and **Warning** give nothing away until you
-  run them: there is not a readable word in any of their grids.
+## Faster, and without the flicker
 
-**Racetrack** is rebuilt to fill the screen, and the race is now actually
-fair — the lanes are identical and the handicaps cancel out.
+The program is drawn a row at a time from memory rather than a cell at a
+time to the panel, and each frame is one transaction on the bus, so a page
+arrives instead of crawling in. What changes is what gets repainted: a new
+character on OUT redraws one line, a toggle on SYS redraws one tile, a
+keystroke in a dialog redraws the value, a page turn redraws the page inside
+its frame. The rule between the program and its output no longer blinks on
+every character printed, and the output no longer jumps up a line when a run
+finishes.
+
+## The programs
+
+Sixty-one now, in five folders named for what you are there to do:
+Counting, Deciding, Decoding, Talking and Watching. Showing-off has gone, its
+contents sorted into the others, and nine programs that were the same idea
+as another have gone too.
+
+- **Two Dimensions**, **Greeting** and **Advice** read their strings along a
+  snake, a square wave and a spiral, to show that a runner reads a program
+  along whatever path it is given.
+- **Bounce** bounces, **Comb** has teeth, **Four Ways** splits four ways, and
+  **Serpent** is no longer Snake again. Each checked against the interpreter's
+  visit map.
+- **Decoding** is new: Insult Machine, Base 64, Morse Decoder and Binary.
 
 ## Everything else
 
-- The last ten runs are kept. Step back through them with `<` and `>` on OUT.
-- A view tag, `~t`, keeps the runners' path on screen instead of letting it
-  fade. That is what makes Motto legible, and it suits the watchers too.
-- Step buttons have a switch of their own in SYS, and stay on when you load
-  another program.
-- **CHECK TOUCH** measures your calibration and then offers to redo it. It
-  used to only measure one you had already thrown away.
-- **PROG** will write the current speed and view into the program as a tag.
-- **DIAGNOSTICS** stays live while you look at it, and now says why a runner
-  died if it died of anything other than reaching `!` or leaving the grid.
+- The WIFI tile says when a browser last asked for a page.
+- CONFIRM reads WORKING while a slow action runs, so deleting a program no
+  longer looks like a hang.
+- The calibration prompt gives way to "Loading" once the corners are tapped.
+- The SETS page holds still while a run is going.
 
 ## Fixed
 
-- You could not scroll to the last line of a tall program in ZOOM. The
-  readout was drawn over the rows that were missing.
-- **RUN TO END** gives up after five million steps, and said nothing about
-  it — indistinguishable from a program that finished.
-- An empty PROG page said nothing at all, not even that RESTORE BUILT-INS
-  exists.
-- Typing in the editor rebuilt the whole program on every keystroke.
-- The RUN page now says when the cell your program starts on is blank, which
-  is the commonest reason a first program does nothing.
+- The first cell of every run was never shown: the runner appeared at its
+  second step.
+- A program that asks to start somewhere other than the top-left corner
+  sometimes started there anyway.
+- The scroll arrows' touch targets reached off the edge of the panel, where
+  no finger is, so a tap on one often landed on the character underneath.
+- The inspector's buttons could not be pressed at all on a program shorter
+  than six rows.
+- Programs that moved folder left their old copies behind on the device.
+- The trailing space and newline the interpreter printed at the end of a run
+  no longer go into the output.

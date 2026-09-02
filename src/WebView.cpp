@@ -336,8 +336,10 @@ std::string renderPage(const std::string& path, const std::string& query,
 }
 
 namespace {
+  uint32_t g_lastServedMs = 0;
   std::string hookPage(const std::string& path, const std::string& query,
                        const std::string& body, bool post) {
+    g_lastServedMs = plat::millis();
     return renderPage(path, query, body, post);
   }
 }
@@ -368,6 +370,7 @@ void tick() {
   plat::webTick();
 }
 
+uint32_t lastServedMs() { return g_lastServedMs; }
 bool running() { return g_running; }
 bool available() { return plat::webAvailable(); }
 std::string ipAddress() { return g_ip; }

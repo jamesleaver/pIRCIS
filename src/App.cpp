@@ -61,6 +61,7 @@ void printHelp() {
 #if defined(SK_HOST)
     "\n  shot [file.ppm]                (emulator) dump the panel framebuffer\n"
     "  tap <x> <y>                    (emulator) synthetic touch\n"
+    "  key <char|name>                (emulator) synthetic keystroke\n"
     "  drag <dx>                      (emulator) pan the ZOOM view by dx px\n"
     "  quit                           (emulator) close the window"
 #endif
@@ -339,6 +340,28 @@ void handleCommand(std::string line) {
     int dy = std::atoi(line.c_str());
     ui::injectDragV(dy);
     plat::logf("dragged %d px vertically\n", dy);
+  }
+  // Same idea as `tap`: let a scene drive the keyboard paths with nobody at the
+  // keys. Names for the ones that have no character of their own.
+  else if (cmd == "key") {
+    const std::string v = nextToken(line);
+    static const struct { const char* name; char code; } kNamed[] = {
+      { "tab",   plat::kKeyTab },   { "backtab", plat::kKeyBack },
+      { "esc",   plat::kKeyEsc },   { "f1",      plat::kKeyHelp },
+      { "save",  plat::kKeySave },  { "undo",    plat::kKeyUndo },
+      { "redo",  plat::kKeyRedo },  { "run",     plat::kKeyRun },
+      { "up",    plat::kKeyUp },    { "down",    plat::kKeyDown },
+      { "left",  plat::kKeyLeft },  { "right",   plat::kKeyRight },
+      { "space", ' ' },             { "enter",   '\r' },
+      { "back",  '\b' },
+      { "name",  plat::kKeyName }, { "zoom", plat::kKeyZoom },
+      { "paste", plat::kKeyPaste },
+    };
+    char code = 0;
+    for (const auto& n : kNamed) if (v == n.name) { code = n.code; break; }
+    if (!code && v.size() == 1) code = v[0];
+    if (!code) plat::logln("usage: key <char|tab|esc|f1|save|undo|redo|run|up|down|left|right|space|enter|back>");
+    else plat::injectKey(code);
   }
   else if (cmd == "tap") {
     // Emulator only: synthesise a touch, so screens can be driven from a script.

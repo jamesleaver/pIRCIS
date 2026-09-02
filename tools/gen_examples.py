@@ -20,117 +20,44 @@ SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
     os.path.dirname(__file__), "..", "lib", "program", "src", "Examples.h")
 
-# name shown on the device -> source file
-WANTED = [
-    ("Hello World",   "hello.txt"),
-    ("Countdown",     "countdown.txt"),
-    ("Count to 20",   "count.txt"),
-    ("Odd Numbers",   "odds.txt"),
-    ("Even Numbers",  "evens.txt"),
-    ("Threes",        "threes.txt"),
-    ("Seven Times",   "times7.txt"),
-    ("Squares",       "squares.txt"),
-    ("Cubes",         "cubes.txt"),
-    ("Doubling",      "powers2.txt"),
-    ("Halving",       "halving.txt"),
-    ("Running Total", "triangle.txt"),
-    ("Fibonacci",     "fib.txt"),
-    ("Binary",        "binary.txt"),
-    ("Dice Roll",     "dice.txt"),
-    ("Dumb Clock",    "clock.txt"),
-    ("Coin Flip",     "coin.txt"),
-    ("Lottery",       "lotto.txt"),
-    ("Race",          "race.txt"),
-    ("Spiral",        "spiral.txt"),
-    ("Snake",         "snake.txt"),
-    # Arjun Nair's own example, from IRCIS. Three runners round a track, the
-    # output being the order they finish in -- and the order is random.
-    ("Racetrack",     "racetrack.txt"),
+# Everything under programs/ is bundled, and the layout there is the layout on
+# the device: one directory per PROG folder, and a file per program named the
+# way the device names it. So the folder and the title are read off the tree
+# rather than kept in a list here that has to be remembered when a program is
+# added or moved. The device turns "Hello World" into Hello-World.txt; going the
+# other way is the same swap, hyphens back to spaces.
+# The program the device opens on, by the name it shows.
+OPENING = "Hello World"
 
-    # Added later: tables and conversions, one-of-N answers, printed
-    # reference cards, and a few that are only worth watching.
-    ("Nine Times",          "nines.txt"),
-    ("Eleven Times",        "elevens.txt"),
-    ("Oblong Numbers",      "oblong.txt"),
-    ("Fahrenheit",          "fahrenheit.txt"),
-    ("Backwards",           "backwards.txt"),
-    ("Divide 720",          "divisors.txt"),
-    ("Leftovers",           "leftover.txt"),
-    ("Down By Three",       "minusthree.txt"),
-    ("Doubles",             "doubles.txt"),
-    ("Quarters",            "quarters.txt"),
-    ("Sevens Plus One",     "gaps.txt"),
-    ("Halving 1024",        "halved.txt"),
-    ("True Or False",       "truefalse.txt"),
-    ("Morse A to M",        "morse1.txt"),
-    ("Morse N to Z",        "morse2.txt"),
-    ("SOS",                 "sos.txt"),
-    ("Greeting",            "greeting.txt"),
-    ("Advice",              "advice.txt"),
-    ("Excuse",              "excuse.txt"),
-    ("Motto",               "motto.txt"),
-    ("Warning",             "warning.txt"),
-    ("Quick Brown Fox",     "lorem.txt"),
-    ("Liquor Jugs",         "pangram.txt"),
-    ("Two Dimensions",      "esolang.txt"),
-    ("Magic Eight Ball",    "eightball.txt"),
-    ("Fortune",             "fortune.txt"),
-    ("Excuse Machine",      "excuses.txt"),
-    ("Weather",             "weather.txt"),
-    ("Horoscope",           "horoscope.txt"),
-    ("Compliment",          "compliment.txt"),
-    ("Mood",                "mood.txt"),
-    ("Lunch",               "lunch.txt"),
-    ("Dog Name",            "dogname.txt"),
-    ("Band Name",           "band.txt"),
-    ("Verdict",             "verdict.txt"),
-    ("More Advice",         "advice2.txt"),
-    ("Staircase",           "staircase.txt"),
-    ("Circuit",             "circuit.txt"),
-    ("Comb",                "comb.txt"),
-    ("Four Ways",           "fourways.txt"),
-    ("Serpent",             "serpent.txt"),
-    ("Bounce",              "bounce.txt"),
-    ("Pi",                   "pi.txt"),
-    ("Dumb Pi",              "dumbpi.txt"),
-    ("Insult Machine",       "insult.txt"),
-    ("Morse Decoder",        "morsedecode.txt"),
-]
 
-# Which folder each one is written into on the device. PROG shows these as
-# folders, so they are named for whoever is scrolling, not for the filesystem.
-# Anything not named here lands at the top level.
-FOLDER = {}
-for _fn in ("hello countdown count odds evens threes times7 nines elevens doubles "
-            "quarters gaps minusthree backwards squares cubes oblong triangle "
-            "powers2 halving halved divisors leftover fib fahrenheit binary").split():
-    FOLDER[_fn + ".txt"] = "Counting"
-for _fn in ("sos greeting lorem pangram esolang advice excuse motto warning "
-            "morse1 morse2").split():
-    FOLDER[_fn + ".txt"] = "Talking"
-for _fn in ("coin truefalse lotto clock eightball fortune excuses weather "
-            "horoscope compliment mood lunch verdict advice2 dogname band").split():
-    FOLDER[_fn + ".txt"] = "Deciding"
-for _fn in ("spiral bounce snake serpent staircase circuit comb fourways").split():
-    FOLDER[_fn + ".txt"] = "Watching"
-for _fn in ("insult pi racetrack dumbpi dice race morsedecode").split():
-    FOLDER[_fn + ".txt"] = "Showing-off"
+def title_of(leaf):
+    return leaf.replace("-", " ")
+
+
+def programs_on_disk():
+    out = []
+    for folder in sorted(os.listdir(SRC)):
+        d = os.path.join(SRC, folder)
+        if not os.path.isdir(d):
+            continue
+        for fn in sorted(os.listdir(d)):
+            if fn.endswith(".txt"):
+                out.append((title_of(fn[:-4]), os.path.join(folder, fn), folder))
+    return out
 
 
 def esc(s):
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 progs = []
-for name, fn in WANTED:
+for name, fn, folder in programs_on_disk():
     p = os.path.join(SRC, fn)
-    if not os.path.exists(p):
-        print("  missing, skipped: %s" % p); continue
     rows = [l.rstrip("\n").rstrip("\r") for l in open(p, encoding="utf-8")]
     while rows and not rows[-1].strip():
         rows.pop()
     w = max(len(r) for r in rows)
     rows = [r.ljust(w, ".") for r in rows]
-    progs.append((name, fn, rows, w, FOLDER.get(fn, "")))
+    progs.append((name, fn, rows, w, folder))
 
 with open(OUT, "w", encoding="utf-8") as f:
     f.write("#pragma once\n")
@@ -157,6 +84,13 @@ with open(OUT, "w", encoding="utf-8") as f:
         f.write('    { "%s", "%s", kExample%d, %d, %d },\n' % (esc(name), esc(_d), i, len(rows), w))
     f.write("  };\n")
     f.write("  inline constexpr int kExampleCount = %d;\n" % len(progs))
+    # The one the device opens on. Reading the programs off the tree puts them
+    # in alphabetical order, which is right for the list and wrong for the
+    # first thing anybody sees, so say which one it is rather than relying on
+    # whichever happens to sort first.
+    opening = next((i for i, p in enumerate(progs) if p[0] == OPENING), 0)
+    f.write("  inline constexpr int kOpeningExample = %d;  // %s\n"
+            % (opening + 1, esc(progs[opening][0])))
     f.write("  inline constexpr int kExampleMaxRows = %d;\n" % max(len(r) for _,_,r,_,_d in progs))
     f.write("  inline constexpr int kExampleMaxCols = %d;\n" % max(w for _,_,_,w,_d in progs))
     f.write("}\n")

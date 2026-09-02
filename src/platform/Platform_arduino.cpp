@@ -398,10 +398,27 @@ bool progWrite(Where w, const std::string& name, const std::string& text) {
 bool progDelete(Where w, const std::string& name) {
   if (!safeName(name)) return false;
   return withStore(w, [&](fs::FS& fs, const char* dir) {
-    return fs.remove(progPath(dir, name).c_str());
+    const bool ok = fs.remove(progPath(dir, name).c_str());
+    // A folder with nothing left in it is not listed, but it is still there,
+    // and comes back the moment something is written into it. Take it away
+    // with its last program; rmdir on one that is not empty just fails.
+    const std::size_t slash = name.find('/');
+    if (ok && slash != std::string::npos)
+      fs.rmdir((std::string(dir) + "/" + name.substr(0, slash)).c_str());
+    return ok;
   });
 }
 
+
+// No keyboard on the board. If one is ever wired to the USB host port this is
+// the single place that would change.
+char pollKey() { return 0; }
+void injectKey(char) {}
+
+// No clipboard on the board.
+std::string clipboard() { return std::string(); }
+
+bool haveKeyboard() { return false; }
 
 void powerOff() {
   gfx.setBrightness(0);

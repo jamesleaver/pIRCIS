@@ -1,0 +1,14 @@
+>'7.'64.'*.'4.'+.'64.'*.'0.'+.'64.'*.'3.'+.'64.'*.'18.'+.&N.%" = "###@N.#$v
+v.........................................................................<
+>'HEADS.&N.%" = "###@N.#!
+..
+..one number, reached two ways, printed twice each way.
+..
+..row 0 does it by hand. HEADS in base64 is the digits 7 4 0 3 18,
+..and row 0 multiplies by 64 and adds the next digit, five times over.
+..no base64 anywhere in it, just arithmetic.
+..
+..row 2 writes 'HEADS. and lets the language read it. same number.
+..
+..% prints a number as base64 and # prints the same number in base 10,
+..which is why each line shows it both ways.

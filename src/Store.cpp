@@ -161,8 +161,17 @@ void factoryReset() { plat::kv::clearAll(); }
 int  runView() { int v = plat::kv::getInt("runview", 0); return (v < 0 || v > 1) ? 0 : v; }
 void setRunView(int v) { plat::kv::putInt("runview", v); }
 
+bool hardwareKeys() { return plat::kv::getBool("hwkeys", false); }
+void setHardwareKeys(bool on) { plat::kv::putBool("hwkeys", on); }
+
 bool stepButtons() { return plat::kv::getBool("stepbtn", false); }
 void setStepButtons(bool on) { plat::kv::putBool("stepbtn", on); }
+
+// Whether the view chases the runner while a program is going. On for a big
+// program you want to watch; off when you have put the view somewhere and want
+// it to stay there.
+bool followRunners() { return plat::kv::getBool("follow", true); }
+void setFollowRunners(bool on) { plat::kv::putBool("follow", on); }
 
 bool tracePath() { return plat::kv::getBool("trace", false); }
 void setTracePath(bool on) { plat::kv::putBool("trace", on); }
@@ -176,9 +185,36 @@ void setDayMode(bool on) { plat::kv::putBool("day", on); }
 
 bool unlocked() { return plat::kv::getBool("unlk", false); }
 
+// The display settings, which the two modes each leave set the way they want
+// them. Entering keeps a copy of how the device was and leaving puts it back,
+// so a setting changed on the way in does not stay changed on the way out.
+namespace {
+  const char* const kViewKeys[] = { "gtap", "runview", "trace", "stepbtn",
+                                    "speed", "gridview", "day", "follow" };
+  std::string keptName(const char* k) { return std::string("k_") + k; }
+}
+
 void setUnlocked(bool on) {
+  const bool was = unlocked();
+  if (on && !was) {
+    for (const char* k : kViewKeys)
+      plat::kv::putInt(keptName(k).c_str(), plat::kv::getInt(k, -1));
+  }
   plat::kv::putBool("unlk", on);
-  if (!on) { plat::kv::remove("pk"); pack::close(); }
+  if (!on) {
+    if (was) {
+      for (const char* k : kViewKeys) {
+        const int v = plat::kv::getInt(keptName(k).c_str(), -1);
+        // -1 means it had never been set, so take it back out and let the
+        // default apply again rather than storing a value that means nothing.
+        if (v >= 0) plat::kv::putInt(k, v);
+        else        plat::kv::remove(k);
+        plat::kv::remove(keptName(k).c_str());
+      }
+    }
+    plat::kv::remove("pk");
+    pack::close();
+  }
 }
 
 int gridTap() {

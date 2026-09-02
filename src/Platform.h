@@ -87,6 +87,39 @@ namespace plat {
   // A different value each call. The interpreter's RNG was seeded with a
   // constant, so `r` and `R` replayed the same sequence on every run --
   // Racetrack ran an identical race every time.
+  // A character typed on a real keyboard, or 0 if none is waiting.
+  //
+  // The emulator has one: the machine it runs on. The board does not, unless
+  // somebody plugs one in, so this returns 0 there. Special keys arrive as
+  // control codes: \b backspace, \r enter, and 0x11-0x14 for the arrows.
+  char pollKey();
+  static constexpr char kKeyUp = 0x11, kKeyDown = 0x12,
+                        kKeyLeft = 0x13, kKeyRight = 0x14;
+  // Navigation and the usual desktop chords, so the emulator can be driven
+  // without the mouse. Ctrl and Cmd are both accepted for the chords, since
+  // the emulator runs on machines that expect one or the other.
+  static constexpr char kKeyTab   = 0x15,  // move to the next tab
+                        kKeyBack  = 0x16,  // shift-tab, the previous tab
+                        kKeyEsc   = 0x17,  // close whatever is open
+                        kKeySave  = 0x18,  // ctrl/cmd S
+                        kKeyUndo  = 0x19,  // ctrl/cmd Z
+                        kKeyRedo  = 0x1a,  // ctrl/cmd Y, or shift ctrl/cmd Z
+                        kKeyRun   = 0x1b,  // ctrl/cmd R, play or pause
+                        kKeyHelp  = 0x1c,  // F1, the shortcut list
+                        kKeyPaste = 0x1f,  // ctrl/cmd V, the clipboard
+                        kKeyName  = 0x1d,  // ctrl/cmd N, rename
+                        kKeyZoom  = 0x1e;  // ctrl/cmd G, the grid view
+  // Push a key into the queue as though it had been typed. The emulator's
+  // console uses it for the same reason it has `tap`: so a scene can drive the
+  // keyboard paths without a human at the keys. Does nothing on the board.
+  void injectKey(char c);
+  // What the machine has on its clipboard, empty if nothing or if this build
+  // has no clipboard to ask.
+  std::string clipboard();
+  // Whether this build can receive typed keys at all -- what SYS uses to
+  // decide whether offering the setting makes any sense.
+  bool haveKeyboard();
+
   uint32_t randomSeed();
 
   // Screen dark and CPU asleep until the board is reset. The emulator
