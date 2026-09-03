@@ -122,10 +122,6 @@ namespace plat {
 
   uint32_t randomSeed();
 
-  // Screen dark and CPU asleep until the board is reset. The emulator
-  // treats it as a request to quit.
-  void powerOff();
-  bool powerOffRequested();
 
   // Saved programs, as plain text files one row per line, so they can be moved
   // on and off with any computer. They live in two places and the UI lists

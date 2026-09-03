@@ -86,7 +86,7 @@ mkdir -p "$SHOTS/gifs"
 
 # The banner first: motto draws IRCIS by walking it, which is the one clip
 # that explains the language and the device in the same breath.
-gif motto     Watching/Motto           medium 64 0.30 "$SHOTS"
+gif motto     Watching/Motto           slow   240 0.15 "$SHOTS"
 gif hello     Talking/Hello-World    medium 46 0.16 "$SHOTS"
 gif spiral    Watching/Spiral         medium 60 0.16 "$SHOTS"
 # These run for a few hundred steps. At FULL the run is over before the first

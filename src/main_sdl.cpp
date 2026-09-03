@@ -51,7 +51,11 @@ int main(int, char**) {
   // out of main runs the static destructors underneath it, and the next thing
   // it touches is a mutex that no longer exists, which aborts on the way out.
   // Nothing is left to write by this point, so leave without them.
-  std::fflush(nullptr);
+  // Only the output streams. Flushing every stream would lock stdin too,
+  // and on Windows the console reader thread holds that lock while it waits
+  // for a line -- closing the window then hung the process.
+  std::fflush(stdout);
+  std::fflush(stderr);
   std::_Exit(rc);
 }
 

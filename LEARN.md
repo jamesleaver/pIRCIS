@@ -1134,8 +1134,8 @@ character at that position.
 
 **And because the path is the program, the path can be a picture.**
 [Motto](programs/Watching/Motto.txt) (Watching) spells out **IRCIS** on the screen
-by sending five runners along the shapes of the letters. They only exist as the
-routes the runners take, and nothing in the grid spells them out. Turn on the
+by splitting a runner off at each letter to walk its shape. The letters only
+exist as the routes the runners take, and nothing in the grid draws them. Turn on the
 `~t` view tag and the path stays on screen instead of fading.
 
 **View tags.** These are a pIRCIS addition, not part of IRCIS. Arjun Nair's
@@ -1153,7 +1153,7 @@ under the grid:  n  nothing    d  runner readout
 speed:           s  slow   m  med   q  quick   f  full
 path:            t  keep the runners' path on screen
 hold the view:   h  do not follow the runners while it runs
-start position:  <col>,<row> and one of N E S W
+start position:  <row>,<col> and one of N E S W
 ```
 
 So `~nst` means: nothing underneath, slow, keep the path. `h` is worth knowing

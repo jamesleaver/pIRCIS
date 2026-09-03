@@ -22,10 +22,11 @@ runners going different ways at once.
   <img src="shots/motto.gif" alt="the motto program drawing IRCIS" width="480">
 </p>
 
-That second one is a real program running. Five runners walk the shape of the
-letters and spell out **IRCIS** as they go, then the program prints what it
-stands for. They only exist as the paths the runners take, and nothing in the
-grid spells them out.
+That second one is a real program running. A runner splits off at each letter
+and walks its shape, spelling out **IRCIS** as they go, and each of them
+prints its own word of what that stands for. The letters exist only as the
+paths the runners take, and the words are carried as numbers: there is not a
+letter anywhere in the grid.
 
 ### New here?
 
@@ -65,6 +66,26 @@ pio run -e st7796 -t upload -t monitor
 SDL2 is only for the emulator. Skip it if you just want to flash a board. On
 Linux, `pip install platformio` and `apt install libsdl2-dev`.
 
+On Windows, install [Python](https://www.python.org/downloads/windows/) (tick
+*Add python.exe to PATH*) and [Git](https://git-scm.com/download/win), then in
+PowerShell:
+
+```powershell
+pip install platformio
+git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+pio run -e st7796 -t upload -t monitor
+```
+
+If you have already set up MSYS2 for the emulator (below), the same shell and
+the same `pio` flash the board too. Either way, if `pio device list` shows no
+port, Windows is missing the board's USB-serial driver -- CH340 or CP210x,
+depending on the board -- and Device Manager will show an unknown device
+until it is installed.
+
+PlatformIO brings its own compiler and its own upload tool, so the build and
+flash commands are the same on all three systems.
+
 If the screen stays dark or the colours look wrong, you have the other panel:
 use `-e ili9488` instead. If `upload` cannot find the board, check
 `pio device list`. If the port is not there at all you are missing the
@@ -75,9 +96,10 @@ of BOOT.
 There are also prebuilt archives on
 [Releases](https://github.com/jamesleaver/pIRCIS/releases) if you would rather
 not build. Grab the zip for your panel plus `SHA256SUMS`, check it, unzip it,
-and run `./flash.sh`. With no arguments it lists the ports it can see.
-Flashing that way needs [esptool](https://pypi.org/project/esptool/), and on
-recent macOS you will need it in a virtual environment:
+and run `./flash.sh`, or `flash.bat` on Windows. With no arguments either one
+lists the ports it can see. Flashing that way needs
+[esptool](https://pypi.org/project/esptool/), and on recent macOS you will need
+it in a virtual environment:
 
 ```bash
 python3 -m venv ~/.venvs/esptool
@@ -85,11 +107,19 @@ source ~/.venvs/esptool/bin/activate
 pip install esptool
 ```
 
+On Windows, `pip install esptool` on its own is fine. The port is a COM number
+rather than a path, so it is `flash.bat COM5` and Device Manager lists them
+under Ports.
+
 ## Run it on your computer instead
 
 You don't need a board to try any of this. The emulator runs the real firmware
 in a window on your computer. Same interpreter, same screen, same programs. The
-mouse works as the touchscreen.
+mouse works as the touchscreen. The build asks your machine where SDL2 is
+rather than being told, so the last command is the same on all three systems;
+only the setup before it differs.
+
+### macOS
 
 ```bash
 brew install platformio sdl2
@@ -98,8 +128,50 @@ cd pIRCIS
 pio run -e emulator -t exec
 ```
 
-On Linux, `pip install platformio` and `apt install libsdl2-dev` instead of the
-brew line.
+### Linux
+
+```bash
+sudo apt install libsdl2-dev python3-pip git
+pip install platformio
+git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+pio run -e emulator -t exec
+```
+
+Those are the Debian and Ubuntu package names; on other distributions install
+SDL2's development package and pip. If `pip` refuses to install system-wide,
+put PlatformIO in a virtual environment the way the Windows steps below do.
+
+### Windows
+
+The emulator is built with MSYS2, which supplies the compiler and SDL2.
+Install it from PowerShell:
+
+```powershell
+winget install --id MSYS2.MSYS2 -e
+```
+
+Then open **MSYS2 MINGW64** from the Start menu -- that one, not "MSYS2
+MSYS", which has the wrong compiler -- and run:
+
+```bash
+pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-pkg-config mingw-w64-x86_64-python
+python -m venv ~/pio-venv
+source ~/pio-venv/bin/activate 2>/dev/null || source ~/pio-venv/Scripts/activate
+pip install platformio
+git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+pio run -e emulator -t exec
+```
+
+MSYS2's Python will not install packages system-wide, which is what the
+virtual environment is for; run the `source` line again in each new shell
+before `pio`, or put it in `~/.bashrc`. The first build downloads the
+toolchain and takes a few minutes; after that it is seconds. If the build
+cannot find SDL2, point `SDL2_DIR` at the folder holding `include` and `lib`
+-- `/mingw64` for an MSYS2 install.
+
+### Once it is running
 
 This really is the same code that runs on the board. Only a thin layer
 underneath it differs. Every picture on this page came out of the emulator.
@@ -140,7 +212,10 @@ you have a real one. The shortcut list comes up when you switch it over, and
 
 On RUN the arrows scroll the view. If **SYS > GRID TAP** is set to inspect
 cells or to move the start point, they move between cells instead and Space
-does whatever that setting says.
+does whatever that setting says. Inside the inspector the arrows move the
+cell, and `e`, `r`, `s` and `c` press its buttons: edit the character,
+revert it, set the start point, close. The character keyboard has no space
+key; DEL then OK writes a space.
 
 In the editor the letters go into the program, so the commands above do not
 apply there. Ctrl or Cmd with `S`, `Z`, `Y`, `N` and `G` save, undo, redo,
@@ -282,7 +357,8 @@ at.
 </p>
 
 WiFi, what sits under the grid, what tapping the grid does, SD logging, a
-day/night palette, and restoring the built-ins.
+day/night palette, and restoring the built-ins. **LEARN IRCIS** shows where
+the learning guide is, with a code a phone can scan to open it.
 
 **TRAIL** keeps every cell a runner has crossed tinted, so the whole path
 builds up on screen instead of fading behind it. The same thing `t` in a
@@ -350,12 +426,15 @@ under the grid:  n  nothing    d  runner readout
 speed:           s  slow   m  med   q  quick   f  full
 path:            t  keep every cell a runner has crossed tinted
 hold the view:   h  do not follow the runners while it runs
-start position:  <col>,<row> and one of N E S W
+start position:  <row>,<col> and one of N E S W
 ```
 
-So `~nm3,1N` means: nothing underneath, medium speed, start at column 3 row 1
-heading north. Order does not matter. Anything you leave out goes back to the
-default, so most programs need no tag at all.
+So `~nm3,1N` means: nothing underneath, medium speed, start at row 3 column 1
+heading north. Order does not matter. Loading a program puts the readout,
+speed, trail, follow, start point and GRID TAP back to their defaults and
+then applies the tag, so anything you leave out is the default and most
+programs need no tag at all. STEP BUTTONS, the theme and the keyboard are the
+device's own settings and stay as you set them.
 
 `t` is the interesting one. Normally a runner shows a short tail and the cells
 behind it go back to normal. With `t`, every cell any runner has stood on stays

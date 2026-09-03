@@ -27,7 +27,7 @@ OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
 # added or moved. The device turns "Hello World" into Hello-World.txt; going the
 # other way is the same swap, hyphens back to spaces.
 # The program the device opens on, by the name it shows.
-OPENING = "Hello World"
+OPENING = "Motto"
 
 
 def title_of(leaf):

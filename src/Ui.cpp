@@ -5,6 +5,7 @@
 // The IRCIS interpreter under lib/ircis/ is Arjun Nair's work, MIT licensed,
 // and is not covered by this notice.
 
+#include <lgfx/utility/lgfx_qrcode.h>
 #include "Ui.h"
 
 #include <algorithm>
@@ -190,7 +191,7 @@ int tabSlot(Tab want) {
 
 enum class Modal : uint8_t { None, Picker, Cell, Confirm, Message, Debug,
                              Info, Ircis, Device, Wifi, Size,
-                             Splash, Shortcuts };
+                             Splash, Shortcuts, Learn };
 
 Tab   g_tab = Tab::Run;
 
@@ -202,6 +203,11 @@ inline bool onScreenKeys() { return !(Store::hardwareKeys() && plat::haveKeyboar
 inline bool keyHints() { return Store::hardwareKeys() && plat::haveKeyboard(); }
 Modal g_modal = Modal::None;
 bool  g_dirty = true;          // Narrower still: the handful of cells a keystroke or a cursor move actually
+// The view-tag reader and its record of the last tag applied, defined with
+// the editor's flush; the boot and lock paths further up need them too.
+void applyViewTags(const std::string& text);
+std::string tagIn(const std::string& text);
+extern std::string g_appliedTag;
 // What the next frame has to repaint, as bits that compose: a tap that
 // changed the cursor and the readout asks for the grid and the header and
 // gets exactly those. PaintAll is the whole screen, and it is sticky: once
@@ -763,6 +769,14 @@ CellLook cellLook(int r, int c, bool editor) {
   return { fg, bg };
 }
 
+// Whether the entry marker is drawn: when a tap can move the start, or when
+// the program starts somewhere other than the top-left corner heading east,
+// which is worth seeing whether or not you can move it.
+bool showEntry() {
+  return Store::gridTap() != Store::kTapNothing ||
+         run::startRow() != 0 || run::startCol() != 0 || run::startDir() != 'E';
+}
+
 // Draw one cell at (x, y) on any target: the panel itself, or the row sprite
 // that is pushed to it in one go. Everything that decides how a character
 // looks goes through here, which is what keeps the two pages identical.
@@ -772,8 +786,7 @@ void paintCell(lgfx::LovyanGFX& t, int x, int y, int r, int c, bool editor) {
   char ch[2] = { g_edit.cell(r, c), 0 };
   t.fillRect(x, y, cw, chh, look.bg);
   // The entry marker is only meaningful when the entry point can move.
-  if (!editor && Store::gridTap() != Store::kTapNothing &&
-      r == run::startRow() && c == run::startCol())
+  if (!editor && showEntry() && r == run::startRow() && c == run::startCol())
     t.drawRect(x, y, cw, chh, theme::edited);
   t.setTextColor(look.fg, look.bg);
   t.setTextSize(1);
@@ -835,7 +848,7 @@ void drawGrid() {
 
   // The entry point's heading, drawn AFTER the grid: it sits in the margin of
   // a neighbouring cell, and that cell's own background fill would erase it.
-  if (Store::gridTap() != Store::kTapNothing) {
+  if (showEntry()) {
     int sx, sy;
     if (cellPos(run::startRow(), run::startCol(), sx, sy)) {
       const int w = cellW(), h = cellH();
@@ -1739,6 +1752,12 @@ constexpr int kEdCellH = kZoomCellH;
 // the editor's band stretched to the tab bar while RUN's did not, so the
 // same program sat on different lines on the two pages.
 int edBandH() { return (kTabY - kEdKeyRows * kEdKeyH) - kEdGridY - 4; }
+// ...and the band the editor can actually draw into. The same, unless there
+// is no keyboard on screen, when the program takes the keyboard's rows too --
+// it is centred as if the keyboard were there, so it sits where RUN puts it,
+// and simply shows more of itself underneath. RUN does the same when a
+// program turns its readout off.
+int edShownH() { return kEdKeyY - kEdGridY - 4; }
 int edCellW() { return g_view == View::Zoom ? kEdCellW : kWideCellW; }
 int edCellH() { return g_view == View::Zoom ? kEdCellH : kWideCellH; }
 int edCols()  { int n = kScreenW / edCellW();
@@ -1746,7 +1765,7 @@ int edCols()  { int n = kScreenW / edCellW();
 int edZoomCols() { int n = kScreenW / kEdCellW;
                    return n > prog::kMaxCols ? prog::kMaxCols : n; }
 int edZoomRows() { int n = edBandH() / kEdCellH; return n < 1 ? 1 : n; }
-int edRows()  { return edBandH() / edCellH(); }
+int edRows()  { return edShownH() / edCellH(); }
 
 // Centre on the program when it is smaller than the band.
 int edGridX() {
@@ -1755,7 +1774,11 @@ int edGridX() {
   return x > 0 ? x : 0;
 }
 int edGridY() {
-  int h = g_edit.rows() < edRows() ? g_edit.rows() : edRows();
+  // Centred by the rows the centring band holds, not the rows the editor
+  // shows: with no keyboard on screen it shows more, and counting those put
+  // a tall program two pixels above where RUN puts it.
+  const int rows = edBandH() / edCellH();
+  int h = g_edit.rows() < rows ? g_edit.rows() : rows;
   int y = kEdGridY + (edBandH() - h * edCellH()) / 2;
   return y > kEdGridY ? y : kEdGridY;
 }
@@ -2486,6 +2509,8 @@ void relock() {
   theme::setDay(true);
   // The packed program is no longer listed, so do not leave it loaded.
   g_edit.loadProgram(prog::kOpeningExample);
+  applyViewTags(g_edit.text());
+  g_appliedTag = tagIn(g_edit.text());
   run::load(g_edit);
   markLoaded();
   syncViewToProgram();
@@ -3212,9 +3237,27 @@ bool     g_editRebuildDue = false;   // single cells already sent; just rebuild
 
 // force: the caller is about to need the machine to match the grid -- running
 // it, stepping it, or leaving the page -- so the wait is over.
+// The tag as it is written in the program: from the tilde to the next blank.
+std::string tagIn(const std::string& text) {
+  const std::size_t at = text.find('~');
+  if (at == std::string::npos) return std::string();
+  std::size_t end = at;
+  while (end < text.size() && text[end] != '.' && !std::isspace((unsigned char)text[end])) ++end;
+  return text.substr(at, end - at);
+}
+// The tag last applied, so an edit that changes it is noticed and one that
+// does not leaves the settings alone -- applying a tag resets everything it
+// does not mention, which is the wrong thing to do on every keystroke.
+std::string g_appliedTag;
+
 void flushEdits(bool force = false) {
   if (!g_editReloadDue && !g_editRebuildDue) return;
   if (!force && (uint32_t)(plat::millis() - g_editDirtyAt) < kEditQuietMs) return;
+  // A tag edited on the device used to mean nothing until the program was
+  // loaded again. It is read here, before the machine is rebuilt, so a
+  // changed start cell is the one the rebuild starts from.
+  const std::string tag = tagIn(g_edit.text());
+  if (tag != g_appliedTag) { applyViewTags(g_edit.text()); g_appliedTag = tag; g_editReloadDue = true; }
   // A reload carries the grid with it; a rebuild does not need to, because
   // the cells went across one at a time as they were typed.
   if (g_editReloadDue) run::load(g_edit);
@@ -3239,6 +3282,7 @@ void afterProgramChange() {
   // tag applied afterwards, a program that asked to start somewhere other
   // than the top-left corner sometimes did and sometimes did not.
   applyViewTags(g_edit.text());
+  g_appliedTag = tagIn(g_edit.text());
   run::load(g_edit);
 }
 
@@ -3251,11 +3295,11 @@ void afterProgramChange() {
 //
 //     n  nothing under the program        s  slow      q  quick
 //     d  debug: step buttons + runners     m  medium    f  full
-//     <col>,<row>[NESW]  start here, heading east unless a letter says
+//     <row>,<col>[NESW]  start here, heading east unless a letter says
 //
-// So `~nm3,1` is: nothing underneath, medium, start at column 3 row 1 heading
+// So `~nm3,1` is: nothing underneath, medium, start at row 3 column 1 heading
 // east. The comma is what marks a coordinate, and either side of it may be
-// left off -- `~,2` starts at column 0 row 2.
+// left off -- `~,2` starts at row 0 column 2.
 //
 // A tag speaks for every setting it could set, so anything it leaves out goes
 // back to the default: the output underneath, fast, no debug, starting at the
@@ -3288,6 +3332,11 @@ void applyViewTags(const std::string& text) {
   // not touch GRID TAP: that is the reader's setting, not the program's.
   Store::setStartPoint(0, 0, 'E');
   run::setStart(0, 0, 'E');
+  // What a tap on the grid does is a way of looking at THIS program, so it
+  // goes back too; a program loaded while the inspector was on is otherwise
+  // opened with the inspector still on. STEP BUTTONS, the theme and the
+  // keyboard are the device's settings, not the program's, and stay.
+  Store::setGridTap(Store::kTapNothing);
 
   const std::size_t at = text.find('~');
   if (at == std::string::npos) return;
@@ -3309,16 +3358,17 @@ void applyViewTags(const std::string& text) {
     if (std::isdigit((unsigned char)c) || c == ',') {
       std::size_t j = i;
       int col = 0, row = 0;
-      // Capped rather than accumulated freely: a tag is text anyone can type,
-      // and "~999999999,0" must not overflow its way to a nonsense start cell.
+      // <row>,<col>: the order the editor's corner and the run page's
+      // "entry" line use, so one habit serves everywhere. Either number may
+      // be left off, and reads as zero.
       while (j < text.size() && std::isdigit((unsigned char)text[j])) {
-        if (col < 10000) col = col * 10 + (text[j] - '0');
+        if (row < 10000) row = row * 10 + (text[j] - '0');
         ++j;
       }
       if (j >= text.size() || text[j] != ',') { i = j - 1; continue; }  // digits alone
       ++j;
       while (j < text.size() && std::isdigit((unsigned char)text[j])) {
-        if (row < 10000) row = row * 10 + (text[j] - '0');
+        if (col < 10000) col = col * 10 + (text[j] - '0');
         ++j;
       }
       char dir = 'E';
@@ -3334,8 +3384,8 @@ void applyViewTags(const std::string& text) {
       if (row < 0) row = 0;
       // A program asking to start somewhere needs that honoured, so a device
       // set to NOTHING is moved up to letting the start be placed.
-      if (Store::gridTap() == Store::kTapNothing)
-        Store::setGridTap(Store::kTapStart);
+      // No switching GRID TAP on behind the reader's back: the marker below
+      // shows a start that is not the default whatever that setting is.
       Store::setStartPoint(col, row, dir);
       run::setStart(col, row, dir);
       continue;
@@ -3701,7 +3751,7 @@ Btn sysTile(int row, int col, const char* label, uint16_t fg = theme::text) {
   return { 4 + col * (w + 4), kBodyY + 4 + row * kSysRowH, w, 22, label, fg, theme::panel };
 }
 // Two columns, grouped: connectivity and appearance, then diagnostics, then
-// what the RUN page does, then the About pages, then the destructive pair.
+// what the RUN page does, then the About pages, then the reset and the guide.
 // Two of the tiles only exist once unlocked, and the rows below them close up
 // when they are absent.
 Btn btnSysWifi()    { return sysTile(0, 0, "WIFI"); }
@@ -3723,7 +3773,7 @@ Btn btnSysStart()   { return sysTile(2, 0, "GRID TAP: NOTHING"); }
 Btn btnSysRestore() { return sysTile(3, 1, "RESTORE BUILT-INS"); }
 // Everything below here is anchored to the foot of the page rather than to a
 // row of the settings grid: the pages that tell you about the device, and
-// under them the two things you cannot undo. They keep the same place
+// under them the reset and the way to the guide. They keep the same place
 // whichever mode the device is in, and a rule separates the lot from the
 // settings above. sysFootTile counts rows UP from the bottom, so row 0 is the
 // bottom row and adding a mode's extra tiles pushes the block up, never down
@@ -3746,9 +3796,11 @@ Btn btnSysRead()  { return Store::unlocked() ? sysFootTile(1, 0, "ABOUT THIS DEV
 // throwing away anything else. Re-entering means setting the WiFi credentials
 // again. Only exists once unlocked, for obvious reasons.
 Btn btnSysExit()  { return sysFootTile(1, 1, pack::str(pack::kStrExitTile), theme::warn); }
-// The bottom row: erasing everything, and cutting the power.
+// The bottom row: erasing everything, and the learning guide as a link and a
+// code to scan. The guide sits down here with the About pages because it is
+// the one thing on this page a beginner is looking for.
 Btn btnSysReset() { return sysFootTile(0, 0, "RESET ALL DATA", theme::bad); }
-Btn btnSysOff()   { return sysFootTile(0, 1, "POWER OFF", theme::warn); }
+Btn btnSysLearn() { return sysFootTile(0, 1, "LEARN IRCIS", theme::accent); }
 
 // ---------------------------------------------------------------------------
 // PROG: pick a program to load. While locked this lists only the bundled IRCIS
@@ -4157,7 +4209,7 @@ int sysTiles(Btn* out) {
   if (plat::haveKeyboard()) add(btnSysKeys());
   if (Store::unlocked())    { add(btnSysInfo()); add(btnSysExit()); }
   add(btnSysIrcis()); add(btnSysRead());
-  add(btnSysReset()); add(btnSysOff());
+  add(btnSysReset()); add(btnSysLearn());
   std::sort(out, out + n, [](const Btn& a, const Btn& b) {
     return a.y != b.y ? a.y < b.y : a.x < b.x;
   });
@@ -4167,8 +4219,8 @@ int sysTiles(Btn* out) {
 // Which SYS tile a partial repaint is for. The order is the order the tiles
 // are drawn in below, and nothing else depends on it.
 enum SysTile { SysWifi, SysTheme, SysSd, SysDebug, SysCal, SysBand, SysRestore,
-               SysSteps, SysKeys, SysFollow, SysTrail, SysStart, SysInfo, SysExit,
-               SysIrcis, SysRead, SysReset, SysOff, SysTileCount };
+               SysSteps, SysKeys, SysFollow, SysTrail, SysStart, SysLearn, SysInfo,
+               SysExit, SysIrcis, SysRead, SysReset, SysTileCount };
 
 // One tile, with its label as it currently reads. Every tile paints its own
 // face, so redrawing one leaves the rest of the page untouched.
@@ -4272,12 +4324,12 @@ void drawSysTile(int which) {
       tile(st, gt != Store::kTapNothing);
       break;
     }
+    case SysLearn: tile(btnSysLearn()); break;
     case SysInfo:  if (Store::unlocked()) tile(btnSysInfo()); break;
     case SysExit:  if (Store::unlocked()) tile(btnSysExit()); break;
     case SysIrcis: tile(btnSysIrcis()); break;
     case SysRead:  tile(btnSysRead());  break;
     case SysReset: tile(btnSysReset()); break;
-    case SysOff:   tile(btnSysOff());   break;
     default: break;
   }
 }
@@ -4406,10 +4458,14 @@ void drawPicker() {
     if (!pickerCell(i, g, r, c)) continue;
     int x = g.x0 + c * g.kw, y = g.y0 + r * g.kh;
     bool symbol = g_pickerSplit && (std::size_t)i >= g_pickerSplit;
+    // On the program keyboard the base64 letters that are also commands --
+    // r R p v V -- take the accent, the way the editor's keyboard shows them.
+    const bool command = symbol ||
+        (g_pickerSet == kKbProgram && std::strchr("vVprR", g_pickerSet[i]) != nullptr);
     gfx.fillRect(x + 1, y + 1, g.kw - 2, g.kh - 2, symbol ? theme::line : theme::panel);
     useContentFont();
     gfx.setTextDatum(textdatum_t::middle_center);
-    gfx.setTextColor(symbol ? theme::accent : theme::text, symbol ? theme::line : theme::panel);
+    gfx.setTextColor(command ? theme::accent : theme::text, symbol ? theme::line : theme::panel);
     char ch[2] = { g_pickerSet[i] == ' ' ? '_' : g_pickerSet[i], 0 };
     gfx.drawString(ch, x + g.kw / 2, y + g.kh / 2);
     gfx.setTextDatum(textdatum_t::top_left);
@@ -4575,18 +4631,22 @@ void drawCellModal(bool full = true) {
   // Nothing is changed under a running program: the three buttons that
   // would are drawn off until it is paused or has finished.
   const bool live = run::snapshot().running;
-  drawBtn(btnCellSet(), false, !live);
-  drawBtn(btnCellRevert(), false, cur != orig && !live);
+  const bool hints = keyHints();
+  Btn set = btnCellSet();    if (hints) set.label = "(E)DIT CHAR";
+  Btn rev = btnCellRevert(); if (hints) rev.label = "(R)EVERT";
+  Btn cls = btnCellClose();  if (hints) cls.label = "(C)LOSE";
+  drawBtn(set, false, !live);
+  drawBtn(rev, false, cur != orig && !live);
   if (Store::gridTap() != Store::kTapNothing) {
     // Pressing START again cycles the direction, so one button sets both.
     Btn stb = btnCellStart();
     bool isStart = (run::startRow() == g_cellRow && run::startCol() == g_cellCol);
     char lbl[16];
-    snprintf(lbl, sizeof(lbl), "START %c", isStart ? run::startDir() : 'E');
+    snprintf(lbl, sizeof(lbl), hints ? "(S)TART %c" : "START %c", isStart ? run::startDir() : 'E');
     stb.label = lbl;
     drawBtn(stb, isStart, !live);
   }
-  drawBtn(btnCellClose());
+  drawBtn(cls);
 }
 
 // ---------------------------------------------------------------------------
@@ -4863,8 +4923,8 @@ const char* const kIrcis8[] = {
   "",
   "Anything a tag leaves out takes the",
   "default: the output under the grid,",
-  "fast, no trail, starting at 0,0",
-  "heading east.",
+  "medium speed, no trail, starting at",
+  "0,0 heading east, and GRID TAP off.",
 };
 const char* const kIrcis9[] = {
   "VIEW TAGS - THE LETTERS",
@@ -4874,7 +4934,7 @@ const char* const kIrcis9[] = {
   "            q quick    f full",
   "trail       t keep the path on screen",
   "hold        h do not follow runners",
-  "start       col,row and one of NESW",
+  "start       row,col and one of NESW",
   "",
   "eg ~nth3,1N  no readout, trail, held",
 };
@@ -4925,7 +4985,9 @@ const char* const kShortcuts4[] = {
   "  d            DUMP GRID, in",
   "               DIAGNOSTICS",
   "",
-  "  A tap on the tab bar closes it too.",
+  "  In the inspector the arrows move",
+  "  the cell, and e r s c press its",
+  "  buttons: edit, revert, start, close.",
 };
 const char* const kShortcuts5[] = {
   "  Alt-R  Alt-L    rotate",
@@ -5157,6 +5219,49 @@ void drawFirmwarePage(int count) {
   }
   y += 6;
   clabel(20, y, "github.com/jamesleaver/pIRCIS", theme::accent, theme::panel);
+}
+
+// Where the guide lives, as text and as a code a phone can read.
+const char* const kLearnUrl = "https://github.com/jamesleaver/pIRCIS/blob/main/LEARN.md";
+
+// A QR code, w pixels square, in black on a white quiet zone whatever the
+// palette -- a phone wants the contrast. Drawn module by module from the
+// library's generator rather than by its own routine, which on this panel
+// painted each dark module as a single pixel.
+// The library's own qrcode() reads modules through an accessor whose C-side
+// bool is a plain byte holding the raw bit mask; a C++ caller sees only its
+// low bit, so seven modules in eight go missing.  Read the bits ourselves.
+void drawQr(const char* text, int x, int y, int w) {
+  for (uint8_t v = 1; v <= 40; ++v) {
+    QRCode q;
+    std::vector<uint8_t> buf(lgfx_qrcode_getBufferSize(v));
+    if (lgfx_qrcode_initText(&q, buf.data(), v, 0, text) != 0) continue;   // too small: next
+    const int n = q.size, t = w / n, off = (w - t * n) / 2;
+    gfx.fillRect(x, y, w, w, TFT_WHITE);
+    for (int iy = 0; iy < n; ++iy)
+      for (int ix = 0; ix < n; ++ix) {
+        const int bit = iy * n + ix;
+        if ((buf[bit >> 3] >> (7 - (bit & 7))) & 1)
+          gfx.fillRect(x + off + ix * t, y + off + iy * t, t, t, TFT_BLACK);
+      }
+    return;
+  }
+}
+void drawLearn() {
+  int y = dlgFrame("LEARN IRCIS", "", 1);
+  const char* lines[] = {
+    "A guide to the language,",
+    "from the first runner to",
+    "reading a whole program,",
+    "in twenty short sections.",
+    "Every example in it runs.",
+    "",
+    "Scan it, or type:",
+    "github.com/jamesleaver/",
+    "pIRCIS/blob/main/LEARN.md",
+  };
+  for (const char* l : lines) { clabel(20, y, l, theme::text, theme::panel); y += kContentH; }
+  drawQr(kLearnUrl, kScreenW - 12 - 8 - 148, kDlgY + 32, 148);
 }
 
 void drawDevice() {
@@ -5756,10 +5861,6 @@ void handleSysTouch(int x, int y) {
     theme::setDay(day);
     g_dirty = true;
   }
-  else if (hit(btnSysOff(), x, y)) {
-    confirm("Turn off?", "The screen goes dark. Press the board's reset "
-                         "button to start it again.", [] { plat::powerOff(); });
-  }
   else if (Store::unlocked() && hit(btnSysExit(), x, y)) {
     confirm(pack::str(pack::kStrExitTitle),
             "The device goes back to being a plain IRCIS interpreter. "
@@ -5795,6 +5896,7 @@ void handleSysTouch(int x, int y) {
     g_sysTile = SysSteps; g_paint |= PaintSysTile; g_dirty = true;
   }
   else if (hit(btnSysRead(), x, y))  { g_modal = Modal::Device; g_dialogPage = 0; wantAll(); }
+  else if (hit(btnSysLearn(), x, y)) { g_modal = Modal::Learn;  g_dialogPage = 0; wantAll(); }
   else if (hit(btnSysStart(), x, y)) {
     const int next = (Store::gridTap() + 1) % 3;   // nothing -> start -> inspector
     Store::setGridTap(next);
@@ -5888,7 +5990,8 @@ void handleSysTouch(int x, int y) {
               theme::setDay(Store::dayMode());
               g_wasUnlocked = false;
               g_edit.loadProgram(prog::kOpeningExample);
-              run::setStart(0, 0, 'E');
+              applyViewTags(g_edit.text());      // resets to 0,0 east unless the program says otherwise
+              g_appliedTag = tagIn(g_edit.text());
               syncViewToProgram();
               g_curRow = g_curCol = 0;
               g_gridRow = g_gridCol = 0;
@@ -6021,15 +6124,16 @@ void handleCellTouch(int x, int y) {
   if (hit(btnCellSet(), x, y)) {
     int r = g_cellRow, c = g_cellCol;
     std::string set = std::string(kCellBase64) + kCellSymbols;
-    openPicker("EDIT CHARACTER", "", kKbProgram,
+    openPicker("EDIT CHARACTER", "DEL then OK writes a space", kKbProgram,
                std::string(1, g_edit.cell(r, c)), 1,
                [r, c](const std::string& v) {
-                 if (v.empty()) return;
+                 // There is no space key; an emptied field is the space.
+                 const char now = v.empty() ? ' ' : v[0];
                  const char was = g_edit.cell(r, c);
-                 if (was == v[0]) return;                 // no change, no edit
-                 g_edit.setCell(r, c, v[0]);
-                 noteEdit(r, c, was, v[0]);
-                 markCellEdited(r, c, v[0]);
+                 if (was == now) return;                  // no change, no edit
+                 g_edit.setCell(r, c, now);
+                 noteEdit(r, c, was, now);
+                 markCellEdited(r, c, now);
                },
                kKbSplit);
     g_pickerBack = Modal::Cell;      // back to the inspector, not out to RUN
@@ -6138,7 +6242,7 @@ void onTap(int x, int y) {
   // an unanswered question away on a stray tap would be worse.
   if (y >= kTabY && (g_modal == Modal::Info   || g_modal == Modal::Ircis ||
                      g_modal == Modal::Device || g_modal == Modal::Debug ||
-                     g_modal == Modal::Shortcuts)) {
+                     g_modal == Modal::Shortcuts || g_modal == Modal::Learn)) {
     g_modal = Modal::None;
     g_dialogPage = 0;
     handleTabs(x, y);
@@ -6162,6 +6266,7 @@ void onTap(int x, int y) {
     case Modal::Info:
     case Modal::Shortcuts:
     case Modal::Ircis:
+    case Modal::Learn:
     case Modal::Device: {
       const int pages = dialogPageCount();
       if (hit(btnDlgClose(), x, y)) { g_modal = Modal::None; wantAll(); }
@@ -6264,6 +6369,7 @@ void drawAll(const run::Snapshot& snap) {
   if (g_modal == Modal::Ircis)  { drawIrcis();  return; }
   if (g_modal == Modal::Shortcuts) { drawShortcuts(); return; }
   if (g_modal == Modal::Device) { drawDevice(); return; }
+  if (g_modal == Modal::Learn)  { drawLearn();  return; }
   // No fillScreen. drawHeader clears the status bar, every page's drawer
   // clears the body, and drawTabs paints each tab it touches -- so clearing
   // the whole panel first only wiped the tab bar and forced all six tabs to
@@ -6482,7 +6588,7 @@ void pollTypedKeys() {
     // takes typing it is a letter, and in a question it is not an answer.
     const bool pagedDialog = g_modal == Modal::Info || g_modal == Modal::Ircis
                           || g_modal == Modal::Device || g_modal == Modal::Debug
-                          || g_modal == Modal::Shortcuts;
+                          || g_modal == Modal::Shortcuts || g_modal == Modal::Learn;
     if (k == plat::kKeyEsc || (k == 'c' && pagedDialog)) {
       g_focus = -1;                        // the ring belongs to what is closing
       if (pagedDialog)                     { g_modal = Modal::None; g_dialogPage = 0; wantAll(); }
@@ -6542,8 +6648,31 @@ void pollTypedKeys() {
     }
     if (k == plat::kKeyRun) { playPause(); continue; }
 
+    // --- the inspector: the arrows move the cell, a letter presses a button ---
+    if (g_modal == Modal::Cell) {
+      int r = g_cellRow, c = g_cellCol;
+      if      (k == plat::kKeyUp)    --r;
+      else if (k == plat::kKeyDown)  ++r;
+      else if (k == plat::kKeyLeft)  --c;
+      else if (k == plat::kKeyRight) ++c;
+      if (r != g_cellRow || c != g_cellCol) {
+        if (r >= 0 && r < g_edit.rows() && c >= 0 && c < g_edit.cols()) {
+          g_cellRow = r; g_cellCol = c; wantModal();
+        }
+        continue;
+      }
+      // Pressed through the same handler as a tap on the button, so what
+      // is allowed while a program runs is decided in one place.
+      auto press = [](Btn b) { handleCellTouch(b.x + b.w / 2, b.y + b.h / 2); };
+      if      (k == 'e') press(btnCellSet());
+      else if (k == 'r') press(btnCellRevert());
+      else if (k == 's') press(btnCellStart());
+      else if (k == 'c' || k == plat::kKeyEsc || k == plat::kKeyBack) press(btnCellClose());
+      else if (k == ' ' || k == '\r') pressFocused();
+      continue;
+    }
     // --- a dialog with controls: the arrows move its ring ---
-    if (g_modal == Modal::Cell || g_modal == Modal::Size ||
+    if (g_modal == Modal::Size ||
         g_modal == Modal::Wifi || g_modal == Modal::Confirm) {
       if (k == plat::kKeyUp || k == plat::kKeyDown ||
           k == plat::kKeyLeft || k == plat::kKeyRight) { moveFocus(k); continue; }
@@ -6822,7 +6951,13 @@ void begin() {
   run::setSpeed((run::Speed)Store::runSpeed());
   // Locked, the packed program is not in the list, so open on an example.
   g_edit = prog::Program();
-  if (!Store::unlocked()) g_edit.loadProgram(prog::kOpeningExample);
+  if (!Store::unlocked()) {
+    g_edit.loadProgram(prog::kOpeningExample);
+    // The opening program's tag, the way PROG would apply it. Without this
+    // the device came up with the program's speed but not its start cell.
+    applyViewTags(g_edit.text());
+    g_appliedTag = tagIn(g_edit.text());
+  }
   g_wasUnlocked = Store::unlocked();   // so an already-open device stays quiet
   g_gridRow = 0;
   if (tabSlot(g_tab) < 0) g_tab = Tab::Run;

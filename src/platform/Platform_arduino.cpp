@@ -13,7 +13,6 @@
 #include <Preferences.h>
 #include <esp_ota_ops.h>
 #include <esp_random.h>
-#include <esp_sleep.h>
 #include <SD.h>
 #include <LittleFS.h>
 #include <vector>
@@ -420,14 +419,6 @@ std::string clipboard() { return std::string(); }
 
 bool haveKeyboard() { return false; }
 
-void powerOff() {
-  gfx.setBrightness(0);
-  gfx.sleep();
-  // No wake source is configured: the board comes back on reset, which is what
-  // an "off" button on a device with no power switch can honestly offer.
-  esp_deep_sleep_start();
-}
-bool powerOffRequested() { return false; }
 
 
 std::string firmwareId() {

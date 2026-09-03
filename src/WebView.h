@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 // Serves the last run (parameters, grid diff and full output) over WiFi, so a

@@ -89,13 +89,45 @@ cd "\$(dirname "\$0")"
 FLASH
   chmod +x "$out/flash.sh"
 
+  # The same thing for Windows, where there is no shell to run the other one.
+  # esptool renamed its options at version 5; the batch file asks which is
+  # installed the same way, just with the tools cmd has.
+  cat > "$out/flash.bat" <<'BATCH'
+@echo off
+setlocal
+if "%~1"=="" (
+  echo usage: flash.bat COMx
+  echo.
+  echo The serial ports Windows can see:
+  wmic path Win32_SerialPort get DeviceID,Description 2>nul || ^
+    echo   check Device Manager under Ports ^(COM ^& LPT^)
+  exit /b 2
+)
+cd /d "%~dp0"
+where esptool >nul 2>nul && (set ESPTOOL=esptool) || (set ESPTOOL=esptool.py)
+set NEW=
+for /f "tokens=2" %%v in ('%ESPTOOL% version 2^>nul ^| findstr /r "^esptool v[5-9]"') do set NEW=1
+if defined NEW (
+  %ESPTOOL% --chip esp32 --port %1 --baud 460800 --before default-reset --after hard-reset write-flash -z --flash-mode dio --flash-freq 40m --flash-size detect BOOTOFF bootloader.bin PARTOFF partitions.bin APPOFF firmware.bin
+) else (
+  %ESPTOOL% --chip esp32 --port %1 --baud 460800 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect BOOTOFF bootloader.bin PARTOFF partitions.bin APPOFF firmware.bin
+)
+BATCH
+  # The offsets are known here, not inside the quoted heredoc.
+  sed -i.bak -e "s/BOOTOFF/$BOOTLOADER_OFFSET/g" -e "s/PARTOFF/$PARTITIONS_OFFSET/g" \
+             -e "s/APPOFF/$APP_OFFSET/g" "$out/flash.bat"
+  rm -f "$out/flash.bat.bak"
+
   cat > "$out/README.txt" <<TXT
 pIRCIS $VERSION -- $env panel
 
-  ./flash.sh <port>
+  ./flash.sh <port>          on macOS or Linux
+  flash.bat COMx             on Windows
 
-Run it with no arguments and it lists the serial ports it can see. On a Mac
-the board is usually /dev/cu.usbserial-something; ls /dev/cu.* shows them all.
+Run either with no arguments and it lists the serial ports it can see. On a
+Mac the board is usually /dev/cu.usbserial-something; ls /dev/cu.* shows them
+all. On Windows it is a COM number, which Device Manager also lists under
+Ports.
 
 or by hand:
 

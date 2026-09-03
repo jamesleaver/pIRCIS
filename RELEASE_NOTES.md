@@ -1,89 +1,81 @@
-# pIRCIS 1.3.0
+# pIRCIS 1.4.0
 
-The screen stopped flickering, the two program pages became one program,
-and a learning guide arrived.
+The emulator builds and runs on Windows, and the board can be flashed from
+Windows too.
 
 ## Flash it without building it
 
 Each release carries a ready-to-flash archive for both panel controllers,
-with `flash.sh`, the offsets written down, and a `SHA256SUMS` covering every
-image. All you need is [esptool](https://pypi.org/project/esptool/):
+with `flash.sh` for macOS and Linux, `flash.bat` for Windows, the offsets
+written down, and a `SHA256SUMS` covering every image. All you need is
+[esptool](https://pypi.org/project/esptool/):
 
 ```bash
 shasum -a 256 -c SHA256SUMS
-unzip pircis-1.3.0-st7796.zip && cd pircis-1.3.0-st7796
+unzip pircis-1.4.0-st7796.zip && cd pircis-1.4.0-st7796
 ./flash.sh /dev/cu.usbserial-XXXX
 ```
 
-Run `./flash.sh` with no argument and it lists the ports it can see. The
-archives are built by GitHub Actions from the tag rather than on a laptop,
-which is what makes publishing the hashes worth anything.
+On Windows, `flash.bat COM5`, with the COM number from Device Manager. Run
+either one with no argument and it lists the ports it can see. The archives
+are built by GitHub Actions from the tag rather than on a laptop, which is
+what makes publishing the hashes worth anything.
 
 The `ili9488` archive still has not been run on hardware — development is on
 an ST7796, the only board I have. If you have the other one I would be glad
 to hear whether it works.
 
-## A guide to IRCIS
+## Windows
 
-[LEARN.md](LEARN.md) teaches the language from the first runner to a worked
-reading of a whole program, in twenty short sections. Every example in it is
-run against the interpreter before a release, so what it says a program
-prints is what it prints. It names the bundled programs the way the device
-does and says which folder each is in.
+The emulator is the same program on all three systems now. On Windows it is
+built with MSYS2, which supplies the compiler and SDL2, and the README walks
+through it: one line to install MSYS2, one block to paste into its shell.
+The build finds SDL2 by asking the machine rather than being told where it
+is, so the one command works on macOS, Linux and Windows alike.
 
-## RUN and EDIT show the same program
+Getting there took three fixes that were as much about the build as about
+Windows:
 
-They used to be two layouts of the same thing, a few pixels and a row apart,
-with their own zoom. Now there is one: switch between them and nothing moves,
-including the ZOOM button. ZOOM is the same size on both, small arrows on the
-grid's edges scroll a program larger than the window, and FOLLOW RUNNER works
-in both views. Opening EDIT pauses the run, and nothing in a running program
-can be edited until it is paused.
+- A header used a fixed-width integer type without saying where it came
+  from. clang lets that pass; GCC does not.
+- LovyanGFX's manifest opts out of being archived, which put its hundred
+  object files on the link line one at a time. On Windows that line is
+  longer than the shell allows, and the temp file PlatformIO then goes
+  through is deleted with a `cmd.exe` built-in that reads a forward-slash
+  path as a switch. The emulator now archives the library: one file, a
+  short line, no temp file.
+- pkg-config on MSYS2 adds `-mwindows`, which would have made a program with
+  no console. The emulator reads its commands from the console, so it keeps
+  one.
 
-## Faster, and without the flicker
+Flashing from Windows uses the same PlatformIO, from the MSYS2 shell or from
+PowerShell with Python installed; the README has both.
 
-The program is drawn a row at a time from memory rather than a cell at a
-time to the panel, and each frame is one transaction on the bus, so a page
-arrives instead of crawling in. What changes is what gets repainted: a new
-character on OUT redraws one line, a toggle on SYS redraws one tile, a
-keystroke in a dialog redraws the value, a page turn redraws the page inside
-its frame. The rule between the program and its output no longer blinks on
-every character printed, and the output no longer jumps up a line when a run
-finishes.
+## Also
 
-## The programs
-
-Sixty-one now, in five folders named for what you are there to do:
-Counting, Deciding, Decoding, Talking and Watching. Showing-off has gone, its
-contents sorted into the others, and nine programs that were the same idea
-as another have gone too.
-
-- **Two Dimensions**, **Greeting** and **Advice** read their strings along a
-  snake, a square wave and a spiral, to show that a runner reads a program
-  along whatever path it is given.
-- **Bounce** bounces, **Comb** has teeth, **Four Ways** splits four ways, and
-  **Serpent** is no longer Snake again. Each checked against the interpreter's
-  visit map.
-- **Decoding** is new: Insult Machine, Base 64, Morse Decoder and Binary.
-
-## Everything else
-
-- The WIFI tile says when a browser last asked for a page.
-- CONFIRM reads WORKING while a slow action runs, so deleting a program no
-  longer looks like a hang.
-- The calibration prompt gives way to "Loading" once the corners are tapped.
-- The SETS page holds still while a run is going.
-
-## Fixed
-
-- The first cell of every run was never shown: the runner appeared at its
-  second step.
-- A program that asks to start somewhere other than the top-left corner
-  sometimes started there anyway.
-- The scroll arrows' touch targets reached off the edge of the panel, where
-  no finger is, so a tap on one often landed on the character underneath.
-- The inspector's buttons could not be pressed at all on a program shorter
-  than six rows.
-- Programs that moved folder left their old copies behind on the device.
-- The trailing space and newline the interpreter printed at the end of a run
-  no longer go into the output.
+- **LEARN IRCIS** on the SYS page shows where the learning guide lives, with
+  a QR code a phone can scan to open it. It takes the place of POWER OFF,
+  which only ever put the board to sleep until its reset button was pressed.
+- **Motto** is the program the device wakes up with, and it has been
+  rewritten: every runner pushes numbers and prints them as base64, so the
+  words only exist once the timing of the runners assembles them.
+- Loading a program puts the view settings back to their defaults (speed,
+  trail, follow, what a grid tap does) unless the program's own tag sets
+  them. What you changed for one program no longer follows you to the next.
+- On the EDIT CHARACTER page, DEL then OK writes a space, and the IRCIS
+  letters `r R p v V` are shown in red as they are on the keyboards.
+- A view tag's start position is now written **row first**: `~3,1N` starts
+  at row 3, column 1, heading north. That is the order the editor's corner
+  and the run page's "entry" line already used, and the one habit now
+  serves everywhere. Four Ways and Motto, the two bundled programs that
+  use one, are updated.
+- A view tag written or changed in the editor takes effect when the edit
+  lands, rather than only when the program is loaded again.
+- The inspector works from the keyboard: the arrows move the cell, and
+  `e`, `r`, `s` and `c` press its buttons.
+- In the emulator, resizing the window no longer puts clicks off from
+  where the pointer is.
+- With a real keyboard in use, the editor draws into the three rows the
+  on-screen keyboard would have taken.
+- Deleting the last program in a folder removes the folder, on every
+  platform, through the standard filesystem library rather than a POSIX call.

@@ -117,8 +117,8 @@ but what happens on the grid while they get there is the show.
 | [Staircase](Watching/Staircase.txt) | 8 x 28 | `~ns` | steps diagonally down |
 | [Circuit](Watching/Circuit.txt) | 8 x 28 | `~ns` | a closed loop, lapped forever |
 | [Comb](Watching/Comb.txt) | 6 x 29 | `~ns` | along the spine, down each tooth and back up the next |
-| [Four Ways](Watching/Four-Ways.txt) | 7 x 28 | `~ns13,3` | the runner starts on a split with an arrow on every side, and four go out at once |
-| [Motto](Watching/Motto.txt) | 13 x 46 | `~nst` | five runners draw IRCIS by walking it, then it prints what that stands for |
+| [Four Ways](Watching/Four-Ways.txt) | 7 x 28 | `~ns3,13` | the runner starts on a split with an arrow on every side, and four go out at once |
+| [Motto](Watching/Motto.txt) | 11 x 44 | `~st8,N` | each letter of IRCIS is walked by its own runner, and each runner prints its own word of the motto; the words are numbers, and the grid holds no letters at all |
 | [Race](Watching/Race.txt) | 10 x 32 | `~ns` | four runners with random handicaps, on one screen |
 | [Racetrack](Watching/Racetrack.txt) | 15 x 80 | `~nm` | three runners, five random pit stops each, identical lanes and cancelling handicaps |
 | [Dice Roll](Watching/Dice-Roll.txt) | 9 x 28 |  | rolls, prints the number, then puts that many runners into a ring |
@@ -204,13 +204,24 @@ pick of four can manage.
 
 ## A fourth: put the text in the path
 
-[Motto](Watching/Motto.txt) (Watching) has no text in it at all. Row 0 is a rule
-of `>` that the first runner walks east along; at each letter a `*` splits one
-runner downward, and that runner walks the shape of a letter. The strokes are
-blank cells -- a runner crossing a blank keeps going -- so only the turns need a
-character, and the letterform is the trajectory rather than the picture. The
-`~t` tag keeps every cell a runner has stood on tinted, so five letters get
-drawn at once and stay drawn.
+[Motto](Watching/Motto.txt) (Watching) has not a letter in it. The words are
+numbers: `%` prints an integer as base64, and in base64 `Run` is 72615,
+`Chars` is 42314476, `See` is 75678 and `I` is 8. The runner starts at the
+foot of the first column, heading north, and reads `'72615.` on its way up;
+along the top row a `*` at each letter splits one runner downward to walk
+the shape of that letter, and every runner takes a copy of the stack with it.
+So the R's runner finds 72615 waiting and prints it; the C's and the S's get
+their numbers pushed along the top row just before they split off; and the
+two I's push their own 8 on the way down their strokes. The one space in the
+program is at the top left, `" "`, and it is copied up with `@1.` and `@0.`
+wherever a word needs one and printed with `#`. Each runner's printing cells
+sit on its own stroke, on cells no other runner walks, so the motto comes
+out in order across runners that are all going at once: `I` at step 17,
+` Run` at 21 and 22, ` Chars` at 36 and 37, ` I ` from 40 to 45, `See` at
+52. The strokes are otherwise blank cells -- a runner crossing a blank keeps
+going -- so only the turns need a character, and the letterform is the
+trajectory rather than the picture. The `~t` tag keeps every cell a runner
+has stood on tinted, so the letters stay drawn.
 
 Two things constrain the shapes, and both are worth knowing before trying your
 own. `*` splits only towards a neighbour holding that direction's own arrow, so

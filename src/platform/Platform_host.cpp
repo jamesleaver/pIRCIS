@@ -15,19 +15,17 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <fcntl.h>
 #include <fstream>
+#include <iostream>
 #include <random>
 #include <istream>
 #include <cctype>
 #include <algorithm>
-#include <dirent.h>
+#include <filesystem>
 #include <map>
 #include <mutex>
 #include <sstream>
-#include <sys/stat.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 namespace plat {
@@ -66,30 +64,34 @@ void logf(const char* fmt, ...) {
   log(buf);            // takes the console lock
 }
 
-// Non-blocking stdin, so the emulator's console behaves like the serial port.
-// A single read can carry several commands, so everything after the newline is
-// kept for the next call rather than dropped.
-bool readLine(std::string& line) {
-  static bool configured = false;
-  static std::string buffer;
-  if (!configured) {
-    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
-    configured = true;
-  }
-  char buf[512];
-  ssize_t n;
-  while ((n = ::read(STDIN_FILENO, buf, sizeof(buf))) > 0)
-    buffer.append(buf, (std::size_t)n);
+// The console has to behave like the serial port: asked for a line, and never
+// waiting for one. Setting stdin non-blocking is the POSIX way and has no
+// Windows equivalent, so a thread sits on it instead and the caller takes
+// whatever has arrived. Detached, because it outlives nothing that matters and
+// a blocked read cannot be cancelled portably anyway.
+namespace {
+  std::mutex               g_lineMx;
+  std::vector<std::string> g_lines;
 
-  while (!buffer.empty()) {
-    std::size_t nl = buffer.find_first_of("\r\n");
-    if (nl == std::string::npos) return false;
-    std::string candidate = buffer.substr(0, nl);
-    buffer.erase(0, nl + 1);
-    if (!candidate.empty()) { line = candidate; return true; }
+  void stdinReader() {
+    std::string s;
+    while (std::getline(std::cin, s)) {
+      while (!s.empty() && (s.back() == '\r' || s.back() == '\n')) s.pop_back();
+      if (s.empty()) continue;
+      std::lock_guard<std::mutex> g(g_lineMx);
+      g_lines.push_back(s);
+    }
   }
-  return false;
+}
+
+bool readLine(std::string& line) {
+  static bool started = false;
+  if (!started) { started = true; std::thread(stdinReader).detach(); }
+  std::lock_guard<std::mutex> g(g_lineMx);
+  if (g_lines.empty()) return false;
+  line = g_lines.front();
+  g_lines.erase(g_lines.begin());
+  return true;
 }
 
 // Deliberately NOT recursive: the device's FreeRTOS mutex is not recursive
@@ -185,12 +187,12 @@ void clearAll() { g_map.clear(); save(); }
 bool sdPresent() { return true; }   // the emulator writes to ./sdcard/
 
 bool writeRunFile(const std::string& text, std::string& pathOut) {
-  ::mkdir(kSdDir, 0755);
+  std::error_code ec;
+  std::filesystem::create_directories(kSdDir, ec);
   char path[64];
   for (int n = 1; n < 1000; ++n) {
     snprintf(path, sizeof(path), "%s/run_%03d.txt", kSdDir, n);
-    struct stat st;
-    if (::stat(path, &st) != 0) break;
+    if (!std::filesystem::exists(path, ec)) break;
   }
   std::ofstream f(path, std::ios::binary | std::ios::trunc);
   if (!f) return false;
@@ -240,25 +242,19 @@ bool progList(Where w, std::vector<std::string>& namesOut) {
   namesOut.clear();
   if (!progStoreReady(w)) return false;
   const std::string root = progDir(w);
-  DIR* d = ::opendir(root.c_str());
-  if (!d) return true;                    // no directory yet is not an error
-  while (struct dirent* e = ::readdir(d)) {
-    const std::string n = e->d_name;
-    if (n == "." || n == "..") continue;
-    struct stat st{};
-    if (::stat((root + "/" + n).c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+  std::error_code ec;
+  if (!std::filesystem::is_directory(root, ec)) return true;   // none yet is fine
+  for (const auto& e : std::filesystem::directory_iterator(root, ec)) {
+    const std::string n = e.path().filename().string();
+    if (e.is_directory(ec)) {
       if (!safeLeaf(n)) continue;
-      if (DIR* sub = ::opendir((root + "/" + n).c_str())) {
-        while (struct dirent* f = ::readdir(sub)) {
-          const std::string fn = f->d_name;
-          if (isTxt(fn)) namesOut.push_back(n + "/" + fn.substr(0, fn.size() - 4));
-        }
-        ::closedir(sub);
+      for (const auto& f : std::filesystem::directory_iterator(e.path(), ec)) {
+        const std::string fn = f.path().filename().string();
+        if (isTxt(fn)) namesOut.push_back(n + "/" + fn.substr(0, fn.size() - 4));
       }
     }
     else if (isTxt(n)) namesOut.push_back(n.substr(0, n.size() - 4));
   }
-  ::closedir(d);
   std::sort(namesOut.begin(), namesOut.end());
   return true;
 }
@@ -274,14 +270,13 @@ bool progRead(Where w, const std::string& name, std::string& textOut) {
 // Saved run reports live in the card's top directory rather than in programs/.
 bool runList(std::vector<std::string>& namesOut) {
   namesOut.clear();
-  DIR* d = ::opendir(kSdDir);
-  if (!d) return true;                    // no directory yet is not an error
-  while (struct dirent* e = ::readdir(d)) {
-    std::string n = e->d_name;
+  std::error_code ec;
+  if (!std::filesystem::is_directory(kSdDir, ec)) return true; // none yet is fine
+  for (const auto& e : std::filesystem::directory_iterator(kSdDir, ec)) {
+    const std::string n = e.path().filename().string();
     if (n.size() > 4 && n.compare(n.size() - 4, 4, ".txt") == 0)
       namesOut.push_back(n.substr(0, n.size() - 4));
   }
-  ::closedir(d);
   std::sort(namesOut.begin(), namesOut.end());
   return true;
 }
@@ -296,11 +291,11 @@ bool runRead(const std::string& name, std::string& textOut) {
 
 bool progWrite(Where w, const std::string& name, const std::string& text) {
   if (!safeName(name) || !progStoreReady(w)) return false;
-  ::mkdir(storeRoot(w).c_str(), 0755);
-  ::mkdir(progDir(w).c_str(), 0755);
+  std::error_code ec;
+  std::filesystem::create_directories(progDir(w), ec);
   const std::size_t slash = name.find('/');
   if (slash != std::string::npos)
-    ::mkdir((progDir(w) + "/" + name.substr(0, slash)).c_str(), 0755);
+    std::filesystem::create_directories(progDir(w) + "/" + name.substr(0, slash), ec);
   std::ofstream f(progDir(w) + "/" + name + ".txt", std::ios::binary | std::ios::trunc);
   if (!f) return false;
   f.write(text.data(), (std::streamsize)text.size());
@@ -309,11 +304,13 @@ bool progWrite(Where w, const std::string& name, const std::string& text) {
 
 bool progDelete(Where w, const std::string& name) {
   if (!safeName(name) || !progStoreReady(w)) return false;
-  const bool ok = ::remove((progDir(w) + "/" + name + ".txt").c_str()) == 0;
-  // The folder goes with its last program; rmdir on a non-empty one fails.
+  std::error_code ec;
+  const bool ok = std::filesystem::remove(progDir(w) + "/" + name + ".txt", ec) && !ec;
+  // The folder goes with its last program. remove() on a directory only
+  // succeeds when it is empty, which is exactly the test wanted here.
   const std::size_t slash = name.find('/');
   if (ok && slash != std::string::npos)
-    ::rmdir((progDir(w) + "/" + name.substr(0, slash)).c_str());
+    std::filesystem::remove(progDir(w) + "/" + name.substr(0, slash), ec);
   return ok;
 }
 
@@ -403,12 +400,6 @@ std::string clipboard() {
 }
 
 bool haveKeyboard() { return true; }
-
-
-namespace { bool g_powerOff = false; }
-void powerOff() { g_powerOff = true; }
-bool powerOffRequested() { return g_powerOff; }
-
 
 // No radio on the desktop, so the hooks are stored and never used.
 void webSetHooks(const WebHooks&) {}

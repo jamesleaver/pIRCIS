@@ -376,7 +376,7 @@ void handleCommand(std::string line) {
 
 } // namespace
 
-bool quitRequested() { return g_quit || plat::powerOffRequested(); }
+bool quitRequested() { return g_quit; }
 
 void setup() {
 #if !defined(SK_HOST)
