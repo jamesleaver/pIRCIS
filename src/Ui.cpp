@@ -1823,17 +1823,32 @@ bool gridEdges(GridEdges& g) {
 // it. A bar running the whole edge covered a great deal of program for
 // something you press once.
 constexpr int kBarLong = 46;
+// A bar is a whole number of cells thick -- the count nearest to kEdgeBar,
+// and never none -- so it sits on a cell boundary. Sixteen pixels over
+// fifteen-pixel rows put its top edge one pixel into the row above, and the
+// row it was taken to cover was that one: the strip cleared under it and
+// the area that answered to a tap were both a row too high, so the bar
+// blanked the text above it and a tap on it landed on the cell beneath.
+int barThick(int cell) {
+  int n = (kEdgeBar + cell / 2) / cell;
+  if (n < 1) n = 1;
+  return n * cell;
+}
 Btn barUp(const GridEdges& g) {
-  return { g.x + (g.w - kBarLong) / 2, g.y, kBarLong, kEdgeBar, "" };
+  const int t = barThick(cellH());
+  return { g.x + (g.w - kBarLong) / 2, g.y, kBarLong, t, "" };
 }
 Btn barDown(const GridEdges& g) {
-  return { g.x + (g.w - kBarLong) / 2, g.y + g.h - kEdgeBar, kBarLong, kEdgeBar, "" };
+  const int t = barThick(cellH());
+  return { g.x + (g.w - kBarLong) / 2, g.y + g.h - t, kBarLong, t, "" };
 }
 Btn barLeft(const GridEdges& g) {
-  return { g.x, g.y + (g.h - kBarLong) / 2, kEdgeBar, kBarLong, "" };
+  const int t = barThick(cellW());
+  return { g.x, g.y + (g.h - kBarLong) / 2, t, kBarLong, "" };
 }
 Btn barRight(const GridEdges& g) {
-  return { g.x + g.w - kEdgeBar, g.y + (g.h - kBarLong) / 2, kEdgeBar, kBarLong, "" };
+  const int t = barThick(cellW());
+  return { g.x + g.w - t, g.y + (g.h - kBarLong) / 2, t, kBarLong, "" };
 }
 
 // Clear the body except for the rectangle the program occupies. drawGrid and
@@ -1931,18 +1946,13 @@ constexpr int kBarReach = 12;
 Btn barCells(const GridEdges& g, const Btn& b, bool horizontal) {
   const int cw = cellW(), chh = cellH();
   int x0, x1, y0, y1;
-  if (horizontal) {                          // spans columns, one row deep
-    x0 = g.x + (b.x - g.x) / cw * cw;
-    x1 = g.x + ((b.x + b.w - g.x + cw - 1) / cw) * cw;
-    y0 = g.y + (b.y - g.y) / chh * chh;
-    y1 = y0 + chh;
-  }
-  else {                                     // spans rows, one column wide
-    y0 = g.y + (b.y - g.y) / chh * chh;
-    y1 = g.y + ((b.y + b.h - g.y + chh - 1) / chh) * chh;
-    x0 = g.x + (b.x - g.x) / cw * cw;
-    x1 = x0 + cw;
-  }
+  // Every cell the bar's rectangle touches, on both axes: from the cell
+  // holding its near edge to the one holding its far edge.
+  (void)horizontal;
+  x0 = g.x + (b.x - g.x) / cw * cw;
+  x1 = g.x + ((b.x + b.w - g.x + cw - 1) / cw) * cw;
+  y0 = g.y + (b.y - g.y) / chh * chh;
+  y1 = g.y + ((b.y + b.h - g.y + chh - 1) / chh) * chh;
   if (x0 < g.x) x0 = g.x;
   if (y0 < g.y) y0 = g.y;
   if (x1 > g.x + g.w) x1 = g.x + g.w;
