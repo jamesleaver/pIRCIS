@@ -8,6 +8,7 @@
 #if defined(SK_HOST)
 
 #include "Platform.h"
+#include "Config.h"
 
 #include <SDL.h>
 
@@ -329,8 +330,19 @@ namespace {
     if (g_keys.size() < 64) g_keys.push_back(c);
   }
 
+  // The wheel: notches since last asked, and where the pointer was. A wheel
+  // flipped to scroll "naturally" reports the opposite sign, and SDL says
+  // which; either way up means towards the top of the grid.
+  std::atomic<int> g_wheelY{0}, g_wheelX{0}, g_wheelPx{0}, g_wheelPy{0};
+
   int keyWatch(void*, SDL_Event* e) {
-    if (e->type == SDL_TEXTINPUT) {
+    if (e->type == SDL_MOUSEWHEEL) {
+      const int flip = e->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1;
+      g_wheelY += e->wheel.y * flip; g_wheelX += e->wheel.x * flip;
+      int mx, my; SDL_GetMouseState(&mx, &my);
+      g_wheelPx = mx; g_wheelPy = my;
+    }
+    else if (e->type == SDL_TEXTINPUT) {
       for (const char* p = e->text.text; *p; ++p)
         if (*p >= 0x20 && *p < 0x7f) pushKey(*p);
     }
@@ -400,6 +412,17 @@ std::string clipboard() {
 }
 
 bool haveKeyboard() { return true; }
+bool takeWheel(int& dy, int& dx, int& x, int& y) {
+  if (!g_wheelY && !g_wheelX) return false;
+  dy = g_wheelY.exchange(0); dx = g_wheelX.exchange(0);
+  // The pointer comes in window units and the panel fills the window.
+  SDL_Window* w = SDL_GetMouseFocus();
+  int ww = kScreenW, wh = kScreenH;
+  if (w) SDL_GetWindowSize(w, &ww, &wh);
+  x = ww ? g_wheelPx * kScreenW / ww : 0;
+  y = wh ? g_wheelPy * kScreenH / wh : 0;
+  return true;
+}
 
 // No radio on the desktop, so the hooks are stored and never used.
 void webSetHooks(const WebHooks&) {}

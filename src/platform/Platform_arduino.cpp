@@ -418,6 +418,7 @@ void injectKey(char) {}
 std::string clipboard() { return std::string(); }
 
 bool haveKeyboard() { return false; }
+bool takeWheel(int&, int&, int&, int&) { return false; }
 
 
 

@@ -123,6 +123,13 @@ namespace ircis {
     const DirVec& position() const { return position_; }
     const Trail& trail() const { return trail_; }
     const RunnerStack& stack() const { return st_; }
+    // What the cell under the runner will do when it next steps, in a few
+    // words, worked out from the runner's state now: "split", "turn north",
+    // "int 19" while a number is being read, "push 1921" on the blank that
+    // ends it, "save n=657". Added for pIRCIS, for the readout under the
+    // grid. It reads the runner and changes nothing; the debug log says the
+    // same things a step later, once they have happened.
+    void describe(char* out, std::size_t n) const;
     const std::string& error() const { return err_str_; }
     bool paused() const { return pause_time_ != 0; }
     int pause_remaining() const { return pause_time_; }

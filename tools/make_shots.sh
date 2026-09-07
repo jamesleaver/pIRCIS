@@ -106,6 +106,7 @@ still editor_abc "$SHOTS" "     tap 240 306" "0.4  tap 240 306" "1    shot shot.
 still system     "$SHOTS" "     tap 432 306" "1    shot shot.ppm"
 # A grid with no readable text in it at all.
 still insult     "$SHOTS" "     progload Decoding/Insult-Machine" "1    shot shot.ppm"
+still runners    "$SHOTS" "     tap 432 306" "0.6  tap 120 63" "0.6  tap 48 306" "0.6  progload Counting/Count-to-20" "0.6  step 7" "1    shot shot.ppm"
 # The run history: three programs, then step back through them.
 still history    "$SHOTS" "     progload Counting/Countdown" "     speed full" "0.3  tap 48 306" \
                           "1.5  progload Deciding/Coin-Flip" "     speed full" "0.3  tap 48 306" \

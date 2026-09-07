@@ -91,7 +91,14 @@ already starts facing east. I write it anyway, and so does every bundled
 program, because it shows where things begin.
 
 On the device, set `SYS > UNDER GRID` to `RUNNERS` and the speed to `SLOW`, and
-you can watch it walk the path.
+you can watch it walk the path. The readout gives each runner a line: where it
+is and which way it faces, the character under it, what that character will do
+when the runner steps (`turn south`, `split`, `int 19` while a number is being
+read and `push 1921` on the blank that ends it, `save n=7`, `print 3`,
+`check false`), and the top of its stack, newest value last. It is the
+interpreter's own debug log, one step ahead. Writing a program of your own,
+this is how to check it: a few characters in EDIT, back to RUN, and step them
+with `SYS > STEP BUTTONS` on, reading the line as you go.
 
 **A runner that leaves the grid dies.** Plenty of programs end that way on
 purpose.
@@ -126,6 +133,16 @@ prints `Hi`
 
 Read that carefully, because it explains something unexpected. Here is what
 each character does to the stack. The top of the pile is shown on the right.
+
+The device can show you this table live. Set `SYS > UNDER GRID` to `RUNNERS`
+and each runner gets a line under the grid: the character it is standing on,
+what that character will do when the runner steps (`stack mode on`, `"i` and
+`"iH` as the letters are read, `push "iH"` on the closing quote, `print H`),
+and the top of its stack on the right, in the same order as these tables.
+Turn on `SYS > STEP BUTTONS` and step through a program one character at a
+time, reading the line before each step, and you can see the logic of a
+program you are writing as you write it: every push and pop, every value saved
+to a variable, every question asked, and the state of the stack after each.
 
 | reads | does | stack afterwards |
 |---|---|---|

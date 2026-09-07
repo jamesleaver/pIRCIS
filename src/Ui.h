@@ -27,6 +27,10 @@ namespace ui {
   // going through the UI, and it must not run a stale one.
   void applyEditsNow();
   void markLoaded();      // the working grid is now the one the machine is running
+  // The working grid holds a different program now (a preset, say): give it
+  // the settling every load gets -- its own start cell and view, a clean
+  // history -- and hand it to the machine.
+  void adoptProgram();
   void repaint();
   void showMessage(const std::string& title, const std::string& body);
   // Call after anything that may have changed the lock state.
@@ -40,6 +44,7 @@ namespace ui {
   void injectDragV(int dy);  // scroll the row window, as a finger would
   unsigned long gridPaints();
 unsigned long fullPaints();  // host-only instrumentation
+void injectWheel(int dy, int dx, int x, int y);   // emulator: a wheel turned over the panel
   unsigned long bandPaints();
   // Parse a program file into the working grid. False if empty or too big.
   bool loadProgramTextPublic(const std::string& text, const char* name = nullptr);

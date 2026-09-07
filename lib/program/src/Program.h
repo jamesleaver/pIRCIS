@@ -118,6 +118,7 @@ namespace prog {
 
     void revertAll();
     void revertSlot(int slot);
+    void resetBaseline();   // the table's cells, or blank: what a fresh load reverts to
 
     char cell(int row, int col) const;
     bool setCell(int row, int col, char ch);

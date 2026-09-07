@@ -61,6 +61,7 @@ void printHelp() {
 #if defined(SK_HOST)
     "\n  shot [file.ppm]                (emulator) dump the panel framebuffer\n"
     "  tap <x> <y>                    (emulator) synthetic touch\n"
+    "  wheel <dy> <dx> <x> <y>        (emulator) a mouse wheel turned over x,y\n"
     "  key <char|name>                (emulator) synthetic keystroke\n"
     "  drag <dx>                      (emulator) pan the ZOOM view by dx px\n"
     "  quit                           (emulator) close the window"
@@ -362,6 +363,16 @@ void handleCommand(std::string line) {
     if (!code && v.size() == 1) code = v[0];
     if (!code) plat::logln("usage: key <char|tab|esc|f1|save|undo|redo|run|up|down|left|right|space|enter|back>");
     else plat::injectKey(code);
+  }
+  else if (cmd == "wheel") {
+    // Emulator only: a mouse wheel turned dy notches (up is positive), and
+    // dx sideways, with the pointer at x, y.
+    int dy = std::atoi(nextToken(line).c_str());
+    int dx = std::atoi(nextToken(line).c_str());
+    int x = std::atoi(nextToken(line).c_str());
+    int y = std::atoi(nextToken(line).c_str());
+    ui::injectWheel(dy, dx, x, y);
+    plat::logf("wheel %d,%d at (%d,%d)\n", dy, dx, x, y);
   }
   else if (cmd == "tap") {
     // Emulator only: synthesise a touch, so screens can be driven from a script.

@@ -223,10 +223,10 @@ int gridTap() {
   // that when the new key is absent, so an existing device keeps its setting.
   const int fallback = plat::kv::getBool("adv", false) ? kTapInspector : kTapNothing;
   const int v = plat::kv::getInt("gtap", fallback);
-  return (v < kTapNothing || v > kTapInspector) ? kTapNothing : v;
+  return (v < kTapNothing || v > kTapEdit) ? kTapNothing : v;
 }
 void setGridTap(int mode) {
-  if (mode < kTapNothing || mode > kTapInspector) mode = kTapNothing;
+  if (mode < kTapNothing || mode > kTapEdit) mode = kTapNothing;
   plat::kv::putInt("gtap", mode);
   plat::kv::putBool("adv", mode != kTapNothing);   // keep the old key in step
 }

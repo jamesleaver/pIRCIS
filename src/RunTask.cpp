@@ -144,6 +144,9 @@ int  g_visitCols = 0;
       g_snap.runners[i].used = false;
       g_snap.runners[i].alive = false;
       g_snap.runners[i].trailLen = 0;
+      g_snap.runners[i].note[0] = 0;
+      g_snap.runners[i].stackDepth = 0;
+      g_snap.runners[i].stackShown = 0;
     }
     for (const auto& d : g_machine->deaths()) {
       if (d.runner_id < 0 || d.runner_id >= kMaxRunners) continue;
@@ -185,6 +188,17 @@ int  g_visitCols = 0;
       v.y = (uint8_t)r.position().get_y();
       v.dir = ircis::to_char(r.position().get_direction());
       v.paused = r.paused();
+      r.describe(v.note, sizeof(v.note));
+      const ircis::RunnerStack& st = r.stack();
+      const std::size_t depth = st.size();
+      v.stackDepth = (uint16_t)(depth > 0xFFFF ? 0xFFFF : depth);
+      v.stackShown = (uint8_t)(depth < (std::size_t)kStackView ? depth : (std::size_t)kStackView);
+      v.stackInt = 0;
+      for (uint8_t k = 0; k < v.stackShown; ++k) {
+        const ircis::Data& d = st.from_top(k);
+        v.stackTop[k] = d.value;
+        if (d.is_integer) v.stackInt |= (uint8_t)(1u << k);
+      }
 
       const ircis::Trail& t = r.trail();
       uint8_t want = (uint8_t)(t.size() < kTrailView ? t.size() : kTrailView);

@@ -12,6 +12,7 @@
 #include "Runner.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -530,6 +531,136 @@ namespace ircis {
     log_line("Saving value ", st_.top(), " to variable ", var);
     var_map_[var] = st_.top();
     return true;
+  }
+
+  void Runner::describe(char* out, std::size_t n) const {
+    out[0] = 0;
+    if (pause_time_) { std::snprintf(out, n, "pause %d", pause_time_); return; }
+    if (!grid_->is_inside(position_)) return;
+    const char c = grid_->get(position_);
+    // A stack read that would step past the bottom answers 0 in step(); the
+    // same here, without touching the counter that says it happened.
+    auto at = [this](std::size_t k) { return k < st_.size() ? st_.from_top(k) : Data(); };
+
+    // --- a number being read, and the blank that ends it ---
+    if (integer_mode_ || c == CH_INT) {
+      if (integer_mode_ && c == CH_INT) { std::snprintf(out, n, "quote in int mode"); return; }
+      if (!integer_mode_) { std::snprintf(out, n, "int mode on"); return; }
+      if (!is_blank(c)) { std::snprintf(out, n, "int %s%c", integer_mode_buffer_.c_str() + 1, c); return; }
+      const std::string& b = integer_mode_buffer_;      // starts with the quote
+      if (b.size() < 2) { std::snprintf(out, n, "int ends"); return; }
+      const char start = b[1], second = b.size() > 2 ? b[2] : '\0';
+      if (isbase64(start) && (!is_arith(start) || isbase64(second))) {
+        bool b64 = false;
+        for (std::size_t i = 1; i < b.size(); ++i) {
+          if (!isbase64(b[i])) { std::snprintf(out, n, "not a number"); return; }
+          if (!std::isdigit((unsigned char)b[i])) b64 = true;
+        }
+        const int num = b64 ? base64_decode_int(b.substr(1)) : std::atoi(b.c_str() + 1);
+        std::snprintf(out, n, "push %d", num);
+        return;
+      }
+      if (is_arith(start)) {
+        if (st_.size() < 2) { std::snprintf(out, n, "arith needs 2"); return; }
+        const Data a = at(0), bb = at(1);
+        if (!a.is_integer || !bb.is_integer) { std::snprintf(out, n, "no arith on chars"); return; }
+        Data r;
+        switch (start) {
+          case CH_ADD: r = a + bb; break;
+          case CH_SUB: r = a - bb; break;
+          case CH_MUL: r = a * bb; break;
+          case CH_DIV:
+            if (bb.value == 0) { std::snprintf(out, n, "divide by zero"); return; }
+            r = a / bb; break;
+          case CH_MOD:
+            if (bb.value == 0) { std::snprintf(out, n, "divide by zero"); return; }
+            r = a % bb; break;
+          case CH_POW: r = a ^ bb; break;
+          case CH_AND: r = a & bb; break;
+          case CH_OR:  r = a | bb; break;
+          case CH_XOR: r = a.V(bb); break;
+          case CH_BL:  r = a < bb; break;
+          case CH_BR:  r = a > bb; break;
+          default: std::snprintf(out, n, "unknown op %c", start); return;
+        }
+        std::snprintf(out, n, "%d%c%d=%d", a.value, start, bb.value, r.value);
+        return;
+      }
+      std::snprintf(out, n, "int ends");
+      return;
+    }
+
+    // --- a string, a variable name or a count being read, and its end ---
+    if (mode_ != Mode::NONE) {
+      const char pre = mode_ == Mode::STACK ? CH_STACK : mode_ == Mode::STACK_PUSH ? CH_PUSH : CH_POP;
+      const std::string& m = mode_buffer_;
+      if (!is_mode_end_char(mode_, c)) { std::snprintf(out, n, "%c%s%c", pre, m.c_str(), c); return; }
+      if (mode_ == Mode::STACK) { std::snprintf(out, n, "push \"%s\"", m.c_str()); return; }
+      const bool lower = !m.empty() && std::islower((unsigned char)m[0]);
+      const bool upper = !m.empty() && std::isupper((unsigned char)m[0]);
+      if (mode_ == Mode::STACK_PUSH) {
+        if (lower || upper) {
+          const auto& map = lower ? var_map_ : *global_var_map_;
+          const auto it = map.find(m);
+          if (it == map.end()) std::snprintf(out, n, "no %s %s", lower ? "local" : "global", m.c_str());
+          else std::snprintf(out, n, "push %s=%s", m.c_str(), it->second.to_string().c_str());
+          return;
+        }
+        int num = 0;
+        for (char ch : m) {
+          if (!std::isdigit((unsigned char)ch)) { std::snprintf(out, n, "bad push %s", m.c_str()); return; }
+          num = num * 10 + (ch - '0');
+        }
+        std::snprintf(out, n, "push @%d=%s", num, at((std::size_t)num).to_string().c_str());
+        return;
+      }
+      // STACK_POP
+      if (lower || upper) { std::snprintf(out, n, "save %s=%s", m.c_str(), at(0).to_string().c_str()); return; }
+      int num = 0;
+      for (char ch : m) {
+        if (!std::isdigit((unsigned char)ch)) { std::snprintf(out, n, "bad pop %s", m.c_str()); return; }
+        num = num * 10 + (ch - '0');
+      }
+      std::string popped;
+      for (int i = 0; i < num && (std::size_t)i < st_.size(); ++i) popped += " " + st_.from_top((std::size_t)i).to_string();
+      std::snprintf(out, n, "pop%s", popped.empty() ? " nothing" : popped.c_str());
+      return;
+    }
+
+    // --- a command on its own ---
+    switch (c) {
+      case CH_STACK: std::snprintf(out, n, "stack mode on"); return;
+      case CH_WEST:  std::snprintf(out, n, "turn west");  return;
+      case CH_NORTH: std::snprintf(out, n, "turn north"); return;
+      case CH_EAST:  std::snprintf(out, n, "turn east");  return;
+      case CH_SOUTH: std::snprintf(out, n, "turn south"); return;
+      case CH_PUSH:  std::snprintf(out, n, "push mode"); return;
+      case CH_POP:   std::snprintf(out, n, "pop mode");  return;
+      case CH_ENDL:  std::snprintf(out, n, "newline"); return;
+      case CH_SPLIT: std::snprintf(out, n, "split"); return;
+      case CH_CHECK: std::snprintf(out, n, at(0).value ? "check true" : "check false"); return;
+      case CH_RAND_INT:
+        if (st_.empty()) std::snprintf(out, n, "rand needs a limit");
+        else std::snprintf(out, n, "rand 0..%s", at(0).to_string().c_str());
+        return;
+      case CH_RAND:  std::snprintf(out, n, "rand 0 or 1"); return;
+      case CH_PAUSE:
+        if (st_.empty()) std::snprintf(out, n, "pause needs a time");
+        else std::snprintf(out, n, "pause %s", at(0).to_string().c_str());
+        return;
+      case CH_END:   std::snprintf(out, n, "end"); return;
+      case CH_PRINT:
+        if (st_.empty()) std::snprintf(out, n, "print, stack empty");
+        else std::snprintf(out, n, "print %s", at(0).to_string().c_str());
+        return;
+      case CH_PRINT_BASE64:
+        if (st_.empty()) std::snprintf(out, n, "print, stack empty");
+        else if (at(0).is_integer)
+          std::snprintf(out, n, "print %s as %s", at(0).to_string().c_str(), base64_encode_int(at(0).value).c_str());
+        else std::snprintf(out, n, "print %s", at(0).to_string().c_str());
+        return;
+      default: return;      // a blank, or a character IRCIS steps over
+    }
   }
 
   void Runner::push_random_number_to_stack(int limit) {

@@ -78,7 +78,7 @@ namespace Store {
   // What a tap on the RUN grid does. One setting, because a tap can only do
   // one of these and the old START POINT: FREE/FIXED was quietly deciding
   // both whether the start could move and whether the inspector opened.
-  enum { kTapNothing = 0, kTapStart = 1, kTapInspector = 2 };
+  enum { kTapNothing = 0, kTapStart = 1, kTapInspector = 2, kTapEdit = 3 };
   int  gridTap();
   void setGridTap(int mode);
 

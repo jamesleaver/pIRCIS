@@ -42,6 +42,9 @@ namespace ircis {
       return container_.back();
     }
     std::size_t size() const { return container_.size(); }
+    // The k-th value from the top, for showing the stack; k must be below
+    // size(). Added for pIRCIS: a plain read, so ub_reads() is untouched.
+    const Data& from_top(std::size_t k) const { return container_[container_.size() - 1 - k]; }
     void pop() { if (!container_.empty()) container_.pop_back(); }
     bool empty() const { return container_.empty(); }
 

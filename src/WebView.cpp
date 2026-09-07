@@ -226,8 +226,9 @@ namespace {
       else if (!ui::loadProgramTextPublic(text))
         p += "<p class='msg bad'>That file is not a usable program.</p>";
       else {
+        // loadProgramTextPublic has already settled and loaded it; only the
+        // name was still to come, and it does not go to the machine.
         ui::editGrid().setProgramName(name);
-        run::load(ui::editGrid());
         ui::markLoaded();
         p += "<p class=msg>Loaded " + esc(name) + " onto the device.</p>";
       }
@@ -267,8 +268,7 @@ namespace {
       if (slot < 0 || slot >= Store::kMaxPresets || !Store::loadPreset(slot, ui::editGrid()))
         p += "<p class='msg bad'>That preset could not be loaded.</p>";
       else {
-        run::load(ui::editGrid());
-        ui::markLoaded();
+        ui::adoptProgram();   // a different program: its own start cell, not the last one's
         p += "<p class=msg>Preset " + std::to_string(slot + 1) + " loaded onto the device.</p>";
       }
     }

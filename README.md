@@ -290,6 +290,27 @@ pages moves nothing. Small arrows on the grid's edges page through a program
 larger than the window, and only appear on the sides where there is more to
 see. Opening EDIT pauses a run.
 
+### Under the grid — what each runner is about to do
+
+<p align="center">
+  <img src="shots/runners.png" alt="the runner readout" width="420">
+</p>
+
+**SYS > UNDER GRID** decides what the strip under the program shows.
+**OUTPUT** is what the program has printed so far. **RUNNERS** gives every
+runner a line: its row and column and which way it faces, the character it is
+standing on, what that character will do when the runner steps, and the top of
+its stack, newest value last. So `turn south`; `split`; `int mode on`, then
+`int 2` and `int 20` as a number is read and `push 20` on the blank that ends
+it; `pop mode`, `&N`, `save N=20`; `print 3`; `check false`; `pause 5`. It is
+the interpreter's own debug log, one step ahead of it, and the quickest way to
+see what a program you are writing actually does: put a few characters down in
+EDIT, come back to RUN, and step through them with **STEP BUTTONS** on,
+reading the line as you go. While a run is going the runners still alive are
+listed first; a list longer than the strip scrolls with the pair of arrows at
+its left. `d` in a program's tag asks for this readout, `n` for nothing
+underneath, which gives the program the whole screen.
+
 ### OUT — read what it printed
 
 <p align="center">
@@ -430,11 +451,13 @@ start position:  <row>,<col> and one of N E S W
 ```
 
 So `~nm3,1N` means: nothing underneath, medium speed, start at row 3 column 1
-heading north. Order does not matter. Loading a program puts the readout,
-speed, trail, follow, start point and GRID TAP back to their defaults and
-then applies the tag, so anything you leave out is the default and most
-programs need no tag at all. STEP BUTTONS, the theme and the keyboard are the
-device's own settings and stay as you set them.
+heading north. Order does not matter. Loading a program puts the speed,
+follow and start point back to their defaults and then applies the tag, so
+anything you leave out is the default and most programs need no tag at all.
+The readout and the trail are yours: a tag that names one takes it over only
+while that program is loaded, and the SYS tiles show what is in force. GRID
+TAP, STEP BUTTONS, the theme and the keyboard are the device's own settings
+and stay as you set them.
 
 `t` is the interesting one. Normally a runner shows a short tail and the cells
 behind it go back to normal. With `t`, every cell any runner has stood on stays

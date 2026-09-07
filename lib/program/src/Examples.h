@@ -306,14 +306,13 @@ namespace prog {
     "..% prints a number as base64 and # prints the same number in base 10,.....",
     "..which is why each line shows it both ways................................",
   };
-  // Decoding/Binary.txt -- 8 x 22
+  // Decoding/Binary.txt -- 7 x 22
   inline const char* const kExample32[] = {
-    ">'14.v..Prints binary ",
-    "v....<...in reverse...",
-    "......................",
+    ">'14.........v..Prints",
+    "v............<..binary",
+    "............in reverse",
     ">.?.*>.'2.@1.'%..#.!..",
     "....v.................",
-    "......................",
     "....>......v..........",
     "^./'.1@.2'.<..........",
   };
@@ -436,22 +435,22 @@ namespace prog {
   // Watching/Circuit.txt -- 8 x 28
   inline const char* const kExample47[] = {
     ">..........................v",
-    "...........................v",
-    "...........................v",
-    "...........................v",
-    "...........................v",
-    "...........................v",
-    "...........................v",
+    "............................",
+    "............................",
+    "............................",
+    "............................",
+    "............................",
+    "............................",
     "<.......................~ns<",
   };
-  // Watching/Comb.txt -- 6 x 29
+  // Watching/Comb.txt -- 6 x 24
   inline const char* const kExample48[] = {
-    "v>.v>.v>.v>.v>.v>.v>.v>.v>..!",
-    ".............................",
-    ".............................",
-    "..........................~ns",
-    ".............................",
-    ">^.>^.>^.>^.>^.>^.>^.>^.>^...",
+    "v....>v....>v....>v....!",
+    "........................",
+    "..>v....>v....>v....>v..",
+    "....................~nts",
+    "........................",
+    ">.^>.^>.^>.^>.^>.^>.^>.^",
   };
   // Watching/Dice-Roll.txt -- 9 x 28
   inline const char* const kExample49[] = {
@@ -583,11 +582,11 @@ namespace prog {
     ">.............................v",
     ">............................v.",
     ".>..........................v..",
-    "..>........................v~ns",
+    "..>........................v...",
     "...>......................v....",
     "....!.....................<....",
     "...^.......................<...",
-    "..^.........................<..",
+    "..^........~nts.............<..",
     ".^...........................<.",
     "^.............................<",
   };
@@ -600,7 +599,7 @@ namespace prog {
     "....>v......................",
     ".....>v.....................",
     "......>v....................",
-    ".......>!................~ns",
+    ".......>........!.......~nst",
   };
 
   // folder is where the program is written on the device -- one
@@ -639,7 +638,7 @@ namespace prog {
     { "Magic Eight Ball", "Deciding", kExample29, 11, 31 },
     { "True Or False", "Deciding", kExample30, 6, 41 },
     { "Base 64", "Decoding", kExample31, 14, 75 },
-    { "Binary", "Decoding", kExample32, 8, 22 },
+    { "Binary", "Decoding", kExample32, 7, 22 },
     { "Insult Machine", "Decoding", kExample33, 4, 73 },
     { "Morse Decoder", "Decoding", kExample34, 28, 96 },
     { "Advice", "Talking", kExample35, 7, 14 },
@@ -655,7 +654,7 @@ namespace prog {
     { "Warning", "Talking", kExample45, 4, 72 },
     { "Bounce", "Watching", kExample46, 7, 28 },
     { "Circuit", "Watching", kExample47, 8, 28 },
-    { "Comb", "Watching", kExample48, 6, 29 },
+    { "Comb", "Watching", kExample48, 6, 24 },
     { "Dice Roll", "Watching", kExample49, 9, 28 },
     { "Dumb Pi", "Watching", kExample50, 8, 77 },
     { "Four Ways", "Watching", kExample51, 7, 28 },

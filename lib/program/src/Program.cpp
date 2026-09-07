@@ -87,6 +87,7 @@ namespace prog {
     const ProgramDef& d = programAt(prog_);
     rows_ = d.rows_n < kMaxRows ? d.rows_n : kMaxRows;
     cols_ = d.cols_n < kMaxCols ? d.cols_n : kMaxCols;
+    resetBaseline();
     revertAll();
   }
 
@@ -99,6 +100,7 @@ namespace prog {
     name_.clear();
     rows_ = rows;
     cols_ = cols;
+    resetBaseline();
     revertAll();
   }
 
@@ -106,13 +108,21 @@ namespace prog {
     for (int r = 0; r < kMaxRows; ++r) std::memcpy(base_[r], cells_[r], kMaxCols);
   }
 
-  void Program::revertAll() {
+  // The baseline as the table gives it, or blank for a program built here,
+  // until adoptBaseline() gives it one of its own.
+  void Program::resetBaseline() {
     for (int r = 0; r < kMaxRows; ++r) std::memset(base_[r], '.', kMaxCols);
     if (!isScratch()) {
       const ProgramDef& d = programAt(prog_);
       for (int r = 0; r < rows_; ++r)
         std::memcpy(base_[r], d.rows[r], cols_);
     }
+  }
+
+  // Back to the baseline, whoever gave it: the table, or the text the
+  // program arrived as. Rebuilding the baseline here as well threw away the
+  // one a file had adopted, so reverting a saved program emptied the grid.
+  void Program::revertAll() {
     for (int r = 0; r < kMaxRows; ++r) std::memcpy(cells_[r], base_[r], kMaxCols);
   }
 

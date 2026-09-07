@@ -119,6 +119,9 @@ namespace plat {
   // Whether this build can receive typed keys at all -- what SYS uses to
   // decide whether offering the setting makes any sense.
   bool haveKeyboard();
+  // A mouse wheel's turns since last asked, in notches, and where the
+  // pointer was, in panel coordinates. Answered once; the board says no.
+  bool takeWheel(int& dy, int& dx, int& x, int& y);
 
   uint32_t randomSeed();
 

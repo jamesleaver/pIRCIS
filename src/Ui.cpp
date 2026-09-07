@@ -417,18 +417,30 @@ constexpr int kBandLinesOutput = 4;
 //
 // RUNNERS also brings up the single-step buttons: looking at the runners and
 // stepping through them are the same job, which is why they were one switch.
-inline bool bandRunners() { return Store::debugMode(); }
-inline bool bandOutput()  { return !Store::debugMode() && Store::runView() == 0; }
-inline bool runViewNone() { return !bandRunners() && !bandOutput(); }
-
+//
+// A program's tag can ask for a band ('n', 'd') or for the trail ('t'). That
+// is the program's wish, not the reader's setting: it is laid over the
+// setting while the program is loaded and lifted when another one is, so a
+// program that asks for the trail does not leave it on for every program
+// after it. The SYS tiles show what is in force and, tapped, take over.
 enum { kBandOutput = 0, kBandRunners = 1, kBandNothing = 2 };
+int  g_tagBand  = -1;      // a band the loaded program's tag asked for, or -1
+int  g_tagTrace = -1;      // the trail the tag asked for: 1 on, or -1 for none
+inline bool bandRunners() { return g_tagBand >= 0 ? g_tagBand == kBandRunners : Store::debugMode(); }
+inline bool bandOutput()  { return g_tagBand >= 0 ? g_tagBand == kBandOutput : (!Store::debugMode() && Store::runView() == 0); }
+inline bool runViewNone() { return !bandRunners() && !bandOutput(); }
+inline bool traceOn()     { return g_tagTrace >= 0 ? g_tagTrace != 0 : Store::tracePath(); }
+
 int bandMode() {
   return bandRunners() ? kBandRunners : bandOutput() ? kBandOutput : kBandNothing;
 }
+// Set by hand on SYS: the reader's setting, and the tag's wish is lifted.
 void setBandMode(int m) {
+  g_tagBand = -1;
   Store::setDebugMode(m == kBandRunners);
   Store::setRunView(m == kBandNothing ? 1 : 0);
 }
+void setTraceOn(bool on) { g_tagTrace = -1; Store::setTracePath(on); }
 
 // The row carrying the scroll arrows, and the grid height above it.
 int runnerListY();
@@ -743,7 +755,7 @@ char g_traceShown[prog::kMaxRows * prog::kMaxCols];
 int  g_traceCols = 0;
 
 void refreshTrace() {
-  g_traceCols = Store::tracePath() ? run::visitsInto(g_trace, sizeof(g_trace)) : 0;
+  g_traceCols = traceOn() ? run::visitsInto(g_trace, sizeof(g_trace)) : 0;
 }
 bool traced(int row, int col) {
   if (g_traceCols <= 0 || row < 0 || col < 0 || col >= g_traceCols) return false;
@@ -823,6 +835,9 @@ void paintGridRows(bool editor);   // defined with the grid geometry
 unsigned long g_gridPaints = 0;   // instrumentation, host only
 unsigned long g_fullPaints = 0;   // whole-screen repaints, host only
 #endif
+// Which path asked for the last whole-screen paint. Only the host's trace
+// reads it, but the stores that set it are cheaper than guarding each one.
+const char* g_paintWhy = "?";
 
 void drawGrid() {
 #if defined(SK_HOST)
@@ -933,7 +948,7 @@ void drawRunners(const run::Snapshot& snap) {
   run::Speed sp = run::speed();
   // TRAIL already keeps the whole path on screen. Fading tails on top of it
   // are a second set of marks over the same cells, so it is one or the other.
-  bool trails = (sp == run::Speed::Slow) && !Store::tracePath();
+  bool trails = (sp == run::Speed::Slow) && !traceOn();
 
   if (trails) {
     // Trails only exist at SLOW, where you can see each step land, so a long
@@ -1337,8 +1352,15 @@ Btn btnOutMoreUp()   { return { 2, kRunnerListY, 30, kContentH, "..." }; }
 Btn btnOutMoreDown() { return { kScreenW - 32, kRunnerListY + (bandLines() - 1) * kContentH,
                                 30, kContentH, "..." }; }
 
-Btn btnOutUp()     { return { 4,  kWideShiftY, 26, kContentH + 2, "^" }; }
-Btn btnOutDown()   { return { 34, kWideShiftY, 26, kContentH + 2, "v" }; }
+// The runner list's pair, stacked at the left edge of the readout, each half
+// the band tall. They used to sit on the program's scroll row, which the band
+// starts on whenever there is a readout, so the first runner line painted
+// over them. The lines start to their right while they are needed and have
+// the full width when they are not.
+constexpr int kBandBtnW = 22;
+Btn btnOutUp()     { return { 4, kRunnerListY, kBandBtnW, bandLines() * kContentH / 2 - 2, "^" }; }
+Btn btnOutDown()   { return { 4, kRunnerListY + bandLines() * kContentH / 2 + 1, kBandBtnW,
+                              bandLines() * kContentH / 2 - 2, "v" }; }
 
 
 // Cheap FNV-1a over the things drawRunnerList actually shows.
@@ -1346,7 +1368,7 @@ uint32_t bandSignature(const run::Snapshot& snap) {
   uint32_t h = 2166136261u;
   auto mix = [&h](uint32_t v) { h = (h ^ v) * 16777619u; };
   mix((uint32_t)Store::runView() + 1u);
-  mix(Store::debugMode() ? 2u : 1u);
+  mix(bandRunners() ? 2u : 1u);
   mix((uint32_t)g_gridCol);
   mix((uint32_t)g_gridRow);
   mix((uint32_t)g_outLine);
@@ -1362,15 +1384,21 @@ uint32_t bandSignature(const run::Snapshot& snap) {
     mix((uint32_t)run::output().size());
   }
   else if (bandRunners()) {
-    for (int i = 0; i < run::kMaxRunners && i < 4; ++i) {
+    mix(snap.finished ? 1u : 0u);       // the order of the list follows it
+    for (int i = 0; i < run::kMaxRunners; ++i) {
       const run::RunnerView& r = snap.runners[i];
-      mix((uint32_t)(r.used ? 1 : 0));
+      if (!r.used) { mix(0u); continue; }
+      mix(1u);
       mix((uint32_t)(r.alive ? 1 : 0));
       mix((uint32_t)r.y);
       mix((uint32_t)r.x);
       mix((uint32_t)r.dir);
       mix((uint32_t)r.diedStep);
       mix((uint32_t)(r.paused ? 1 : 0));
+      for (const char* p = r.note; *p; ++p) mix((uint32_t)(uint8_t)*p);
+      mix((uint32_t)r.stackDepth);
+      mix((uint32_t)r.stackInt);
+      for (int k = 0; k < r.stackShown; ++k) mix((uint32_t)r.stackTop[k]);
     }
   }
   return h ? h : 1u;          // never 0: that is the "unknown" marker
@@ -1380,17 +1408,103 @@ uint32_t bandSignature(const run::Snapshot& snap) {
 unsigned long g_bandPaints = 0;   // instrumentation, host only
 #endif
 
-// The row of scroll arrows directly under the program. Separate from the
-// readout below it because scrolling the grid changes which arrows are
-// available and nothing else -- what has been printed is unaffected.
+// ---- The runner readout ---------------------------------------------------
+//
+// One line per runner: where it is, the cell under it, what that cell will
+// do, and the top of its stack. A step moves every live runner, so every line changes
+// on every step -- but only in a few places. Repainting the band for that made
+// every line blink on the board, so the band remembers the characters it last
+// drew and repaints only the ones that differ. Anything that moves the lines
+// about (a runner appearing, or dying while the run is going; the list
+// scrolling; the readout switching) repaints the lot.
+constexpr int kBandRowsMax = kBandLines > kBandLinesOutput ? kBandLines : kBandLinesOutput;
+constexpr int kBandColsMax = 96;   // the widest panel's worth of content font
+struct BandCell { char ch; uint16_t fg; };
+struct BandRow  { BandCell cell[kBandColsMax]; };
+BandRow  g_bandRow[kBandRowsMax];
+int      g_bandRowsDrawn = 0;      // rows the cache describes; 0 = nothing cached
+uint32_t g_bandLayout = 0;         // what the cache was laid out for
 
-void drawRunnerList(const run::Snapshot& snap) {
-#if defined(SK_HOST)
-  ++g_bandPaints;
-#endif
+// Lay one runner's line out in cells. A blank carries the background colour,
+// so a blank is a blank whatever it used to be. The runner's name is in its
+// own colour, the one it is drawn in on the grid; it used to be a square
+// beside the line, which the scroll pair now sits over.
+void bandRowFor(const run::RunnerView& r, BandRow& row, int cols) {
+  for (int i = 0; i < cols; ++i) { row.cell[i].ch = ' '; row.cell[i].fg = theme::bg; }
+  const uint16_t mine = theme::runner[r.id % 6];
+  auto put = [&row, cols](int at, const char* s, uint16_t fg) {
+    for (; *s && at < cols; ++s, ++at) {
+      row.cell[at].ch = *s;
+      row.cell[at].fg = *s == ' ' ? theme::bg : fg;
+    }
+    return at;
+  };
+  char buf[64];
+  if (!r.alive) {
+    snprintf(buf, sizeof(buf), "R%d", r.id);
+    int at = put(0, buf, mine);
+    snprintf(buf, sizeof(buf), "  died at step %u", (unsigned)r.diedStep);
+    put(at, buf, theme::dim);
+    return;
+  }
+  // Where it is and which way it faces; the character under it in its own
+  // colour rather than in quotes, since an apostrophe inside quotes reads as
+  // nothing at all; then what that cell will do, in the interpreter's words.
+  snprintf(buf, sizeof(buf), "R%d", r.id);
+  int at = put(0, buf, mine);
+  snprintf(buf, sizeof(buf), " r%-2d c%-2d %c ", r.y, r.x, r.dir);
+  at = put(at, buf, theme::text);
+  const char one[2] = { g_edit.cell(r.y, r.x), 0 };
+  at = put(at, one, charColour(r.y, r.x));
+  at = put(at + 1, r.note, theme::text);
+  // The top of its stack, dimmed and against the right edge: as many values as
+  // fit after a gap, the top last, the way the values were pushed. A leading
+  // ".." says there is more below. A character shows as itself, a space as an
+  // underscore, so it can be seen at all.
+  if (r.stackShown == 0) return;
+  for (int n = r.stackShown; n > 0; --n) {
+    std::string st = r.stackDepth > (uint16_t)n ? "[.." : "[";
+    for (int k = n - 1; k >= 0; --k) {
+      if (st.size() > 1) st += ' ';
+      if (r.stackInt & (1u << k)) st += std::to_string(r.stackTop[k]);
+      else {
+        const char c = (char)r.stackTop[k];
+        st += c == ' ' ? '_' : (c > ' ' && c < 127) ? c : '?';
+      }
+    }
+    st += ']';
+    if ((int)st.size() <= cols - at - 2) { put(cols - (int)st.size(), st.c_str(), theme::dim); return; }
+  }
+}
+
+// Draw the cells of a row that differ from what is on the panel. With no
+// previous row every cell goes out; the caller has cleared the band first.
+void paintBandRow(int x0, int y, const BandRow& row, const BandRow* prev, int cols) {
+  int i = 0;
+  while (i < cols) {
+    if (prev && prev->cell[i].ch == row.cell[i].ch && prev->cell[i].fg == row.cell[i].fg) { ++i; continue; }
+    // A run of changed cells in one colour goes out as one string.
+    const uint16_t fg = row.cell[i].fg;
+    char buf[kBandColsMax + 1];
+    int n = 0, j = i;
+    while (j < cols && row.cell[j].fg == fg &&
+           (!prev || prev->cell[j].ch != row.cell[j].ch || prev->cell[j].fg != fg))
+      buf[n++] = row.cell[j++].ch;
+    buf[n] = 0;
+    gfx.fillRect(x0 + i * kContentW, y, n * kContentW, kContentH, theme::bg);
+    if (fg != theme::bg) clabel(x0 + i * kContentW, y, buf, fg);
+    i = j;
+  }
+}
+
+// `incremental` is the run loop asking for the readout to be brought up to
+// date: the runner list then repaints a character at a time, as above. Every
+// other caller starts from a cleared band.
+void drawRunnerList(const run::Snapshot& snap, bool incremental = false) {
   // Nothing under the program: the grid above has already taken the space.
   if (runViewNone()) {
     gfx.fillRect(0, kWideShiftY, kScreenW, kTabY - kWideShiftY, theme::bg);
+    g_bandRowsDrawn = 0;
     return;
   }
 
@@ -1400,16 +1514,23 @@ void drawRunnerList(const run::Snapshot& snap) {
   // printed made it blink, and any repaint that stopped short of redrawing it
   // left it missing.
   const int ruleY = kRunnerListY - 3;
-  if (ruleY > kWideShiftY)
-    gfx.fillRect(0, kWideShiftY, kScreenW, ruleY - kWideShiftY, theme::bg);
-  gfx.fillRect(0, ruleY + 1, kScreenW, kTabY - (ruleY + 1), theme::bg);
-  gfx.drawFastHLine(4, ruleY, kScreenW - 8, theme::line);
+  auto clearBand = [ruleY] {
+#if defined(SK_HOST)
+    ++g_bandPaints;
+#endif
+    if (ruleY > kWideShiftY)
+      gfx.fillRect(0, kWideShiftY, kScreenW, ruleY - kWideShiftY, theme::bg);
+    gfx.fillRect(0, ruleY + 1, kScreenW, kTabY - (ruleY + 1), theme::bg);
+    gfx.drawFastHLine(4, ruleY, kScreenW - 8, theme::line);
+    g_bandRowsDrawn = 0;
+  };
 
   int y = kRunnerListY;
 
   // The other readout: what the program has printed so far, growing as it
   // runs, the way you would watch the output file on a desktop build.
   if (bandOutput()) {
+    clearBand();
     const std::string out = run::output();
     if (out.empty()) {
       g_outLine = 0;
@@ -1490,57 +1611,63 @@ void drawRunnerList(const run::Snapshot& snap) {
     return;
   }
 
-  if (snap.step == 0) {
-    clabel(12, y, keyHints() ? "Press (p)lay to begin IRCIS."
-                             : "Press play to begin IRCIS.", theme::accent);
-    char st[64];
-    snprintf(st, sizeof(st), "entry: row %d  col %d  heading %c",
-             run::startRow(), run::startCol(), run::startDir());
-    clabel(12, y + kContentH, st, theme::dim);
-    return;
-  }
-  // Which runners there are to show, before working out which of them fit.
+  // Before the first step the prompt has the first line and the runner waiting
+  // on its start cell has the next, which says where it is, which way it
+  // faces and what that cell will do -- what the old "entry" line said, and
+  // more.
+  const int firstLine = snap.step == 0 ? 1 : 0;
+  // Which runners there are to show, and in what order: while the run is going
+  // the live ones first, so a death does not leave a still line among the
+  // moving ones; once it has finished, in order, since the list is then a
+  // record rather than a watch.
   int used[run::kMaxRunners];
   int nUsed = 0;
-  for (int i = 0; i < run::kMaxRunners; ++i)
-    if (snap.runners[i].used) used[nUsed++] = i;
+  for (int pass = 0; pass < 2; ++pass)
+    for (int i = 0; i < run::kMaxRunners; ++i) {
+      const run::RunnerView& r = snap.runners[i];
+      if (!r.used) continue;
+      const bool first = snap.finished || r.alive;
+      if ((pass == 0) == first) used[nUsed++] = i;
+    }
 
-  const int rows = nUsed > bandLines() ? bandLines() - 1 : bandLines();
+  const int rows = bandLines() - firstLine;
   const int maxTop = nUsed > rows ? nUsed - rows : 0;
   if (g_runnerTop > maxTop) g_runnerTop = maxTop;
   if (g_runnerTop < 0) g_runnerTop = 0;
-  if (maxTop > 0) {
-    drawBtn(btnOutUp(),   false, g_runnerTop > 0);
-    drawBtn(btnOutDown(), false, g_runnerTop < maxTop);
-  }
+  const int x0 = maxTop > 0 ? 4 + kBandBtnW + 6 : 6;
+  int cols = (kScreenW - x0 - 4) / kContentW;
+  if (cols > kBandColsMax) cols = kBandColsMax;
 
-  for (int k = g_runnerTop; k < nUsed && k < g_runnerTop + rows; ++k) {
-    const run::RunnerView& r = snap.runners[used[k]];
-    gfx.fillRect(4, y + kContentH / 2 - 2, 5, 5, theme::runner[r.id % 6]);
-    char buf[72];
-    if (!r.alive) {
-      snprintf(buf, sizeof(buf), "R%d  died at step %u", r.id, (unsigned)r.diedStep);
-      clabel(12, y, buf, theme::dim);
+  // Everything that decides where a line goes and how wide it is. A change to
+  // any of it means the cache describes a band that is no longer there.
+  uint32_t layout = 2166136261u;
+  auto mix = [&layout](uint32_t v) { layout = (layout ^ v) * 16777619u; };
+  mix((uint32_t)nUsed); mix((uint32_t)rows); mix((uint32_t)g_runnerTop);
+  mix((uint32_t)x0); mix((uint32_t)cols); mix((uint32_t)firstLine);
+  for (int k = 0; k < nUsed; ++k) mix((uint32_t)used[k]);
+  const bool full = !incremental || layout != g_bandLayout || g_bandRowsDrawn == 0;
+  if (full) {
+    clearBand();
+    if (firstLine)
+      clabel(12, y, keyHints() ? "Press (p)lay to begin IRCIS."
+                               : "Press play to begin IRCIS.", theme::accent);
+    if (maxTop > 0) {
+      drawBtn(btnOutUp(),   false, g_runnerTop > 0);
+      drawBtn(btnOutDown(), false, g_runnerTop < maxTop);
     }
-    else {
-      // The character is printed in its own colour rather than in quotes --
-      // an apostrophe inside quotes reads as nothing at all.
-      snprintf(buf, sizeof(buf), "R%d  r%-2d c%-2d %c  reads ", r.id, r.y, r.x, r.dir);
-      clabel(12, y, buf, theme::text);
-      char one[2] = { g_edit.cell(r.y, r.x), 0 };
-      int cx = 12 + (int)strlen(buf) * kContentW;
-      clabel(cx, y, one, charColour(r.y, r.x));
-      if (r.paused) clabel(cx + 2 * kContentW, y, "paused", theme::dim);
-    }
+  }
+  y += firstLine * kContentH;
+
+  static BandRow row;               // 400 bytes; not the UI task's stack
+  int line = 0;
+  for (int k = g_runnerTop; k < nUsed && line < rows; ++k, ++line) {
+    bandRowFor(snap.runners[used[k]], row, cols);
+    paintBandRow(x0, y, row, full ? nullptr : &g_bandRow[line], cols);
+    g_bandRow[line] = row;
     y += kContentH;
   }
-  if (maxTop > 0) {
-    char where[64];
-    snprintf(where, sizeof(where), "runners %d-%d of %d",
-             g_runnerTop + 1,
-             g_runnerTop + rows < nUsed ? g_runnerTop + rows : nUsed, nUsed);
-    clabel(12, y, where, theme::dim);
-  }
+  g_bandRowsDrawn = line;
+  g_bandLayout = layout;
 }
 
 // True while the program grid on the body is the one clearBodyAroundGrid left
@@ -1996,6 +2123,11 @@ void drawEdgeBar(const Btn& b, bool horizontal, bool forward) {
 // the far edge as the one now at the near edge, so there is something in
 // common between the two views to place yourself by. Stops at the end of the
 // program rather than running past it.
+// The edge bars' own scroll, from a mouse wheel: rows a notch, columns a
+// notch sideways, over whichever grid is showing. The bars mark the moves
+// the same way, so what a scroll means for following and the editor's
+// cursor is decided in one place.
+void wheelScroll(int dy, int dx, int x, int y);
 bool handleEdgeBars(int x, int y) {
   GridEdges g;
   if (!gridEdges(g)) return false;
@@ -2040,6 +2172,31 @@ bool handleEdgeBars(int x, int y) {
     *col += stepC; if (*col > maxCol) *col = maxCol; moved(); return true;
   }
   return false;
+}
+
+void wheelScroll(int dy, int dx, int x, int y) {
+  if (g_modal != Modal::None || (g_tab != Tab::Run && g_tab != Tab::Edit)) return;
+  GridEdges g;
+  if (!gridEdges(g) || x < g.x || x >= g.x + g.w || y < g.y || y >= g.y + g.h) return;
+  const int cw = (g_tab == Tab::Edit) ? edCellW()
+               : (g_view == View::Zoom) ? kZoomCellW : kWideCellW;
+  const int ch = (g_tab == Tab::Edit) ? edCellH()
+               : (g_view == View::Zoom) ? kZoomCellH : kWideCellH;
+  const int maxRow = (g_tab == Tab::Edit)
+                       ? (g_edit.rows() - g.h / ch > 0 ? g_edit.rows() - g.h / ch : 0)
+                       : maxGridRow();
+  const int maxCol = g_edit.cols() - g.w / cw > 0 ? g_edit.cols() - g.w / cw : 0;
+  int row = g_gridRow - dy * 3, col = g_gridCol + dx * 3;
+  if (row < 0) row = 0;
+  if (row > maxRow) row = maxRow;
+  if (col < 0) col = 0;
+  if (col > maxCol) col = maxCol;
+  if (row == g_gridRow && col == g_gridCol) return;
+  g_gridRow = row;
+  setGridCol(col);
+  if (g_tab == Tab::Edit) { g_edManualScroll = true; g_paint |= PaintEdGrid; }
+  else                    { g_paint |= PaintRunGrid; g_follow = false; }
+  g_dirty = true;
 }
 
 // A bar is thinner than a cell, so drawing it straight onto the grid left the
@@ -3322,19 +3479,18 @@ void afterProgramChange() {
 // visible on SYS afterwards rather than being an invisible state.
 // Read a program's view tag and put the device into the state it asks for.
 //
-// The defaults are applied whether or not there is a tag, so a program without
-// one opens the same way every time instead of inheriting whatever the last
-// program happened to set. That is what lets an ordinary program carry no tag
-// at all: only a program that wants something OTHER than the defaults needs to
-// say so.
+// The speed, the runner readout and following are set whether or not there
+// is a tag, so a program without one runs the same way every time instead
+// of inheriting whatever the last program happened to set. TRAIL and UNDER
+// GRID are the reader's: they were turned on or off by hand on SYS, and a
+// program takes them over only when its tag names one, so a trail switched
+// on for one program is still on for the next.
 //
 // Where a tag contradicts itself -- "~sq" asking for both slow and quick --
 // the first one wins and the rest of that group is ignored, so the reading is
 // left to right and never depends on which letter came last.
 void applyViewTags(const std::string& text) {
-  Store::setRunView(0);                 // the output, underneath
-  Store::setDebugMode(false);
-  Store::setTracePath(false);
+  g_tagBand = -1; g_tagTrace = -1;      // the last program's wishes are lifted
   Store::setFollowRunners(true);
   Store::setRunSpeed(1);                // medium
   run::setSpeed(run::Speed::Medium);
@@ -3342,11 +3498,8 @@ void applyViewTags(const std::string& text) {
   // not touch GRID TAP: that is the reader's setting, not the program's.
   Store::setStartPoint(0, 0, 'E');
   run::setStart(0, 0, 'E');
-  // What a tap on the grid does is a way of looking at THIS program, so it
-  // goes back too; a program loaded while the inspector was on is otherwise
-  // opened with the inspector still on. STEP BUTTONS, the theme and the
-  // keyboard are the device's settings, not the program's, and stay.
-  Store::setGridTap(Store::kTapNothing);
+  // GRID TAP, STEP BUTTONS, the theme and the keyboard are the device's
+  // settings, not the program's, and stay.
 
   const std::size_t at = text.find('~');
   if (at == std::string::npos) return;
@@ -3402,15 +3555,15 @@ void applyViewTags(const std::string& text) {
     }
 
     switch (c) {
-      case 'n': if (!bandSet) { bandSet = true; Store::setRunView(1); }   break;
-      case 'd': if (!bandSet) { bandSet = true; Store::setDebugMode(true); } break;
+      case 'n': if (!bandSet) { bandSet = true; g_tagBand = kBandNothing; } break;
+      case 'd': if (!bandSet) { bandSet = true; g_tagBand = kBandRunners; } break;
       // s m q f, in order. 'r' would have been the obvious letter for the
       // third one, but r is an IRCIS command -- push a random number -- and a
       // tag can sit on a cell a runner crosses, where it would be executed.
       // Keep the path on screen. Its own group, so it composes with any of
       // the others; 't' is not an IRCIS command, so a runner crossing it steps
       // straight over.
-      case 't': Store::setTracePath(true); break;
+      case 't': g_tagTrace = 1; break;
       // Hold the view still while the program runs. 'd' would have been the
       // obvious letter and is already the runner readout, so 'h' for hold.
       case 'h': Store::setFollowRunners(false); break;
@@ -3745,7 +3898,7 @@ void drawSave() {
     if (info.used)
       snprintf(buf, sizeof(buf), "%d  %s  (%d cells)", i + 1, info.name.c_str(), info.changedCells);
     else
-      snprintf(buf, sizeof(buf), "%d  -- empty --", i + 1);
+      snprintf(buf, sizeof(buf), "%d  (empty)", i + 1);
     clabel(b.x + 6, b.y + (b.h - kContentH) / 2, buf,
            info.used ? theme::text : theme::dim, theme::panel);
     drawBtn(btnSaveWrite(i));
@@ -4319,16 +4472,17 @@ void drawSysTile(int which) {
     }
     case SysTrail: {
       Btn tr = btnSysTrail();
-      std::string trl = std::string("TRAIL: ") + (Store::tracePath() ? "ON" : "OFF");
+      std::string trl = std::string("TRAIL: ") + (traceOn() ? "ON" : "OFF");
       tr.label = trl.c_str();
-      tile(tr, Store::tracePath());        // OFF is the default, so it reads plain
+      tile(tr, traceOn());                 // OFF is the default, so it reads plain
       break;
     }
     case SysStart: {
       Btn st = btnSysStart();
       const int gt = Store::gridTap();
       std::string stl = std::string("GRID TAP: ")
-                      + (gt == Store::kTapInspector ? "INSPECTOR"
+                      + (gt == Store::kTapEdit      ? "EDIT"
+                       : gt == Store::kTapInspector ? "INSPECTOR"
                        : gt == Store::kTapStart     ? "START POINT" : "NOTHING");
       st.label = stl.c_str();
       tile(st, gt != Store::kTapNothing);
@@ -5344,7 +5498,7 @@ void drawWifi(bool full = true) {
 
   drawBtn(btnWifiWeb(), false, radio && web::running());
   if (!radio)
-    clabel(20, kDlgY + 120, "No radio here -- credentials still save.",
+    clabel(20, kDlgY + 120, "No radio here - credentials still save.",
            theme::dim, theme::panel);
   if (web::running()) {
     std::string url = std::string("http://") + web::ipAddress() + "/";
@@ -5455,11 +5609,12 @@ void announceUnlock() {
   g_runnerTop = 0;
 
   // PROG disappears in this mode, so put the packed program up rather than
-  // leaving whatever example was loaded with no way to change it.
+  // leaving whatever example was loaded with no way to change it. It is a
+  // different program, and gets the settling every load gets: without it
+  // the start cell of whatever ran last carried over.
   g_edit.loadProgram(prog::kPackedIndex);
-  run::load(g_edit);
+  afterProgramChange();
   markLoaded();
-  syncViewToProgram();
   g_tab = Tab::Run;
   // The splash says what just happened better than a dialog can, and CLOSE
   // carries on into the info pages rather than leaving them to be found on
@@ -5622,13 +5777,22 @@ void handleRunTouch(int x, int y) {
       // Only when there is nothing on the grid but the runners. With the
       // trail turned on the old path is painted into the cells, and restoring
       // just the cells the runners stood on would leave the rest of it behind.
-      g_resetSameGrid = !Store::tracePath();
+      g_resetSameGrid = !traceOn();
       // Deliberately NOT g_dirty. The rebuild happens on the run task, so
       // painting now would draw the state we are leaving, and the version
       // watch below would then paint the state we are going to -- the grid
       // twice for one press. Let the watch do it, once, when it is true.
     }
-    else if (steps() && hit(btnBack(), x, y)) { flushEdits(true); run::cmdStepBack(); g_dirty = true; }
+    // Stepping back rebuilds the machine and replays to the step before, on
+    // the run task; the rebuild watch below paints that once. Asking for a
+    // paint here as well drew the old state first: two frames for one tap.
+    // The grid's characters are the same afterwards, so with no trail on
+    // them only the runners, the header and the band need drawing, as for a
+    // reset; a trail has cells past the new step painted in, and those need
+    // the whole grid.
+    else if (steps() && hit(btnBack(), x, y) && run::snapshot().step > 0) {
+      flushEdits(true); g_resetSameGrid = !traceOn(); run::cmdStepBack();
+    }
     else if (steps() && hit(btnFwd(), x, y))  { flushEdits(true); run::cmdStep(1); }
     else if (hit(btnEnd(), x, y))   { flushEdits(true); run::cmdRunToEnd(); g_dirty = true; }
     else if (hit(btnSpeed(), x, y)) {
@@ -5664,7 +5828,9 @@ void handleRunTouch(int x, int y) {
     // parameter editor and the character inspector alike, and to any zoomable
     // program, not just a packed one. A program small enough to be shown
     // large already has nothing to zoom into and is exempt.
-    if (!zoomOnly() && g_view != View::Zoom) { zoomToCell(r, c); return; }
+    // Not when a tap means edit: the editor shows the cell at whatever size
+    // the grid was, with the cursor on it, so the aim is checked there.
+    if (!zoomOnly() && g_view != View::Zoom && Store::gridTap() != Store::kTapEdit) { zoomToCell(r, c); return; }
 
     runCellAction(r, c);
   }
@@ -5701,6 +5867,20 @@ void runCellAction(int r, int c) {
         Store::setStartPoint(c, r, run::startDir());
       }
       markEdited();       // the run restarts from the new entry point
+      return;
+    }
+    if (mode == Store::kTapEdit) {
+      // Straight to the editor, with the same view and the cursor on the
+      // cell: the grid neither moves nor changes size on the way, so the
+      // eye stays where the finger was.
+      flushEdits(true);
+      if (run::snapshot().running) run::cmdPause();
+      carryViewAcross(Tab::Run, Tab::Edit);
+      g_tab = Tab::Edit;
+      g_curRow = r; g_curCol = c;
+      g_edManualScroll = false;
+      edFollow();
+      wantAll();
       return;
     }
 
@@ -5889,7 +6069,7 @@ void handleSysTouch(int x, int y) {
     else { g_sysTile = SysKeys; g_paint |= PaintSysTile; g_dirty = true; }
   }
   else if (hit(btnSysTrail(), x, y)) {
-    Store::setTracePath(!Store::tracePath());
+    setTraceOn(!traceOn());
     // The path is painted into the cells on RUN; that page is repainted in
     // full next time it is shown. Here only the tile changes.
     g_sysTile = SysTrail; g_paint |= PaintSysTile; g_dirty = true;
@@ -5908,7 +6088,7 @@ void handleSysTouch(int x, int y) {
   else if (hit(btnSysRead(), x, y))  { g_modal = Modal::Device; g_dialogPage = 0; wantAll(); }
   else if (hit(btnSysLearn(), x, y)) { g_modal = Modal::Learn;  g_dialogPage = 0; wantAll(); }
   else if (hit(btnSysStart(), x, y)) {
-    const int next = (Store::gridTap() + 1) % 3;   // nothing -> start -> inspector
+    const int next = (Store::gridTap() + 1) % 4;   // nothing -> start -> inspector -> edit
     Store::setGridTap(next);
     if (next == Store::kTapNothing) {
       // NOTHING also means the program starts where IRCIS would start it.
@@ -5978,7 +6158,7 @@ void handleSysTouch(int x, int y) {
             Store::unlocked()
               ? std::string(pack::str(pack::kStrResetBody))
               : std::string("WiFi and calibration go, and the device returns to "
-                            "how it shipped -- including its programs, which "
+                            "how it shipped - including its programs, which "
                             "are written back over anything you changed."),
             [] {
               gfx.fillScreen(theme::bg);
@@ -6346,6 +6526,12 @@ void drawBody(const run::Snapshot& snap) {
 }
 
 void drawAll(const run::Snapshot& snap) {
+#if defined(SK_HOST)
+  ++g_fullPaints;                     // every whole-screen paint, whichever path asked
+  if (std::getenv("PIRCIS_PAINT_TRACE"))
+    std::fprintf(stderr, "[paint] full: %s (paint=0x%x dirty=%d tab=%d modal=%d step=%u)\n", g_paintWhy, (unsigned)g_paint, (int)g_dirty, (int)g_tab, (int)g_modal, (unsigned)snap.step);
+  g_paintWhy = "?";
+#endif
   // A modal paints over the tab bar, and so does the frame after it closes,
   // so what drawTabs() believes is on the panel stops being true either way.
   // A page change does not: the header, the body and the bar each clear their
@@ -6755,7 +6941,9 @@ void pollTypedKeys() {
     switch (k) {
       case 'p': playPause(); continue;
       case 'f': flushEdits(true); run::cmdStep(1); continue;
-      case 'b': flushEdits(true); run::cmdStepBack(); g_dirty = true; continue;
+      case 'b':
+        if (run::snapshot().step > 0) { flushEdits(true); g_resetSameGrid = !traceOn(); run::cmdStepBack(); }
+        continue;
       case 'r':
         // What the |< button does: back to the top, output cleared. Not a
         // reload, so the grid is untouched and g_prevRunners still describes
@@ -6763,7 +6951,7 @@ void pollTypedKeys() {
         flushEdits(true);
         run::cmdReset();
         g_follow = true;
-        g_resetSameGrid = !Store::tracePath();   // the trail has to go with it
+        g_resetSameGrid = !traceOn();   // the trail has to go with it
         continue;
       case 'e': flushEdits(true); run::cmdRunToEnd(); g_dirty = true; continue;
       case 's': {
@@ -6875,6 +7063,7 @@ void markCellEdited(int row, int col, char ch) {
 void markLoaded() { g_dirty = true; }
 void repaint() { g_dirty = true; }
 void injectTap(int x, int y) { onTap(x, y); }
+void injectWheel(int dy, int dx, int x, int y) { wheelScroll(dy, dx, x, y); }
 // Scratch harness: draw the same row in every candidate font so the choice
 // for the detail pane is made by looking at it.
 void fontSampler() {
@@ -6940,6 +7129,7 @@ unsigned long gridPaints() { return 0; }
 unsigned long bandPaints() { return 0; }
 #endif
 bool loadProgramTextPublic(const std::string& t, const char* name) { return loadProgramText(t, name); }
+void adoptProgram() { afterProgramChange(); markLoaded(); }
 bool applyProgramTextPublic(const std::string& t) { return applyProgramText(t); }
 void lockDevice() { relock(); }
 
@@ -7030,6 +7220,10 @@ void tick() {
     g_deferTap = false;
   }
   g_wasTouched = touched;
+  {
+    int wy, wx, px, py;
+    if (plat::takeWheel(wy, wx, px, py)) wheelScroll(wy, wx, px, py);
+  }
 
   static uint32_t lastDraw = 0;
   static uint32_t lastStep = 0xFFFFFFFF;
@@ -7092,6 +7286,10 @@ void tick() {
   const uint32_t bv = run::buildVersion();
   if (bv != lastRunVersion) {
     lastRunVersion = bv;
+#if defined(SK_HOST)
+    if (std::getenv("PIRCIS_PAINT_TRACE"))
+      std::fprintf(stderr, "[paint] rebuild seen: version %u, sameGrid=%d, step=%u, tab=%d\n", (unsigned)bv, (int)g_resetSameGrid, (unsigned)snap.step, (int)g_tab);
+#endif
     if (g_resetSameGrid && g_tab == Tab::Run && g_modal == Modal::None) {
       // Same characters, different runners: put back the cells the old ones
       // were drawn over and leave the grid alone.
@@ -7163,18 +7361,15 @@ void tick() {
         case Modal::Wifi:   drawWifi(false); drawFocusRing(); break;
         case Modal::Debug: case Modal::Info: case Modal::Shortcuts:
         case Modal::Ircis: case Modal::Device:
-          g_dlgPageOnly = true; drawAll(snap); g_dlgPageOnly = false; break;
-        default: drawAll(snap); break;
+          g_dlgPageOnly = true; g_paintWhy = "dialog page"; drawAll(snap); g_dlgPageOnly = false; break;
+        default: g_paintWhy = "dialog"; drawAll(snap); break;
       }
       // The tab bar is under the dialog; the full repaint drops this request
       // for the same reason, and drawing it here painted it over the buttons.
       g_paint &= ~PaintTabs;
     }
     else if (!anyPart) {
-#if defined(SK_HOST)
-      ++g_fullPaints;
-#endif
-      drawAll(snap);
+      g_paintWhy = "no named part"; drawAll(snap);
       g_bandSig = 0; g_headerSig = 0; g_paint &= ~PaintTabs;
     }
     else {
@@ -7276,16 +7471,31 @@ void tick() {
       WriteBatch batch;
       followRunner(snap);
       if (g_dirty) {
-        drawAll(snap); g_dirty = false; g_paint &= ~PaintHeader;
-        g_bandSig = 0; g_headerSig = 0;
-        g_lastRunPaintMs = now; lastStep = snap.step; return;
+        // Play and pause ask for the header and the tab bar and nothing
+        // else; those are drawn and the runners follow as for any step.
+        // Anything more, or a request that names no part, is the screen.
+        if (g_paint != 0 && (g_paint & ~(PaintHeader | PaintTabs)) == 0) {
+          drawHeader(snap); g_headerSig = headerSignature(snap);
+          drawTabs();
+          g_paint &= ~(PaintHeader | PaintTabs);
+          g_dirty = false;
+        }
+        else {
+          g_paintWhy = "run frame, dirty"; drawAll(snap); g_dirty = false; g_paint &= ~PaintHeader;
+          g_bandSig = 0; g_headerSig = 0;
+          g_lastRunPaintMs = now; lastStep = snap.step; return;
+        }
       }
-      // A restart winds the step count back, and the old trails have to go.
-      const bool restarted = snap.step < lastStep;
+      // A restart winds the step count back to nought, and the old trails
+      // have to go. A step back winds it back by one: the runners are drawn
+      // where they were and the cells they left are put back, as for any
+      // other step, unless TRAIL has painted the path past that point, when
+      // the whole grid is the only way to take those cells back.
+      const bool restarted = snap.step < lastStep && (snap.step == 0 || traceOn());
       const bool due = restarted || !snap.running ||
                        (uint32_t)(now - g_lastRunPaintMs) >= kRunPaintMs;
       if (!due) return;                  // let it get on with running
-      if (restarted) { drawAll(snap); g_bandSig = 0; g_headerSig = 0; }
+      if (restarted) { g_paintWhy = "restarted"; drawAll(snap); g_bandSig = 0; g_headerSig = 0; }
       else {
         // The buttons only need repainting when one of them would look
         // different; the rest of the time it is just the counter.
@@ -7298,7 +7508,7 @@ void tick() {
         // both -- but only when it would actually look different.
         {
           uint32_t sig = bandSignature(snap);
-          if (sig != g_bandSig) { drawRunnerList(snap); g_bandSig = sig; }
+          if (sig != g_bandSig) { drawRunnerList(snap, true); g_bandSig = sig; }
         }
       }
       g_lastRunPaintMs = now;

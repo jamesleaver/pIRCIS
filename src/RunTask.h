@@ -39,6 +39,10 @@ namespace run {
   // IRCIS_TRAIL_LEN so the interpreter records exactly what is drawn.
   static constexpr int kTrailView = IRCIS_TRAIL_LEN;
 
+  // How much of a runner's stack the readout is given: the values nearest
+  // the top, which are the ones the next command will use.
+  static constexpr int kStackView = 4;
+
   // Indexed by runner id, not by position in the live list, so a runner that
   // has died keeps its row instead of vanishing from the readout.
   struct RunnerView {
@@ -52,6 +56,17 @@ namespace run {
     uint8_t trailLen;                 // 0 = none; [0] is the most recent
     uint8_t trailX[kTrailView];
     uint8_t trailY[kTrailView];
+    // What the cell it is standing on will do when it next steps, in the
+    // interpreter's own words ("split", "turn north", "push 1921",
+    // "save n=657"), or "" for a cell it steps over.
+    char    note[IRCIS_NOTE_LEN];
+    // The top of its stack: stackDepth values in all, of which the first
+    // stackShown are here, [0] being the top. A bit set in stackInt means
+    // that entry is a number rather than a character.
+    uint16_t stackDepth;
+    uint8_t  stackShown;
+    uint8_t  stackInt;
+    int32_t  stackTop[kStackView];
   };
 
   // One value printed by the program. The interpreter emits output a chunk at

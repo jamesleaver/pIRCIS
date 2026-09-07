@@ -38,3 +38,10 @@
 #ifndef IRCIS_TRAIL_LEN
 #define IRCIS_TRAIL_LEN 24
 #endif
+
+// Length of the one-line description a Runner gives of the cell it stands
+// on, for a readout ("split", "push 1921", "save n=657"). Added for pIRCIS;
+// it is read from the runner and never affects how a program runs.
+#ifndef IRCIS_NOTE_LEN
+#define IRCIS_NOTE_LEN 28
+#endif
