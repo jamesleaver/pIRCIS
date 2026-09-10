@@ -32,6 +32,7 @@ namespace ui {
   // history -- and hand it to the machine.
   void adoptProgram();
   void repaint();
+  void onResize();        // the screen is another size now: start the view over
   void showMessage(const std::string& title, const std::string& body);
   // Call after anything that may have changed the lock state.
   void notifyUnlocked();

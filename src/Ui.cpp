@@ -45,6 +45,15 @@ bool hit(const Btn& b, int x, int y) {
   return x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h;
 }
 
+// The pages were drawn for the board's 480-wide panel, and a few things on
+// them were placed by hand. Anything that sits towards the right keeps its
+// distance from the right edge, so on a wider screen it moves out with the
+// edge and on a narrower one moves in: the number is the board's x, and on
+// the board it is unchanged.
+inline int fromRight(int boardX) { return kScreenW - (480 - boardX); }
+// Narrower than the board, the headers have to give something up.
+inline bool narrow() { return kScreenW < 480; }
+
 // `big` sets the label in Font2, the face the tab bar and the status-bar
 // title use. Compact controls stay on the small face; pages of labelled
 // settings read better in the larger one.
@@ -86,8 +95,8 @@ static constexpr int kContentBigH = 24;
 
 // Anchored to the edges so both panels place them sensibly. On 320 these
 // evaluate to the original coordinates.
-constexpr int kModalBtnY = kScreenH - 32;
-constexpr int kModalBtnW = (kScreenW - 30) / 4;
+#define kModalBtnY (kScreenH - 6 - kUi(26))
+#define kModalBtnW ((kScreenW - 30) / 4)
 
 inline int modalBtnX(int i) { return 6 + i * (kModalBtnW + 6); }
 
@@ -198,6 +207,16 @@ Tab   g_tab = Tab::Run;
 // Whether the on-screen keyboards are wanted. With a real keyboard attached
 // and chosen they are not, and neither is the tab that cycles them.
 inline bool onScreenKeys() { return !(Store::hardwareKeys() && plat::haveKeyboard()); }
+// A screen that can be dragged and pinched, and is set to be: the edge bars
+// and the ZOOM button go, since the fingers do their jobs. Off, the page
+// works exactly as the board's does.
+inline bool gestureMode() { return plat::hasGestures() && Store::gestures(); }
+// Fingers that can pinch make the ZOOM button redundant; a mouse that can
+// only drag keeps it, and the step readout stays where the button is not.
+inline bool noZoomBtn() { return gestureMode() && plat::hasPinch(); }
+// And where the platform draws the keys itself, the panel leaves its key
+// area blank underneath them.
+inline bool nativeKeys() { return gestureMode() && plat::hasNativeKeys(); }
 // Whether to put the shortcut letter into a label. Only worth the clutter for
 // somebody actually working from the keys.
 inline bool keyHints() { return Store::hardwareKeys() && plat::haveKeyboard(); }
@@ -260,7 +279,7 @@ enum : uint16_t {
 };
 uint16_t g_paint = 0;
 void wantAll()   { g_paint |= PaintAll;   g_dirty = true; }
-void wantModal() { g_paint |= PaintModal; g_dirty = true; }
+void wantModal() { if (kScreenW != 480) { wantAll(); return; } g_paint |= PaintModal; g_dirty = true; }
 int g_sysTile = -1;
 int g_editRow = -1;
 
@@ -789,6 +808,23 @@ bool showEntry() {
          run::startRow() != 0 || run::startCol() != 0 || run::startDir() != 'E';
 }
 
+// The entry point's heading: a small triangle in the margin of the cell the
+// runner will step into first.
+void drawEntryHeading() {
+  if (!showEntry()) return;
+  int sx, sy;
+  if (!cellPos(run::startRow(), run::startCol(), sx, sy)) return;
+  const int w = cellW(), h = cellH();
+  const int mx = sx + w / 2, my = sy + h / 2;
+  const uint16_t col = theme::edited;
+  switch (run::startDir()) {
+    case 'N': gfx.fillTriangle(mx - 3, sy - 1, mx + 3, sy - 1, mx, sy - 5, col); break;
+    case 'S': gfx.fillTriangle(mx - 3, sy + h + 1, mx + 3, sy + h + 1, mx, sy + h + 5, col); break;
+    case 'W': gfx.fillTriangle(sx - 1, my - 3, sx - 1, my + 3, sx - 5, my, col); break;
+    default:  gfx.fillTriangle(sx + w + 1, my - 3, sx + w + 1, my + 3, sx + w + 5, my, col); break;
+  }
+}
+
 // Draw one cell at (x, y) on any target: the panel itself, or the row sprite
 // that is pushed to it in one go. Everything that decides how a character
 // looks goes through here, which is what keeps the two pages identical.
@@ -863,20 +899,7 @@ void drawGrid() {
 
   // The entry point's heading, drawn AFTER the grid: it sits in the margin of
   // a neighbouring cell, and that cell's own background fill would erase it.
-  if (showEntry()) {
-    int sx, sy;
-    if (cellPos(run::startRow(), run::startCol(), sx, sy)) {
-      const int w = cellW(), h = cellH();
-      const int mx = sx + w / 2, my = sy + h / 2;
-      const uint16_t col = theme::edited;
-      switch (run::startDir()) {
-        case 'N': gfx.fillTriangle(mx - 3, sy - 1, mx + 3, sy - 1, mx, sy - 5, col); break;
-        case 'S': gfx.fillTriangle(mx - 3, sy + h + 1, mx + 3, sy + h + 1, mx, sy + h + 5, col); break;
-        case 'W': gfx.fillTriangle(sx - 1, my - 3, sx - 1, my + 3, sx - 5, my, col); break;
-        default:  gfx.fillTriangle(sx + w + 1, my - 3, sx + w + 1, my + 3, sx + w + 5, my, col); break;
-      }
-    }
-  }
+  drawEntryHeading();
 
   g_prevRunners.clear();
 }
@@ -893,6 +916,16 @@ uint16_t charColour(int row, int col) {
 void restoreCell(int row, int col) {
   const CellLook look = cellLook(row, col, false);
   drawCell(row, col, look.fg, look.bg);
+  // The entry marker goes back with its cell, and its heading with the cell
+  // it sits beside; a runner walking off the start used to take both with
+  // it until the next whole-screen paint put them back.
+  if (!showEntry()) return;
+  const int dr = row - run::startRow(), dc = col - run::startCol();
+  if (dr == 0 && dc == 0) {
+    int x, y;
+    if (cellPos(row, col, x, y)) gfx.drawRect(x, y, cellW(), cellH(), theme::edited);
+  }
+  if ((dr == 0 && dc == 0) || (dr * dr + dc * dc == 1)) drawEntryHeading();
 }
 
 // Scale an RGB565 colour toward black, for the fading tails.
@@ -923,7 +956,9 @@ uint16_t dim565(uint16_t c, int num, int den) {
 void drawRunners(const run::Snapshot& snap) {
   refreshTrace();      // the path grows while the run is going
   if (g_traceCols > 0) {
-    // Only the newly-walked cells, and only the ones on screen.
+    // Only the cells whose tint changed, and only the ones on screen: newly
+    // walked cells take the tint, and after a step back or a reset the cells
+    // walked past the new step give it up again.
     const int rowTo = g_gridRow + gridRowsShown() < g_edit.rows()
                     ? g_gridRow + gridRowsShown() : g_edit.rows();
     const int from = g_gridCol;
@@ -933,7 +968,7 @@ void drawRunners(const run::Snapshot& snap) {
       for (int c = from; c < to; ++c) {
         const unsigned long i = (unsigned long)r * g_traceCols + c;
         if (i >= sizeof(g_trace) || c >= g_traceCols) continue;
-        if (g_trace[i] && !g_traceShown[i]) {
+        if ((g_trace[i] != 0) != (g_traceShown[i] != 0)) {
           g_traceShown[i] = g_trace[i];
           restoreCell(r, c);
         }
@@ -1023,16 +1058,16 @@ const char* speedName(run::Speed s) {
 // (SYS > STEP BUTTONS), against 44 and 26 before.
 // ZOOM sits in the same place on RUN and on EDIT. It says the same thing on
 // both, and a button that jumps when the page changes reads as two buttons.
-constexpr int kViewBtnX = 228;
+#define kViewBtnX fromRight(228)
 constexpr int kViewBtnW = 50;
-constexpr int kTransportX = kScreenW - 142;
+#define kTransportX (kScreenW - 142)
 inline bool steps() { return Store::stepButtons(); }
-Btn btnEnd()   { return steps() ? Btn{ kScreenW -  34, 2, 34, 18, "", theme::text, theme::panel }
-                                : Btn{ kScreenW -  70, 2, 68, 18, "", theme::text, theme::panel }; }
-Btn btnFwd()   { return { kScreenW -  70, 2, 34, 18, "", theme::text, theme::panel }; }
-Btn btnBack()  { return { kScreenW - 106, 2, 34, 18, "", theme::text, theme::panel }; }
-Btn btnStart() { return { kTransportX, 2, steps() ? 34 : 68, 18, "", theme::text, theme::panel }; }
-Btn btnSpeed()  { return { kViewBtnX + kViewBtnW + 4, 2, 34, 18, "FAST", theme::good, theme::panel }; }
+Btn btnEnd()   { return steps() ? Btn{ kScreenW -  34, kHdrBtnY, 34, kHdrBtnH, "", theme::text, theme::panel }
+                                : Btn{ kScreenW -  70, kHdrBtnY, 68, kHdrBtnH, "", theme::text, theme::panel }; }
+Btn btnFwd()   { return { kScreenW -  70, kHdrBtnY, 34, kHdrBtnH, "", theme::text, theme::panel }; }
+Btn btnBack()  { return { kScreenW - 106, kHdrBtnY, 34, kHdrBtnH, "", theme::text, theme::panel }; }
+Btn btnStart() { return { kTransportX, kHdrBtnY, steps() ? 34 : 68, kHdrBtnH, "", theme::text, theme::panel }; }
+Btn btnSpeed()  { return { kViewBtnX + kViewBtnW + 4, kHdrBtnY, 34, kHdrBtnH, "FAST", theme::good, theme::panel }; }
 
 // OUT's two controls live in the status bar with every other tab's, rather
 // than floating over the top of the output itself. SAVE SD is drawn only when
@@ -1040,12 +1075,12 @@ Btn btnSpeed()  { return { kViewBtnX + kViewBtnW + 4, 2, 34, 18, "FAST", theme::
 // device already knows the answer to -- so COLOUR slides right into its place
 // when there is not.
 constexpr int kOutBtnW = 62;
-Btn btnOutSd()     { return { kScreenW - kOutBtnW - 4, 2, kOutBtnW, 18, "SAVE SD" }; }
+Btn btnOutSd()     { return { kScreenW - kOutBtnW - 4, kHdrBtnY, kOutBtnW, kHdrBtnH, "SAVE SD" }; }
 Btn btnOutColour() {
   const int x = plat::sdPresent() ? kScreenW - 2 * kOutBtnW - 8 : kScreenW - kOutBtnW - 4;
-  return { x, 2, kOutBtnW, 18, "COLOUR", theme::good };
+  return { x, kHdrBtnY, kOutBtnW, kHdrBtnH, "COLOUR", theme::good };
 }
-Btn btnView()   { return { kViewBtnX, 2, kViewBtnW, 18, "ZOOM", theme::edited, theme::panel }; }
+Btn btnView()   { return { kViewBtnX, kHdrBtnY, kViewBtnW, kHdrBtnH, "ZOOM", theme::edited, theme::panel }; }
 
 // Transport symbols, drawn rather than lettered.
 enum class Glyph : uint8_t { Start, Back, Play, Pause, Fwd, End };
@@ -1101,14 +1136,18 @@ void clearUndo();
 
 // The title shrank to "EDIT" -- the tab bar already says which page this is --
 // which is what makes room for UNDO and REDO on the same row.
-Btn btnEdName() { return {  42, 2, 116, 18, "", theme::text, theme::panel }; }
-Btn btnEdSize() { return { 162, 2,  62, 18, "", theme::text, theme::panel }; }
-Btn btnEdZoom() { return { kViewBtnX, 2, kViewBtnW, 18, "ZOOM", theme::edited, theme::panel }; }
-Btn btnEdSave() { return { 282, 2,  50, 18, "SAVE", theme::good,  theme::panel }; }
-Btn btnEdUndo() { return { 336, 2,  34, 18, "UNDO", theme::text,  theme::panel }; }
-Btn btnEdRedo() { return { 374, 2,  34, 18, "REDO", theme::text,  theme::panel }; }
+// Narrower than the board the size button goes, and the name takes the
+// room up to ZOOM; the size is still reachable from the name's own dialog
+// page, and RESIZE from the row-and-column page of it.
+Btn btnEdName() { return {  42, kHdrBtnY, (narrow() ? kViewBtnX : 162) - 4 - 42, kHdrBtnH, "", theme::text, theme::panel }; }
+Btn btnEdSize() { return narrow() ? Btn{ 0, 0, 0, 0, "", theme::text, theme::panel }
+                                  : Btn{ 162, kHdrBtnY, 62, kHdrBtnH, "", theme::text, theme::panel }; }
+Btn btnEdZoom() { return { kViewBtnX, kHdrBtnY, kViewBtnW, kHdrBtnH, "ZOOM", theme::edited, theme::panel }; }
+Btn btnEdSave() { return { fromRight(282), kHdrBtnY,  50, kHdrBtnH, "SAVE", theme::good,  theme::panel }; }
+Btn btnEdUndo() { return { fromRight(336), kHdrBtnY,  34, kHdrBtnH, "UNDO", theme::text,  theme::panel }; }
+Btn btnEdRedo() { return { fromRight(374), kHdrBtnY,  34, kHdrBtnH, "REDO", theme::text,  theme::panel }; }
 // The command list, one tap from where you are actually writing a program.
-Btn btnEdHelp() { return { 412, 2,  20, 18, "?", theme::accent, theme::panel }; }
+Btn btnEdHelp() { return { fromRight(412), kHdrBtnY,  20, kHdrBtnH, "?", theme::accent, theme::panel }; }
 bool editorTab() { return g_tab == Tab::Edit && !Store::unlocked(); }
 
 // Everything in the header EXCEPT the step counter.
@@ -1133,8 +1172,11 @@ uint32_t headerSignature(const run::Snapshot& snap) {
 // word and the word had to be repainted with it. The word is anchored and the
 // number runs rightwards from a fixed point, leaving only the digits to
 // clear -- six or seven characters' worth instead of the whole readout.
-constexpr int kStepWordX = 156;
-constexpr int kStepNumX  = kStepWordX + 5 * 6;   // just past "step "
+// Without a ZOOM button (gestures) the readout moves up beside the speed
+// button, and the name gets the room: "step " and six digits, in Font0.
+inline int stepWordX() { return noZoomBtn() ? btnSpeed().x - 8 - 11 * 6 : fromRight(156); }
+#define kStepWordX stepWordX()
+#define kStepNumX  (kStepWordX + 5 * 6)   // just past "step "
 
 void drawHeaderStepWord() {
   gfx.setFont(&fonts::Font0);
@@ -1147,7 +1189,7 @@ void drawHeaderStepWord() {
 void drawHeaderStep(const run::Snapshot& snap) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%u", (unsigned)snap.step);
-  const int right = btnView().x - 8;
+  const int right = (noZoomBtn() ? btnSpeed().x : btnView().x) - 8;
   gfx.fillRect(kStepNumX, 1, right - kStepNumX, kHeaderH - 2, theme::panel);
   gfx.setFont(&fonts::Font0);
   gfx.setTextDatum(textdatum_t::middle_left);
@@ -1187,7 +1229,10 @@ void drawHeader(const run::Snapshot& snap) {
     // The RUN page is titled with the program on it. The transport starts at
     // x 248, so a long name is cut rather than drawn under it.
     std::string title = g_edit.programName();
-    if (title.size() > 20) title = title.substr(0, 20);
+    // Narrower than the board, the step readout is nearer and the name is
+    // cut sooner.
+    const std::size_t cap = (narrow() || noZoomBtn()) ? (std::size_t)((kStepWordX - 8) / 8) : 20;
+    if (title.size() > cap) title = title.substr(0, cap);
     gfx.drawString(title.c_str(), 4, kHeaderH / 2);
     gfx.setTextDatum(textdatum_t::top_left);
     gfx.setFont(&fonts::Font0);
@@ -1195,7 +1240,7 @@ void drawHeader(const run::Snapshot& snap) {
     drawHeaderStep(snap);
 
     // One toggle: filled when the zoomed view is showing.
-    if (!zoomOnly()) drawBtn(btnView(), g_view == View::Zoom);
+    if (!zoomOnly() && !noZoomBtn()) drawBtn(btnView(), g_view == View::Zoom);
     Btn sp = btnSpeed(); sp.label = speedName(run::speed());
     drawBtn(sp);
 
@@ -1241,8 +1286,8 @@ void drawHeader(const run::Snapshot& snap) {
       snprintf(sz, sizeof(sz), "%d x %d", g_edit.rows(), g_edit.cols());
       Btn sb = btnEdSize();
       sb.label = sz;
-      drawBtn(sb);
-      if (!zoomOnly()) drawBtn(btnEdZoom(), g_view == View::Zoom);
+      if (sb.w) drawBtn(sb);
+      if (!zoomOnly() && !noZoomBtn()) drawBtn(btnEdZoom(), g_view == View::Zoom);
       drawBtn(btnEdSave());
       drawBtn(btnEdUndo(), false, canUndo());
       drawBtn(btnEdRedo(), false, canRedo());
@@ -1712,7 +1757,7 @@ void drawRun(const run::Snapshot& snap) {
 
 struct EditRow { int y, h; };
 constexpr int kEditRowH = kContentH + 8;
-constexpr int kEditRowsPerPage = kBodyH / kEditRowH;
+#define kEditRowsPerPage (kBodyH / kEditRowH)
 // Page 1 is exactly the parameters a packed program exposes.
 inline int editPageFirst(int page) { return page == 0 ? 0 : prog::primarySlots(); }
 inline int editPageCount(int page) {
@@ -1778,7 +1823,7 @@ const std::size_t kKbSplit = kKbBase64.size();
 // cell looks like.
 // ---------------------------------------------------------------------------
 
-constexpr int kEdGridY = kBodyY + 4;
+#define kEdGridY (kBodyY + 4)
 
 // Keyboard: five rows of 16 characters, then a row of wider function keys.
 // Five rows of sixteen: the 64 base64 digits then the 16 symbols. There is no
@@ -1821,15 +1866,15 @@ const char* const kEdKeysLower = "qwertyuiop"
 
 constexpr int kEdKeyCols  = 11;
 constexpr int kEdKeyRows  = 3;
-constexpr int kEdKeyW     = kScreenW / kEdKeyCols;     // 43
-constexpr int kEdKeyH     = 26;
+#define kEdKeyW (kScreenW / kEdKeyCols)     // 43
+#define kEdKeyH (narrow() ? kUi(32) : kUi(26))   // more room held upright
 // The letters need only two rows of thirteen, which makes those keys bigger
 // than the working ones. Nothing is spent on a switch key: the EDIT tab does
 // the switching, the way the RUN tab does play and pause.
 constexpr int kEdAbcCols  = 10;
 constexpr int kEdAbcRows  = 3;     // the same depth as the IRCIS page
-constexpr int kEdAbcW     = kScreenW / kEdAbcCols;     // 48
-constexpr int kEdAbcH     = 26;
+#define kEdAbcW (kScreenW / kEdAbcCols)     // 48
+#define kEdAbcH (narrow() ? kUi(32) : kUi(26))
 int g_edKb = 0;                                        // 0 IRCIS, 1 ABC, 2 abc
 
 inline bool edLetters() { return g_edKb != 0; }
@@ -1851,6 +1896,9 @@ inline int kEdKeyYf()  { return kTabY - edKeyRows() * edKeyH(); }
 // leaves 12 -- so share the remainder between the two edges rather than
 // letting it all pile up on the right.
 inline int edKeyX0()   { return (kScreenW - edKeyCols() * edKeyW()) / 2; }
+// The gap between keys: a pixel on the panel, a few under a finger, so
+// neighbouring keys read apart.
+inline int edKeyGap()  { return screen::ui > 100 ? 3 : 1; }
 #define kEdKeyY kEdKeyYf()
 
 // Set when the window was moved with the scroll arrows, cleared the moment the
@@ -1930,6 +1978,7 @@ bool gridEdges(GridEdges& g) {
     g.down  = g_gridRow < maxGridRow();
     g.left  = g_gridCol > 0;
     g.right = g_gridCol + sc < g_edit.cols();
+    if (gestureMode()) g.up = g.down = g.left = g.right = false;   // fingers scroll
     return true;
   }
   if (g_tab == Tab::Edit && !Store::unlocked()) {
@@ -1941,6 +1990,7 @@ bool gridEdges(GridEdges& g) {
     g.down  = g_gridRow + sr < g_edit.rows();
     g.left  = g_gridCol > 0;
     g.right = g_gridCol + sc < g_edit.cols();
+    if (gestureMode()) g.up = g.down = g.left = g.right = false;   // fingers scroll
     return true;
   }
   return false;
@@ -2123,11 +2173,94 @@ void drawEdgeBar(const Btn& b, bool horizontal, bool forward) {
 // the far edge as the one now at the near edge, so there is something in
 // common between the two views to place yourself by. Stops at the end of the
 // program rather than running past it.
-// The edge bars' own scroll, from a mouse wheel: rows a notch, columns a
-// notch sideways, over whichever grid is showing. The bars mark the moves
-// the same way, so what a scroll means for following and the editor's
-// cursor is decided in one place.
-void wheelScroll(int dy, int dx, int x, int y);
+// What every scroll by hand has to say afterwards.
+void afterManualScroll() {
+  if (g_tab == Tab::Edit) {
+    // The editor normally keeps the cursor on screen and would undo this
+    // before it was drawn. Scrolling by hand says where you want to look, so
+    // it stops chasing the cursor until the cursor is moved again. The cursor
+    // stays exactly where it was: moving it would read as selecting a
+    // character.
+    g_edManualScroll = true;
+    g_paint |= PaintEdGrid;
+  }
+  // Scrolling by hand is a choice about where to look, so stop chasing the
+  // runner. Without this the next frame put the view straight back.
+  else { g_paint |= PaintRunGrid; g_follow = false; }
+  g_dirty = true;
+}
+// A finger's scroll, a cell or two at a time: what is on screen moves and
+// only the strip that came into view is painted. Repainting the whole
+// program for every cell of a drag was visible as a flicker on a screen
+// with many rows. Returns false when it is not that kind of scroll, and
+// the whole grid is repainted instead.
+bool scrollShown(const GridEdges& g, int dr, int dc) {
+  if (g_modal != Modal::None) return false;
+  const bool editor = (g_tab == Tab::Edit);
+  const int cw = cellW(), chh = cellH();
+  const int rows = g.h / chh, cols = g.w / cw;
+  if (dr <= -rows || dr >= rows || dc <= -cols || dc >= cols) return false;
+  gfx.setScrollRect(g.x, g.y, g.w, g.h, theme::bg);
+  gfx.scroll(-dc * cw, -dr * chh);
+  gfx.setScrollRect(0, 0, kScreenW, kScreenH, theme::bg);
+  // The rows that came in, whole; then the columns, cell by cell.
+  const int top = g_gridRow, left = g_gridCol;
+  lgfx::LGFX_Sprite* sp = rowSprite(g.w, chh);
+  const int r0 = dr > 0 ? rows - dr : 0, r1 = dr > 0 ? rows : (dr < 0 ? -dr : 0);
+  for (int i = r0; i < r1; ++i) {
+    const int r = top + i;
+    if (r >= g_edit.rows()) break;
+    if (sp) {
+      for (int j = 0; j < cols && left + j < g_edit.cols(); ++j) paintCell(*sp, j * cw, 0, r, left + j, editor);
+      sp->pushSprite(g.x, g.y + i * chh);
+      gfx.waitDMA();
+    }
+    else for (int j = 0; j < cols && left + j < g_edit.cols(); ++j) paintCell(gfx, g.x + j * cw, g.y + i * chh, r, left + j, editor);
+  }
+  const int c0 = dc > 0 ? cols - dc : 0, c1 = dc > 0 ? cols : (dc < 0 ? -dc : 0);
+  for (int j = c0; j < c1; ++j) {
+    const int c = left + j;
+    if (c >= g_edit.cols()) break;
+    for (int i = 0; i < rows && top + i < g_edit.rows(); ++i)
+      paintCell(gfx, g.x + j * cw, g.y + i * chh, top + i, c, editor);
+  }
+  gfx.setTextDatum(textdatum_t::top_left);
+  gfx.setTextSize(1);
+  return true;
+}
+
+// Scroll the program by so many rows and columns, stopping at its edges.
+void scrollGridBy(int drow, int dcol) {
+  GridEdges g;
+  if (!gridEdges(g)) return;
+  const int ch = (g_tab == Tab::Edit) ? edCellH() : cellH();
+  const int maxRow = (g_tab == Tab::Edit)
+                       ? (g_edit.rows() - g.h / ch > 0 ? g_edit.rows() - g.h / ch : 0)
+                       : maxGridRow();
+  const int oldRow = g_gridRow, oldCol = g_gridCol;
+  int row = g_gridRow + drow;
+  if (row < 0) row = 0;
+  if (row > maxRow) row = maxRow;
+  g_gridRow = row;
+  setGridCol(g_gridCol + dcol);
+  const int dr = g_gridRow - oldRow, dc = g_gridCol - oldCol;
+  if (dr == 0 && dc == 0) return;
+  if (gestureMode() && scrollShown(g, dr, dc)) {
+    // Moved by hand, and already drawn: the rest of what a scroll means,
+    // without the repaint.
+    if (g_tab == Tab::Edit) g_edManualScroll = true;
+    else g_follow = false;
+    g_dirty = true;
+    return;
+  }
+  afterManualScroll();
+}
+// Whether a point is on the program itself, bars and all.
+bool onGrid(int x, int y) {
+  GridEdges g;
+  return gridEdges(g) && x >= g.x && x < g.x + g.w && y >= g.y && y < g.y + g.h;
+}
+
 bool handleEdgeBars(int x, int y) {
   GridEdges g;
   if (!gridEdges(g)) return false;
@@ -2145,20 +2278,7 @@ bool handleEdgeBars(int x, int y) {
                        : maxGridRow();
   const int maxCol = g_edit.cols() - g.w / cw > 0 ? g_edit.cols() - g.w / cw : 0;
 
-  auto moved = [&]() {
-    if (g_tab == Tab::Edit) {
-      // The editor normally keeps the cursor on screen and would undo this
-      // before it was drawn. Scrolling by hand says where you want to look, so
-      // it stops doing that until the cursor is moved again. The cursor stays
-      // exactly where it was: moving it would read as selecting a character.
-      g_edManualScroll = true;
-      g_paint |= PaintEdGrid;
-    }
-    // Scrolling by hand is a choice about where to look, so stop chasing the
-    // runner. Without this the next frame put the view straight back.
-    else                    { g_paint |= PaintRunGrid; g_follow = false; }
-    g_dirty = true;
-  };
+  auto moved = [&]() { afterManualScroll(); };
   if (g.up && hit(barHit(g, barUp(g), true, true), x, y)) {
     *row -= stepR; if (*row < 0) *row = 0; moved(); return true;
   }
@@ -2172,31 +2292,6 @@ bool handleEdgeBars(int x, int y) {
     *col += stepC; if (*col > maxCol) *col = maxCol; moved(); return true;
   }
   return false;
-}
-
-void wheelScroll(int dy, int dx, int x, int y) {
-  if (g_modal != Modal::None || (g_tab != Tab::Run && g_tab != Tab::Edit)) return;
-  GridEdges g;
-  if (!gridEdges(g) || x < g.x || x >= g.x + g.w || y < g.y || y >= g.y + g.h) return;
-  const int cw = (g_tab == Tab::Edit) ? edCellW()
-               : (g_view == View::Zoom) ? kZoomCellW : kWideCellW;
-  const int ch = (g_tab == Tab::Edit) ? edCellH()
-               : (g_view == View::Zoom) ? kZoomCellH : kWideCellH;
-  const int maxRow = (g_tab == Tab::Edit)
-                       ? (g_edit.rows() - g.h / ch > 0 ? g_edit.rows() - g.h / ch : 0)
-                       : maxGridRow();
-  const int maxCol = g_edit.cols() - g.w / cw > 0 ? g_edit.cols() - g.w / cw : 0;
-  int row = g_gridRow - dy * 3, col = g_gridCol + dx * 3;
-  if (row < 0) row = 0;
-  if (row > maxRow) row = maxRow;
-  if (col < 0) col = 0;
-  if (col > maxCol) col = maxCol;
-  if (row == g_gridRow && col == g_gridCol) return;
-  g_gridRow = row;
-  setGridCol(col);
-  if (g_tab == Tab::Edit) { g_edManualScroll = true; g_paint |= PaintEdGrid; }
-  else                    { g_paint |= PaintRunGrid; g_follow = false; }
-  g_dirty = true;
 }
 
 // A bar is thinner than a cell, so drawing it straight onto the grid left the
@@ -2278,7 +2373,7 @@ void drawProgEditGrid() {
 
 void drawProgEditKeys() {
   gfx.fillRect(0, kEdKeyY, kScreenW, kTabY - kEdKeyY, theme::bg);
-  if (!onScreenKeys()) return;
+  if (!onScreenKeys() || nativeKeys()) return;
   gfx.setTextDatum(textdatum_t::middle_center);
   const int kw = edKeyW(), kh = edKeyH();
   for (int r = 0; r < edKeyRows(); ++r) {
@@ -2297,7 +2392,8 @@ void drawProgEditKeys() {
       // small panel; the fill alone separates them, the way the picker's
       // keyboards already do it.
       uint16_t kbg = theme::panel;
-      gfx.fillRect(x + 1, y + 1, kw - 2, kh - 2, kbg);
+      const int gap = edKeyGap();
+      gfx.fillRect(x + gap, y + gap, kw - 2 * gap, kh - 2 * gap, kbg);
       // The key is set in the same face and size the grid uses, so what you
       // tap looks like what lands in the cell. It used to be the 5 x 7 pixel
       // font at double size, which matched nothing else on the device.
@@ -2343,8 +2439,8 @@ inline int szH() { return g_sizeIsNew ? 150 : 222; }
 int g_szEdge[4] = { 0, 0, 0, 0 };
 const char* const kEdgeName[4] = { "top", "bottom", "left", "right" };
 inline int szEdgeY(int i) { return kSzY + 40 + i * 34; }
-Btn btnSzEdgeDn(int i) { return { 196, szEdgeY(i), 40, 26, "-" }; }
-Btn btnSzEdgeUp(int i) { return { 300, szEdgeY(i), 40, 26, "+" }; }
+Btn btnSzEdgeDn(int i) { return { fromRight(196), szEdgeY(i), 40, 26, "-" }; }
+Btn btnSzEdgeUp(int i) { return { fromRight(300), szEdgeY(i), 40, 26, "+" }; }
 
 // The second page: a row or a column named by number, inserted before it or
 // deleted. RESIZE's four edges can only add at the outside; this is for making
@@ -2412,25 +2508,29 @@ void undoShapeOp() {
 // Two groups of stepper-then-buttons, then the pair at the foot. Worked out
 // so the last group clears the foot rather than sitting on it.
 inline int szOpY(int i) { return kSzY + 40 + i * 68; }
-Btn btnSzAtDn(int i)  { return { 196, szOpY(i), 40, 28, "-" }; }
-Btn btnSzAtUp(int i)  { return { 300, szOpY(i), 40, 28, "+" }; }
-Btn btnSzIns(int i)   { return { 50,  szOpY(i) + 32, 180, 28, "insert before" }; }
-Btn btnSzDel(int i)   { return { 250, szOpY(i) + 32, 180, 28, "delete", theme::bad }; }
+Btn btnSzAtDn(int i)  { return { fromRight(196), szOpY(i), 40, 28, "-" }; }
+Btn btnSzAtUp(int i)  { return { fromRight(300), szOpY(i), 40, 28, "+" }; }
+// The pairs side by side: the left one from x 50, the right one keeping its
+// distance from the right edge, and both narrower when the screen is.
+inline int szPairW()  { return narrow() ? fromRight(250) - 60 : 180; }
+Btn btnSzIns(int i)   { return { 50,  szOpY(i) + 32, szPairW(), 28, "insert before" }; }
+Btn btnSzDel(int i)   { return { fromRight(250), szOpY(i) + 32, szPairW(), 28, "delete", theme::bad }; }
 Btn btnSzPage()       { return { kScreenW - 96, kSzY + 4, 66, 24,
                                  g_szPage == 0 ? "rows..." : "edges" }; }
 // Page two's changes happen as they are pressed, so instead of an OK that has
 // nothing left to do and a CANCEL that cannot cancel, it has a way back one
 // step at a time. With nothing done yet the same button is simply the way out.
-Btn btnSzUndo()       { return { 50, kSzY + kSzH - 46, 180, 28,
+Btn btnSzUndo()       { return { 50, kSzY + kSzH - 46, szPairW(), 28,
                                  g_szUndoCount > 0 ? "UNDO" : "CANCEL",
                                  g_szUndoCount > 0 ? theme::warn : theme::bad }; }
-Btn btnSzDone()       { return { 250, kSzY + kSzH - 46, 180, 28,
+Btn btnSzDone()       { return { fromRight(250), kSzY + kSzH - 46, szPairW(), 28,
                                  "DONE", theme::bg, theme::good }; }
 
-Btn btnSzRowsDn() { return { 150, kSzY + 40, 40, 28, "-" }; }
-Btn btnSzRowsUp() { return { 250, kSzY + 40, 40, 28, "+" }; }
-Btn btnSzColsDn() { return { 150, kSzY + 76, 40, 28, "-" }; }
-Btn btnSzColsUp() { return { 250, kSzY + 76, 40, 28, "+" }; }
+inline int szDnX() { const int x = fromRight(150); return x < 96 ? 96 : x; }   // clear of the label
+Btn btnSzRowsDn() { return { szDnX(), kSzY + 40, 40, 28, "-" }; }
+Btn btnSzRowsUp() { return { fromRight(250), kSzY + 40, 40, 28, "+" }; }
+Btn btnSzColsDn() { return { szDnX(), kSzY + 76, 40, 28, "-" }; }
+Btn btnSzColsUp() { return { fromRight(250), kSzY + 76, 40, 28, "+" }; }
 Btn btnSzCancel() { return { 40,  kSzY + kSzH - 36, 120, 28, "CANCEL", theme::bad }; }
 Btn btnSzOk()     { return { kScreenW - 160, kSzY + kSzH - 36, 120, 28, "OK",
                              theme::bg, theme::good }; }
@@ -2466,7 +2566,7 @@ void drawSize() {
       gfx.setFont(&fonts::Font2);
       gfx.setTextDatum(textdatum_t::middle_center);
       gfx.setTextColor(theme::accent, theme::panel);
-      gfx.drawString(buf, 268, szOpY(i) + 14);
+      gfx.drawString(buf, (btnSzAtDn(i).x + 40 + btnSzAtUp(i).x) / 2, szOpY(i) + 14);
       gfx.setTextDatum(textdatum_t::top_left);
       gfx.setFont(&fonts::Font0);
       drawBtn(btnSzAtDn(i), false, at > 0);
@@ -2505,7 +2605,7 @@ void drawSize() {
       gfx.setFont(&fonts::Font2);
       gfx.setTextDatum(textdatum_t::middle_center);
       gfx.setTextColor(g_szEdge[i] ? theme::edited : theme::dim, theme::panel);
-      gfx.drawString(g_szEdge[i] ? buf : "0", 268, szEdgeY(i) + 13);
+      gfx.drawString(g_szEdge[i] ? buf : "0", (btnSzEdgeDn(i).x + 40 + btnSzEdgeUp(i).x) / 2, szEdgeY(i) + 13);
       gfx.setTextDatum(textdatum_t::top_left);
       const bool isRow = i < 2;
       const int  now   = isRow ? g_edit.rows() + g_szEdge[0] + g_szEdge[1]
@@ -2524,14 +2624,14 @@ void drawSize() {
   gfx.setFont(&fonts::Font2);
   gfx.setTextDatum(textdatum_t::middle_center);
   gfx.setTextColor(theme::text, theme::panel);
-  gfx.drawString(buf, 220, kSzY + 54);
+  gfx.drawString(buf, (btnSzRowsDn().x + 40 + btnSzRowsUp().x) / 2, kSzY + 54);
   gfx.setTextDatum(textdatum_t::top_left);
   clabel(40, kSzY + 82, "cols", theme::text, theme::panel);
   snprintf(buf, sizeof(buf), "%d", g_sizeCols);
   gfx.setFont(&fonts::Font2);
   gfx.setTextDatum(textdatum_t::middle_center);
   gfx.setTextColor(theme::text, theme::panel);
-  gfx.drawString(buf, 220, kSzY + 90);
+  gfx.drawString(buf, (btnSzColsDn().x + 40 + btnSzColsUp().x) / 2, kSzY + 90);
   gfx.setTextDatum(textdatum_t::top_left);
 
   drawBtn(btnSzRowsDn()); drawBtn(btnSzRowsUp());
@@ -2736,7 +2836,7 @@ void handleProgEditTouch(int x, int y) {
   // The status bar's two controls.
   if (hit(btnEdName(), x, y)) { openRenameDialog(); return; }
   if (hit(btnEdSize(), x, y)) { openSizeDialog();   return; }
-  if (!zoomOnly() && hit(btnEdZoom(), x, y)) {
+  if (!zoomOnly() && !noZoomBtn() && hit(btnEdZoom(), x, y)) {
     toggleView();
     return;
   }
@@ -2774,7 +2874,7 @@ void handleProgEditTouch(int x, int y) {
     return;
   }
   // character keys: type and advance, wrapping to the next row
-  if (onScreenKeys() && y >= kEdKeyY && y < kTabY) {
+  if (onScreenKeys() && !nativeKeys() && y >= kEdKeyY && y < kTabY) {
     int r = (y - kEdKeyY) / edKeyH();
     if (x < edKeyX0()) return;
     int c = (x - edKeyX0()) / edKeyW();
@@ -3276,12 +3376,13 @@ void drawOutBody(bool full) {
   const int shown  = g_outTotal - g_outTop < g_outLines
                        ? g_outTotal - g_outTop : g_outLines;
   const int room   = (kTabY - 2 - kOutFootH) - top;
-  // The first line sits where a single line would, and the rest grow down
-  // from it, so nothing already printed moves when the next line arrives.
-  // Once the block is too tall for that it starts from the top, which is
-  // also when it starts to scroll.
-  const int anchor = (room - ch) / 2;
-  int oy = (anchor + shown * ch <= room) ? top + anchor : top;
+  // The whole block is centred, however many lines it has; once it is too
+  // tall for the room it starts from the top, which is also when it starts
+  // to scroll. (It used to centre the first line and grow down from it, so
+  // that nothing moved as lines arrived; a finished output then sat too
+  // low, which is how most of them are read.)
+  int oy = top + (room - shown * ch) / 2;
+  if (oy < top) oy = top;
 
   // The lines as they will be drawn, so a partial repaint can compare them
   // with the ones already on the panel and touch only the ones that differ.
@@ -3489,22 +3590,58 @@ void afterProgramChange() {
 // Where a tag contradicts itself -- "~sq" asking for both slow and quick --
 // the first one wins and the rest of that group is ignored, so the reading is
 // left to right and never depends on which letter came last.
+// The start a program's tag asks for, if it asks: the first <row>,<col>
+// pair after the tilde, with a heading letter after it or east without,
+// clamped to the grid. False when the tag names none.
+bool tagStart(const std::string& text, int& col, int& row, char& dir) {
+  const std::size_t at = text.find('~');
+  if (at == std::string::npos) return false;
+  for (std::size_t i = at + 1; i < text.size(); ++i) {
+    const char c = text[i];
+    if (std::isspace((unsigned char)c) || c == '.') break;
+    if (!std::isdigit((unsigned char)c) && c != ',') continue;
+    std::size_t j = i;
+    int r = 0, k = 0;
+    while (j < text.size() && std::isdigit((unsigned char)text[j])) { if (r < 10000) r = r * 10 + (text[j] - '0'); ++j; }
+    if (j >= text.size() || text[j] != ',') { i = j - 1; continue; }   // digits alone
+    ++j;
+    while (j < text.size() && std::isdigit((unsigned char)text[j])) { if (k < 10000) k = k * 10 + (text[j] - '0'); ++j; }
+    dir = 'E';
+    if (j < text.size() && std::strchr("NESW", text[j])) dir = text[j];
+    if (k >= g_edit.cols()) k = g_edit.cols() - 1;
+    if (r >= g_edit.rows()) r = g_edit.rows() - 1;
+    col = k < 0 ? 0 : k; row = r < 0 ? 0 : r;
+    return true;
+  }
+  return false;
+}
+// Where the loaded program starts when nothing has moved it: what its tag
+// asks, or the top-left corner heading east.
+void programStart(int& col, int& row, char& dir) {
+  col = 0; row = 0; dir = 'E';
+  tagStart(g_edit.text(), col, row, dir);
+}
+
 void applyViewTags(const std::string& text) {
   g_tagBand = -1; g_tagTrace = -1;      // the last program's wishes are lifted
   Store::setFollowRunners(true);
   Store::setRunSpeed(1);                // medium
   run::setSpeed(run::Speed::Medium);
-  // A tag that names no start puts the runner back at the top left. It does
-  // not touch GRID TAP: that is the reader's setting, not the program's.
-  Store::setStartPoint(0, 0, 'E');
-  run::setStart(0, 0, 'E');
+  // The start the program asks for, or the top left when it asks none. This
+  // does not touch GRID TAP: that is the reader's setting, not the program's.
+  {
+    int sc, sr; char sd;
+    programStart(sc, sr, sd);
+    Store::setStartPoint(sc, sr, sd);
+    run::setStart(sc, sr, sd);
+  }
   // GRID TAP, STEP BUTTONS, the theme and the keyboard are the device's
   // settings, not the program's, and stay.
 
   const std::size_t at = text.find('~');
   if (at == std::string::npos) return;
 
-  bool bandSet = false, speedSet = false, startSet = false;
+  bool bandSet = false, speedSet = false;
 
   auto setSpeed = [&speedSet](int n, run::Speed s) {
     if (speedSet) return;
@@ -3534,23 +3671,9 @@ void applyViewTags(const std::string& text) {
         if (col < 10000) col = col * 10 + (text[j] - '0');
         ++j;
       }
-      char dir = 'E';
-      if (j < text.size() && std::strchr("NESW", text[j])) dir = text[j++];
-      i = j - 1;
-      if (startSet) continue;           // the first coordinate is the one
-      startSet = true;
-      // A start outside the grid would put the runner nowhere; clamp it to a
-      // cell that exists rather than refusing the whole tag.
-      if (col >= g_edit.cols()) col = g_edit.cols() - 1;
-      if (row >= g_edit.rows()) row = g_edit.rows() - 1;
-      if (col < 0) col = 0;
-      if (row < 0) row = 0;
-      // A program asking to start somewhere needs that honoured, so a device
-      // set to NOTHING is moved up to letting the start be placed.
-      // No switching GRID TAP on behind the reader's back: the marker below
-      // shows a start that is not the default whatever that setting is.
-      Store::setStartPoint(col, row, dir);
-      run::setStart(col, row, dir);
+      if (j < text.size() && std::strchr("NESW", text[j])) ++j;
+      i = j - 1;                        // the start itself was read by programStart()
+      (void)col; (void)row;
       continue;
     }
 
@@ -3908,32 +4031,68 @@ void drawSave() {
 
 // Two columns, one concern per tile. Everything WiFi lives behind one dialog
 // rather than three tiles.
-constexpr int kSysRowH = 26;
+enum SysTile { SysWifi, SysTheme, SysSd, SysDebug, SysCal, SysBand, SysRestore,
+               SysSteps, SysKeys, SysFollow, SysTrail, SysStart, SysLearn, SysInfo,
+               SysExit, SysIrcis, SysRead, SysReset, SysControls, SysTileCount };
+#define kSysRowH kUi(26)
 Btn sysTile(int row, int col, const char* label, uint16_t fg = theme::text) {
-  int w = (kScreenW - 12) / 2;
-  return { 4 + col * (w + 4), kBodyY + 4 + row * kSysRowH, w, 22, label, fg, theme::panel };
+  int w = narrow() ? kScreenW - 8 : (kScreenW - 12) / 2;
+  return { 4 + col * (w + 4), kBodyY + 4 + row * kSysRowH, w, kUi(22), label, fg, theme::panel };
+}
+// The settings grid in reading order, each with the test that says whether
+// this hardware has the thing. A tile that is absent leaves no hole: the
+// ones after it move up, so a phone with no radio, no card slot and no panel
+// to calibrate gets a shorter page rather than a gappy one.
+struct SysSlot { SysTile id; bool (*present)(); };
+bool sysAlways() { return true; }
+const SysSlot kSysGrid[] = {
+  { SysWifi,    plat::hasWifi },      { SysTheme,   sysAlways },
+  { SysBand,    sysAlways },          { SysDebug,   sysAlways },
+  { SysStart,   sysAlways },          { SysCal,     plat::hasTouchCheck },
+  { SysSd,      plat::hasSdSlot },    { SysRestore, sysAlways },
+  { SysSteps,   sysAlways },          { SysTrail,   sysAlways },
+  { SysFollow,  sysAlways },          { SysKeys,    plat::haveKeyboard },
+  { SysControls, plat::hasGestures },
+};
+bool sysHas(SysTile id) {
+  for (const SysSlot& s : kSysGrid) if (s.id == id) return s.present();
+  return true;
+}
+// An absent tile is a rectangle of no size, which nothing draws and no tap
+// can land on.
+Btn sysSlot(SysTile id, const char* label, uint16_t fg = theme::text) {
+  int i = 0;
+  for (const SysSlot& s : kSysGrid) {
+    if (s.id == id) return !s.present() ? Btn{ 0, 0, 0, 0, label, fg, theme::panel }
+                          : narrow()    ? sysTile(i, 0, label, fg)          // one to a row
+                                        : sysTile(i / 2, i % 2, label, fg);
+    if (s.present()) ++i;
+  }
+  return Btn{ 0, 0, 0, 0, label, fg, theme::panel };
 }
 // Two columns, grouped: connectivity and appearance, then diagnostics, then
 // what the RUN page does, then the About pages, then the reset and the guide.
 // Two of the tiles only exist once unlocked, and the rows below them close up
 // when they are absent.
-Btn btnSysWifi()    { return sysTile(0, 0, "WIFI"); }
-Btn btnSysTheme()   { return sysTile(0, 1, "THEME: NIGHT"); }
-Btn btnSysSd()      { return sysTile(3, 0, "SD LOG: OFF"); }
-Btn btnSysDebug()   { return sysTile(1, 1, "DIAGNOSTICS"); }
+Btn btnSysWifi()     { return sysSlot(SysWifi, "WIFI"); }
+Btn btnSysTheme()    { return sysSlot(SysTheme, "THEME: NIGHT"); }
+Btn btnSysSd()       { return sysSlot(SysSd, "SD LOG: OFF"); }
+Btn btnSysDebug()    { return sysSlot(SysDebug, "DIAGNOSTICS"); }
 // What the RUN page shows under the program: OUTPUT, RUNNERS or NOTHING.
-Btn btnSysBand()    { return sysTile(1, 0, "UNDER GRID: OUTPUT"); }
-Btn btnSysCal()     { return sysTile(2, 1, "CHECK TOUCH"); }
-Btn btnSysSteps()   { return sysTile(4, 0, "STEP BUTTONS: OFF"); }
-Btn btnSysTrail()   { return sysTile(4, 1, "TRAIL: OFF"); }
+Btn btnSysBand()     { return sysSlot(SysBand, "UNDER GRID: OUTPUT"); }
+Btn btnSysCal()      { return sysSlot(SysCal, "CHECK TOUCH"); }
+Btn btnSysSteps()    { return sysSlot(SysSteps, "STEP BUTTONS: OFF"); }
+Btn btnSysTrail()    { return sysSlot(SysTrail, "TRAIL: OFF"); }
 // What a tap on the RUN grid does, which is one thing at a time.
-Btn btnSysFollow()  { return sysTile(5, 0, "FOLLOW RUNNER: ON"); }
+Btn btnSysFollow()   { return sysSlot(SysFollow, "FOLLOW RUNNER: ON"); }
 // Only where a real keyboard can exist. On the board the tile is absent
 // rather than present and useless, and it sits last so the space it leaves is
 // at the foot of the grid instead of a hole in the middle of it.
-Btn btnSysKeys()    { return sysTile(5, 1, "KEYBOARD: ON SCREEN"); }
-Btn btnSysStart()   { return sysTile(2, 0, "GRID TAP: NOTHING"); }
-Btn btnSysRestore() { return sysTile(3, 1, "RESTORE BUILT-INS"); }
+Btn btnSysKeys()     { return sysSlot(SysKeys, "KEYBOARD: ON SCREEN"); }
+Btn btnSysStart()    { return sysSlot(SysStart, "GRID TAP: NOTHING"); }
+Btn btnSysRestore()  { return sysSlot(SysRestore, "RESTORE BUILT-INS"); }
+// Fingers or buttons, on a screen that offers the choice.
+Btn btnSysControls() { return sysSlot(SysControls, "CONTROLS: GESTURES"); }
 // Everything below here is anchored to the foot of the page rather than to a
 // row of the settings grid: the pages that tell you about the device, and
 // under them the reset and the way to the guide. They keep the same place
@@ -3942,19 +4101,25 @@ Btn btnSysRestore() { return sysTile(3, 1, "RESTORE BUILT-INS"); }
 // bottom row and adding a mode's extra tiles pushes the block up, never down
 // off the screen.
 Btn sysFootTile(int rowUp, int col, const char* label, uint16_t fg) {
+  // Narrower than the board the pairs stack: the right-hand tile of each
+  // pair goes above its partner.
+  if (narrow()) return { 4, kTabY - kUi(26) - (rowUp * 2 + col) * kSysRowH, kScreenW - 8, kUi(22), label, fg, theme::panel };
   const int w = (kScreenW - 12) / 2;
-  return { 4 + col * (w + 4), kTabY - 26 - rowUp * kSysRowH, w, 22,
+  return { 4 + col * (w + 4), kTabY - kUi(26) - rowUp * kSysRowH, w, kUi(22),
            label, fg, theme::panel };
 }
 // One more row of About tiles when unlocked, so the block starts a row higher.
-int  sysAboutRows()  { return Store::unlocked() ? 3 : 2; }
-int  sysFootRuleY()  { return kTabY - 32 - sysAboutRows() * kSysRowH + kSysRowH - 4; }
+int  sysAboutRows()  { return (Store::unlocked() ? 3 : 2) * (narrow() ? 2 : 1); }
+int  sysFootRuleY()  { return kTabY - kUi(32) - sysAboutRows() * kSysRowH + kSysRowH - 4; }
 
 Btn btnSysInfo()  { return sysFootTile(2, 0, pack::str(pack::kStrInfoTile), theme::accent); }
 Btn btnSysIrcis() { return Store::unlocked() ? sysFootTile(2, 1, "ABOUT IRCIS", theme::accent)
                                             : sysFootTile(1, 0, "ABOUT IRCIS", theme::accent); }
-Btn btnSysRead()  { return Store::unlocked() ? sysFootTile(1, 0, "ABOUT THIS DEVICE", theme::accent)
-                                            : sysFootTile(1, 1, "ABOUT THIS DEVICE", theme::accent); }
+// On a phone the program is an app, and the tile says so.
+const char* aboutLabel() { return plat::isApp() ? "ABOUT pIRCIS" : "ABOUT THIS DEVICE"; }
+const char* aboutTitle() { return plat::isApp() ? "pIRCIS" : "THIS DEVICE"; }
+Btn btnSysRead()  { return Store::unlocked() ? sysFootTile(1, 0, aboutLabel(), theme::accent)
+                                            : sysFootTile(1, 1, aboutLabel(), theme::accent); }
 // Puts the device back to looking like a plain IRCIS interpreter without
 // throwing away anything else. Re-entering means setting the WiFi credentials
 // again. Only exists once unlocked, for obvious reasons.
@@ -3972,7 +4137,7 @@ Btn btnSysLearn() { return sysFootTile(0, 1, "LEARN IRCIS", theme::accent); }
 
 // The first program the list will show. The packed one is index 0, so locking
 // simply starts the list one further along.
-constexpr int kProgRowH = 26;
+#define kProgRowH kUi(26)
 // How many rows fit above the tab bar, leaving the last one for the scroll
 // arrows when the list is longer than that.
 int progRows()    { return (kTabY - 8 - (kBodyY + 4)) / kProgRowH; }
@@ -3988,7 +4153,7 @@ Btn btnProgDown() { return { kScreenW / 2 + 8,  kTabY - 30, 84, 26, "v" }; }
 // device with no card. Rows are built by one function and both drawn and
 // hit-tested from it, so the list and the taps cannot drift apart.
 struct ProgRow {
-  enum Kind { Packed, SaveDev, SaveCard, Discard, NewProg, Up, Folder, File };
+  enum Kind { Packed, SaveDev, SaveCard, Share, Discard, NewProg, OpenFile, Up, Folder, File };
   Kind kind;
   int  index;              // File: into that store's list. Folder: into g_progFolders
   plat::Where where;       // File: which store the row came from
@@ -4010,11 +4175,16 @@ void buildProgActions(std::vector<ProgRow>& out) {
     out.push_back({ ProgRow::Packed, prog::kPackedIndex, plat::Where::Device });
   out.push_back({ ProgRow::SaveDev,  0, plat::Where::Device });
   if (card) out.push_back({ ProgRow::SaveCard, 0, plat::Where::Card });
+  // Where the system has a sheet for handing a file on, that is how a
+  // program leaves the device; where it has a picker, that is how one
+  // arrives.
+  if (plat::canShareFiles()) out.push_back({ ProgRow::Share, 0, plat::Where::Device });
   // Only when there is something to throw away, so the row is never a dead
   // option sitting next to Save.
   if (g_edit.modifiedCells() > 0)
     out.push_back({ ProgRow::Discard, 0, plat::Where::Device });
   out.push_back({ ProgRow::NewProg, 0, plat::Where::Device });
+  if (plat::canPickFiles()) out.push_back({ ProgRow::OpenFile, 0, plat::Where::Device });
   // The way out of a folder goes last, under the rows that are on this page
   // whatever you are looking at. Putting it first moved every one of them
   // along by a place the moment you opened a folder.
@@ -4082,23 +4252,26 @@ void drawFolderMark(int x, int y, uint16_t c) {
 // row they save is a program you can see without scrolling. The programs below
 // keep a row each, because their names are long and finding one is what you
 // came here for.
-inline int progActionRows(int fixed) { return (fixed + 1) / 2; }
+inline int progActionRows(int fixed) { return narrow() ? fixed : (fixed + 1) / 2; }
 
 Btn progActionTile(int slot) {
+  // Two to a row where there is room; one, the full width, where the
+  // screen is narrower than the board.
+  if (narrow()) return { 4, kBodyY + 4 + slot * kProgRowH, kScreenW - 8, kUi(22), "", theme::text, theme::panel };
   const int w = (kScreenW - 12) / 2;
   return { 4 + (slot % 2) * (w + 4), kBodyY + 4 + (slot / 2) * kProgRowH,
-           w, 22, "", theme::text, theme::panel };
+           w, kUi(22), "", theme::text, theme::panel };
 }
 
 Btn progFileTile(int slot, int fixed) {
   const int row = progActionRows(fixed) + (slot - fixed);
-  return { 4, kBodyY + 4 + row * kProgRowH, kScreenW - 8, 22,
+  return { 4, kBodyY + 4 + row * kProgRowH, kScreenW - 8, kUi(22),
            "", theme::text, theme::panel };
 }
 
 Btn progDel(int slot, int fixed) {
   Btn b = progFileTile(slot, fixed);
-  return { 4, b.y, 28, 22, "X", theme::bad, theme::panel };
+  return { 4, b.y, 28, kUi(22), "X", theme::bad, theme::panel };
 }
 
 // A row's tile, narrowed to leave room for the delete button when it has one.
@@ -4111,9 +4284,22 @@ Btn progRowTile(const ProgRow& r, int slot, int fixed) {
 
 int progVisible() { return progRows(); }
 // Slots the page can hold: the paired action rows, then a row per program.
-int progSlots(int fixed) {
-  const int rows = progRows() - progActionRows(fixed);
-  return fixed + (rows > 0 ? rows : 0);
+// How many rows end above y, whole tiles only.
+int progRowsAbove(int y) {
+  int n = 0;
+  while (kBodyY + 4 + n * kProgRowH + kUi(22) <= y) ++n;
+  return n;
+}
+// The rows the page has for the list of `total` programs under `fixed`
+// action rows. When the list fits, every row down to the tab bar; when it
+// scrolls, the scroll pair sits at the foot of the page and only the rows
+// that end above it are shown. On the board the two counts happen to agree;
+// with larger controls the last row ran under the buttons.
+int progSlots(int fixed, int total) {
+  const int all = progRows() - progActionRows(fixed);
+  if (total <= all) return fixed + (all > 0 ? all : 0);
+  const int above = progRowsAbove(btnProgUp().y - 2) - progActionRows(fixed);
+  return fixed + (above > 0 ? above : 0);
 }
 
 void drawProg() {
@@ -4123,8 +4309,8 @@ void drawProg() {
   buildProgRows(files);
 
   const int fixed   = (int)actions.size();
-  const int visible = progSlots(fixed) - fixed;      // room left for the list
   const int total   = (int)files.size();
+  const int visible = progSlots(fixed, total) - fixed;   // room left for the list
   const int maxTop  = total > visible ? total - visible : 0;
   if (g_progTop > maxTop) g_progTop = maxTop;
   if (g_progTop < 0) g_progTop = 0;
@@ -4150,11 +4336,20 @@ void drawProg() {
         break;
       }
       case ProgRow::SaveDev:
-        name = "Save on device";
+        // "On device" only means something where a card is the other place.
+        name = plat::hasSdSlot() ? "Save on device" : "Save";
         edge = theme::good; fg = theme::good;
         break;
       case ProgRow::SaveCard:
         name = "Save on card";
+        edge = theme::good; fg = theme::good;
+        break;
+      case ProgRow::Share:
+        name = "Share this program";
+        edge = theme::good; fg = theme::good;
+        break;
+      case ProgRow::OpenFile:
+        name = "Open a file";
         edge = theme::good; fg = theme::good;
         break;
       case ProgRow::Discard:
@@ -4216,7 +4411,7 @@ void drawProg() {
   };
 
   for (const ProgRow& r : actions) drawRow(r, shown++);
-  for (int i = g_progTop; i < total && shown < progSlots(fixed); ++i, ++shown)
+  for (int i = g_progTop; i < total && shown < progSlots(fixed, total); ++i, ++shown)
     drawRow(files[i], shown);
 
   // Delete everything and the page was three action rows and silence, with
@@ -4244,8 +4439,8 @@ void handleProgTouch(int x, int y) {
   buildProgRows(files);
 
   const int fixed   = (int)actions.size();
-  const int visible = progSlots(fixed) - fixed;
   const int total   = (int)files.size();
+  const int visible = progSlots(fixed, total) - fixed;
   const int maxTop  = total > visible ? total - visible : 0;
   if (maxTop > 0) {
     // A whole page a tap, not a line. Twenty-odd programs one row at a time is
@@ -4269,7 +4464,7 @@ void handleProgTouch(int x, int y) {
 
   // The rows on screen, pinned actions first, then the scrolled slice.
   std::vector<ProgRow> rows = actions;
-  for (int i = g_progTop; i < total && (int)rows.size() < progSlots(fixed); ++i)
+  for (int i = g_progTop; i < total && (int)rows.size() < progSlots(fixed, total); ++i)
     rows.push_back(files[i]);
 
   for (int slot = 0; slot < (int)rows.size(); ++slot) {
@@ -4294,6 +4489,10 @@ void handleProgTouch(int x, int y) {
     switch (r.kind) {
       case ProgRow::SaveDev:  saveProgramTo(plat::Where::Device); return;
       case ProgRow::SaveCard: saveProgramTo(plat::Where::Card);   return;
+      // Both hand over to the system's own sheet. What the picker returns
+      // comes back through tick(), whenever the person is done choosing.
+      case ProgRow::Share:    plat::shareText(g_edit.programName(), g_edit.text()); return;
+      case ProgRow::OpenFile: plat::pickFile(); return;
 
       // Opening and leaving a folder changes the list and nothing else, so
       // only the list is repainted.
@@ -4363,13 +4562,17 @@ constexpr int kMaxSysTiles = 20;
 int sysTiles(Btn* out) {
   int n = 0;
   auto add = [&](Btn b) { if (n < kMaxSysTiles) out[n++] = b; };
-  add(btnSysWifi());  add(btnSysTheme());
+  if (sysHas(SysWifi)) add(btnSysWifi());
+  add(btnSysTheme());
   add(btnSysBand());  add(btnSysDebug());
-  add(btnSysStart()); add(btnSysCal());
-  add(btnSysSd());    add(btnSysRestore());
+  add(btnSysStart());
+  if (sysHas(SysCal)) add(btnSysCal());
+  if (sysHas(SysSd))  add(btnSysSd());
+  add(btnSysRestore());
   add(btnSysSteps()); add(btnSysTrail());
   add(btnSysFollow());
-  if (plat::haveKeyboard()) add(btnSysKeys());
+  if (sysHas(SysKeys)) add(btnSysKeys());
+  if (sysHas(SysControls)) add(btnSysControls());
   if (Store::unlocked())    { add(btnSysInfo()); add(btnSysExit()); }
   add(btnSysIrcis()); add(btnSysRead());
   add(btnSysReset()); add(btnSysLearn());
@@ -4381,9 +4584,6 @@ int sysTiles(Btn* out) {
 
 // Which SYS tile a partial repaint is for. The order is the order the tiles
 // are drawn in below, and nothing else depends on it.
-enum SysTile { SysWifi, SysTheme, SysSd, SysDebug, SysCal, SysBand, SysRestore,
-               SysSteps, SysKeys, SysFollow, SysTrail, SysStart, SysLearn, SysInfo,
-               SysExit, SysIrcis, SysRead, SysReset, SysTileCount };
 
 // One tile, with its label as it currently reads. Every tile paints its own
 // face, so redrawing one leaves the rest of the page untouched.
@@ -4396,6 +4596,7 @@ void drawSysTile(int which) {
   };
   switch (which) {
     case SysWifi: {
+      if (!sysHas(SysWifi)) break;
       Btn w = btnSysWifi();
       std::string wl = std::string("WIFI: ") + (web::running() ? web::ipAddress() : "off");
       // Whether anything is actually looking. An address alone does not say
@@ -4424,6 +4625,7 @@ void drawSysTile(int which) {
     case SysSd: {
       // With no card there is nowhere to log, so the tile reads OFF and is
       // greyed rather than offering a switch that cannot do anything.
+      if (!sysHas(SysSd)) break;
       const bool card = plat::sdPresent();
       Btn sd = btnSysSd();
       std::string sl = std::string("SD LOG: ")
@@ -4433,7 +4635,14 @@ void drawSysTile(int which) {
       break;
     }
     case SysDebug: tile(btnSysDebug()); break;
-    case SysCal:   tile(btnSysCal());   break;
+    case SysCal:   if (sysHas(SysCal)) tile(btnSysCal()); break;
+    case SysControls: {
+      if (!sysHas(SysControls)) break;
+      Btn b = btnSysControls();
+      b.label = Store::gestures() ? "CONTROLS: GESTURES" : "CONTROLS: BUTTONS";
+      tile(b, !Store::gestures());          // gestures are the default here
+      break;
+    }
     case SysBand: {
       const int band = bandMode();
       Btn bt = btnSysBand();
@@ -4474,7 +4683,7 @@ void drawSysTile(int which) {
       Btn tr = btnSysTrail();
       std::string trl = std::string("TRAIL: ") + (traceOn() ? "ON" : "OFF");
       tr.label = trl.c_str();
-      tile(tr, traceOn());                 // OFF is the default, so it reads plain
+      tile(tr, traceOn());        // OFF is the default, so it reads plain
       break;
     }
     case SysStart: {
@@ -4568,10 +4777,10 @@ bool pickerCell(int i, const PickerGeom& g, int& r, int& c) {
 
 // The first button is labelled for what it will do: CLEAR while the field
 // still holds the original, REVERT once it has been changed.
-Btn btnPickClear()  { return { modalBtnX(0), kModalBtnY, kModalBtnW, 26, "CLEAR", theme::warn }; }
-Btn btnPickBack()   { return { modalBtnX(1), kModalBtnY, kModalBtnW, 26, "DEL", theme::warn }; }
-Btn btnPickCancel() { return { modalBtnX(2), kModalBtnY, kModalBtnW, 26, "CANCEL", theme::bad }; }
-Btn btnPickOk()     { return { modalBtnX(3), kModalBtnY, kModalBtnW, 26, "OK", theme::bg, theme::good }; }
+Btn btnPickClear()  { return { modalBtnX(0), kModalBtnY, kModalBtnW, kUi(26), "CLEAR", theme::warn }; }
+Btn btnPickBack()   { return { modalBtnX(1), kModalBtnY, kModalBtnW, kUi(26), "DEL", theme::warn }; }
+Btn btnPickCancel() { return { modalBtnX(2), kModalBtnY, kModalBtnW, kUi(26), "CANCEL", theme::bad }; }
+Btn btnPickOk()     { return { modalBtnX(3), kModalBtnY, kModalBtnW, kUi(26), "OK", theme::bg, theme::good }; }
 
 // The title, the value being built and the hint or "was" line under it: the
 // part of the picker a keystroke changes. The keys underneath do not.
@@ -4668,9 +4877,9 @@ void openPicker(const std::string& title, const std::string& hint,
 
 constexpr int kInsCellW = 40;
 constexpr int kInsCellH = 32;
-constexpr int kInsCols  = kScreenW / kInsCellW;
+#define kInsCols (kScreenW / kInsCellW)
 constexpr int kInsRows  = 6;
-constexpr int kInsX     = (kScreenW - kInsCols * kInsCellW) / 2;
+#define kInsX ((kScreenW - kInsCols * kInsCellW) / 2)
 // The focus is deliberately left of centre and high in the window: what you
 // want to see is where the runner is GOING, which is mostly to the right and
 // below, so the space is better spent there than behind it.
@@ -4682,8 +4891,14 @@ constexpr int kInsMidR  = 1;
 // drew two rows at the top and left four rows of nothing under them. Centre
 // what there is. The hit test measures from here too, so the two agree.
 int insTop() {
-  const int base = 3 * kContentH + 8;
+  int base = 3 * kContentH + 8;
   const int rows = g_edit.rows() < kInsRows ? g_edit.rows() : kInsRows;
+  // On a screen taller than the board's the block is centred between the
+  // title band and the buttons rather than left at the top.
+  if (kScreenH > 320) {
+    const int room = kModalBtnY - 8 - 28;
+    if (room > kInsRows * kInsCellH) base = 28 + (room - kInsRows * kInsCellH) / 2;
+  }
   return base + (kInsRows - rows) * kInsCellH / 2;
 }
 int insCellX(int c) { return kInsX + c * kInsCellW; }
@@ -4704,10 +4919,10 @@ int insOrigin(int cursor, int extent, int window, int mid) {
 int insOriginRow() { return insOrigin(g_cellRow, g_edit.rows(), kInsRows, kInsMidR); }
 int insOriginCol() { return insOrigin(g_cellCol, g_edit.cols(), kInsCols, kInsMidC); }
 
-Btn btnCellSet()   { return { modalBtnX(0), kModalBtnY, kModalBtnW, 26, "EDIT CHAR", theme::bg, theme::good }; }
-Btn btnCellRevert(){ return { modalBtnX(1), kModalBtnY, kModalBtnW, 26, "REVERT", theme::warn }; }
-Btn btnCellStart() { return { modalBtnX(2), kModalBtnY, kModalBtnW, 26, "START", theme::edited }; }
-Btn btnCellClose() { return { modalBtnX(3), kModalBtnY, kModalBtnW, 26, "CLOSE", theme::bad }; }
+Btn btnCellSet()   { return { modalBtnX(0), kModalBtnY, kModalBtnW, kUi(26), "EDIT CHAR", theme::bg, theme::good }; }
+Btn btnCellRevert(){ return { modalBtnX(1), kModalBtnY, kModalBtnW, kUi(26), "REVERT", theme::warn }; }
+Btn btnCellStart() { return { modalBtnX(2), kModalBtnY, kModalBtnW, kUi(26), "START", theme::edited }; }
+Btn btnCellClose() { return { modalBtnX(3), kModalBtnY, kModalBtnW, kUi(26), "CLOSE", theme::bad }; }
 
 // Small chevrons pushed to the outer edge of their cell, so the character in
 // the middle stays readable behind them.
@@ -4820,14 +5035,42 @@ void drawCellModal(bool full = true) {
 
 constexpr int kDlgY = 26;
 int dlgH() { return kTabY - kDlgY - 8; }
-Btn btnDlgPrev()  { return { 20, kDlgY + dlgH() - 32, 70, 26, "<" }; }
-Btn btnDlgNext()  { return { 94, kDlgY + dlgH() - 32, 70, 26, ">" }; }
-Btn btnDlgClose() { return { kScreenW - 92, kDlgY + dlgH() - 32, 72, 26,
+// The dialog's box. On the board it is nearly the whole panel, which is
+// what a panel that size wants. Elsewhere it is a box sized to what it
+// holds, no wider than the board's forty characters, centred on the
+// screen, with its buttons directly under its text -- a phone held upright
+// has room to spare and a dialog should not stretch to fill it.
+struct DlgRect { int x, y, w, h; };
+int g_dlgContentH = 0;          // what the next frame holds, in pixels; 0 for as tall as it can be
+DlgRect g_dlg = { 12, 26, 456, 0 };
+// Off the board every box is the same width -- forty characters of content,
+// or the screen less a margin when that is narrower -- so the boxes read as
+// one family whatever each one holds.
+inline int dlgStdW() { return std::min(kScreenW - 24, 40 * kContentW + 16); }
+extern bool g_dlgMoved;
+inline int dlgBtnH() { return kUi(26); }
+DlgRect dlgBox() {
+  if (kScreenW == 480) return { 12, kDlgY, kScreenW - 24, dlgH() };
+  const int w = dlgStdW();
+  const int full = dlgH();
+  int h = g_dlgContentH > 0 ? 26 + g_dlgContentH + 8 + dlgBtnH() + 6 : full;
+  if (h > full) h = full;
+  int y = (kTabY + kHeaderH - h) / 2;
+  if (y < kDlgY) y = kDlgY;
+  return { (kScreenW - w) / 2, y, w, h };
+}
+inline int dlgTextX() { return g_dlg.x + 8; }
+inline int dlgTextW() { return g_dlg.w - 16; }
+inline int dlgBtnY()  { return g_dlg.y + g_dlg.h - 6 - dlgBtnH(); }
+bool inDlg(int x, int y) { return x >= g_dlg.x && x < g_dlg.x + g_dlg.w && y >= g_dlg.y && y < g_dlg.y + g_dlg.h; }
+Btn btnDlgPrev()  { return { g_dlg.x + 8,  dlgBtnY(), 70, dlgBtnH(), "<" }; }
+Btn btnDlgNext()  { return { g_dlg.x + 82, dlgBtnY(), 70, dlgBtnH(), ">" }; }
+Btn btnDlgClose() { return { g_dlg.x + g_dlg.w - 80, dlgBtnY(), 72, dlgBtnH(),
                              keyHints() ? "(C)LOSE" : "CLOSE", theme::bad }; }
 // DIAGNOSTICS only. Writing the grid and its edits to the console is a thing
 // you do while looking at the console, which is what this dialog is for; as a
 // SYS tile it sat among settings and did nothing visible on the device.
-Btn btnDlgDump()  { return { 172, kDlgY + dlgH() - 32, 110, 26,
+Btn btnDlgDump()  { return { g_dlg.x + 160, dlgBtnY(), 110, dlgBtnH(),
                              keyHints() ? "(D)UMP GRID" : "DUMP GRID" }; }
 
 void dumpGrid() {
@@ -4849,20 +5092,25 @@ void dumpGrid() {
 // inside it and the counter, and the buttons paint their own faces.
 bool g_dlgPageOnly = false;
 
+bool g_dlgMoved = true;         // the box is not where the last one was drawn
 int dlgFrame(const char* title, const char* page, int pages) {
-  int w = kScreenW - 24, h = dlgH();
+  const DlgRect was = g_dlg;
+  g_dlg = dlgBox();
+  g_dlgContentH = 0;
+  if (was.x != g_dlg.x || was.y != g_dlg.y || was.w != g_dlg.w || was.h != g_dlg.h) g_dlgMoved = true;
+  const DlgRect r = g_dlg;
   if (!g_dlgPageOnly) {
-    gfx.fillRect(12, kDlgY, w, h, theme::panel);
-    gfx.drawRect(12, kDlgY, w, h, theme::accent);
+    gfx.fillRect(r.x, r.y, r.w, r.h, theme::panel);
+    gfx.drawRect(r.x, r.y, r.w, r.h, theme::accent);
     gfx.setFont(&fonts::Font2);
     gfx.setTextDatum(textdatum_t::top_left);
     gfx.setTextColor(theme::accent, theme::panel);
-    gfx.drawString(title, 20, kDlgY + 5);
+    gfx.drawString(title, r.x + 8, r.y + 5);
   }
   else {
-    const int top = kDlgY + 26, bottom = btnDlgPrev().y - 4;
-    gfx.fillRect(13, top, w - 2, bottom - top, theme::panel);
-    gfx.fillRect(kScreenW - 200, kDlgY + 8, 180, 12, theme::panel);   // the counter
+    const int top = r.y + 26, bottom = btnDlgPrev().y - 4;
+    gfx.fillRect(r.x + 1, top, r.w - 2, bottom - top, theme::panel);
+    gfx.fillRect(r.x + r.w - 188, r.y + 8, 180, 12, theme::panel);   // the counter
   }
   // A one-page dialog has nothing to page through, so it gets neither a
   // counter nor a pair of dead arrows.
@@ -4872,7 +5120,7 @@ int dlgFrame(const char* title, const char* page, int pages) {
   gfx.setFont(&fonts::Font0);
   gfx.setTextDatum(textdatum_t::top_right);
   gfx.setTextColor(theme::dim, theme::panel);
-  gfx.drawString(tag, kScreenW - 20, kDlgY + 9);
+  gfx.drawString(tag, r.x + r.w - 8, r.y + 9);
   gfx.setTextDatum(textdatum_t::top_left);
   if (pages > 1) {
     drawBtn(btnDlgPrev(), false, g_dialogPage > 0);
@@ -4880,7 +5128,7 @@ int dlgFrame(const char* title, const char* page, int pages) {
   }
   if (g_modal == Modal::Debug) drawBtn(btnDlgDump());
   drawBtn(btnDlgClose());
-  return kDlgY + 26;
+  return r.y + 26;
 }
 
 void drawDebugKeys(int y) {
@@ -4889,7 +5137,7 @@ void drawDebugKeys(int y) {
     for (const auto& v : vars) if (!strcmp(v.name, n)) return &v;
     return nullptr;
   };
-  if (vars.empty()) { clabel(20, y, pack::str(pack::kStrDebugEmpty), theme::dim, theme::panel); return; }
+  if (vars.empty()) { clabel(dlgTextX(), y, pack::str(pack::kStrDebugEmpty), theme::dim, theme::panel); return; }
   const char* names[7] = { "K", "L", "M", "N", "R", "P", "Q" };
   const char* role[7];
   for (int i = 0; i < 7; ++i) role[i] = pack::str(pack::kStrGvRole0 + i);
@@ -4900,7 +5148,7 @@ void drawDebugKeys(int y) {
     char buf[64];
     snprintf(buf, sizeof(buf), "&%s %11d %-8s %s", names[i], v->value,
              v->isInt ? ircis::base64_encode_int(v->value).c_str() : "(char)", role[i]);
-    clabel(20, y, buf, i < 4 ? theme::accent : theme::text, theme::panel);
+    clabel(dlgTextX(), y, buf, i < 4 ? theme::accent : theme::text, theme::panel);
     y += kContentH;
   }
 }
@@ -4913,22 +5161,22 @@ void drawDebugSystem(int y) {
   unsigned biggest = (unsigned)plat::maxAllocHeap();
   bool frag = (freeNow > 8192 && biggest < freeNow / 2);
   snprintf(buf, sizeof(buf), "free heap      %u", freeNow);
-  clabel(20, y, buf, theme::dim, theme::panel); y += kContentH;
+  clabel(dlgTextX(), y, buf, theme::dim, theme::panel); y += kContentH;
   snprintf(buf, sizeof(buf), "largest block  %u%s", biggest, frag ? "  FRAGMENTED" : "");
-  clabel(20, y, buf, frag ? theme::warn : theme::dim, theme::panel); y += kContentH;
+  clabel(dlgTextX(), y, buf, frag ? theme::warn : theme::dim, theme::panel); y += kContentH;
   snprintf(buf, sizeof(buf), "run time       %u ms", (unsigned)snap.elapsedMs);
-  clabel(20, y, buf, theme::dim, theme::panel); y += kContentH;
+  clabel(dlgTextX(), y, buf, theme::dim, theme::panel); y += kContentH;
   snprintf(buf, sizeof(buf), "steps          %u", (unsigned)snap.step);
-  clabel(20, y, buf, theme::dim, theme::panel); y += kContentH;
+  clabel(dlgTextX(), y, buf, theme::dim, theme::panel); y += kContentH;
   if (snap.elapsedMs > 0) {
     snprintf(buf, sizeof(buf), "rate           %u steps/sec",
              (unsigned)((uint64_t)snap.step * 1000u / snap.elapsedMs));
-    clabel(20, y, buf, theme::good, theme::panel); y += kContentH;
+    clabel(dlgTextX(), y, buf, theme::good, theme::panel); y += kContentH;
   }
   snprintf(buf, sizeof(buf), "runners made   %u", (unsigned)snap.runnersCreated);
-  clabel(20, y, buf, theme::dim, theme::panel); y += kContentH;
+  clabel(dlgTextX(), y, buf, theme::dim, theme::panel); y += kContentH;
   snprintf(buf, sizeof(buf), "out-of-bounds %lu   stack UB %lu", snap.oobReads, snap.ubReads);
-  clabel(20, y, buf, (snap.oobReads || snap.ubReads) ? theme::bad : theme::good, theme::panel);
+  clabel(dlgTextX(), y, buf, (snap.oobReads || snap.ubReads) ? theme::bad : theme::good, theme::panel);
   y += kContentH;
 
   // The interpreter records why every runner died and, until now, nothing but
@@ -5161,6 +5409,16 @@ const char* const kShortcuts5[] = {
   "  the digits stay ordinary",
   "  characters in a program.",
 };
+// On a screen of its own the window is the screen: the keys pick how big
+// the picture is drawn on it, and one leaves.
+const char* const kShortcuts5Screen[] = {
+  "  Alt-1 to Alt-4  picture size",
+  "  Alt-Q           quit",
+  "",
+  "  These need Alt so that q and the",
+  "  digits stay ordinary characters",
+  "  in a program.",
+};
 
 const char* const kDevice1Locked[] = {
   "pIRCIS - the p is for pocket - runs",
@@ -5252,6 +5510,31 @@ const TextPage kShortcutPages[] = {
   SK_PAGE(kShortcuts3, "the editor", -1), SK_PAGE(kShortcuts4, "dialogs",   -1),
   SK_PAGE(kShortcuts5, "the window", -1),
 };
+const TextPage kShortcutPagesScreen[] = {
+  SK_PAGE(kShortcuts1, "everywhere", -1), SK_PAGE(kShortcuts2, "a program", -1),
+  SK_PAGE(kShortcuts3, "the editor", -1), SK_PAGE(kShortcuts4, "dialogs",   -1),
+  SK_PAGE(kShortcuts5Screen, "the screen", -1),
+};
+// The first page of ABOUT pIRCIS on a phone, where the device is an app.
+const char* const kApp1[] = {
+  "pIRCIS - the p is for pocket - runs",
+  "IRCIS programs: choose one, edit it,",
+  "and watch the runners move through",
+  "it.",
+  "",
+  "It is the same program that runs on",
+  "the pIRCIS board, a small touch",
+  "display you can build yourself: the",
+  "firmware, the parts and the steps",
+  "are all on GitHub.",
+  "",
+  "The interpreter is a port of IRCIS",
+  "itself, checked against the original",
+  "build step for step.",
+  "",
+  "  github.com/jamesleaver/pIRCIS",
+};
+const TextPage kAppPages[] = { SK_PAGE(kApp1, "what it is", 15) };
 const TextPage kDeviceLockedPages[] = {
   SK_PAGE(kDevice1Locked, "what it is",  9), SK_PAGE(kDevice2Locked, "the tabs",   -1),
   SK_PAGE(kDevice3Locked, "the tabs",   -1), SK_PAGE(kDevice4Locked, "editing",    -1),
@@ -5292,21 +5575,221 @@ bool looksLikeLink(const char* s) {
       || std::strstr(s, "x.com/") != nullptr;
 }
 
-void drawOnePage(const char* title, const TextPage& pg, int count) {
-  int y = dlgFrame(title, pg.tag, count);
-  for (int i = 0; i < pg.n; ++i) {
-    // A line starting with a digit is a heading -- an id, a date -- and sits
-    // above its indented text in the dim colour.
-    bool head = (pg.lines[i][0] >= '0' && pg.lines[i][0] <= '9');
-    uint16_t col = (looksLikeLink(pg.lines[i]) || i == pg.highlight) ? theme::accent
-                 : (head ? theme::dim : theme::text);
-    clabel(20, y, pg.lines[i], col, theme::panel);
+// The lines of a page, as written when they fit the width, and re-flowed
+// when they do not: a page's text was wrapped by hand for the board's forty
+// columns, and another screen has another number. Runs of ordinary lines
+// are one paragraph each and are wrapped again; a blank, a heading, an
+// indented line or a link stands on its own.
+struct FlowLine { std::string text; uint16_t colour; std::string whole; };   // whole: the line this is a part of, when broken
+namespace {
+  int indentOf(const std::string& s) { std::size_t i = 0; while (i < s.size() && s[i] == ' ') ++i; return (int)i; }
+  // "  >   walk east": a short token, two or more spaces, then its meaning.
+  // Returns the token's length, or 0.
+  int itemToken(const std::string& s, int indent) {
+    std::size_t i = (std::size_t)indent, j = i;
+    while (j < s.size() && s[j] != ' ') ++j;
+    if (j == i || j - i > 8 || j + 2 > s.size() || s[j] != ' ' || s[j + 1] != ' ') return 0;
+    return (int)(j - i);
+  }
+  // Wrap `text` to `width` characters; the first line is prefixed by
+  // `first` and the rest by `rest`.
+  void wrapInto(const std::string& text, int width, const std::string& first, const std::string& rest,
+                uint16_t colour, std::vector<FlowLine>& out) {
+    std::size_t at = 0; bool firstLine = true;
+    if (text.empty()) { out.push_back({ first, colour }); return; }
+    while (at < text.size()) {
+      const std::string& pre = firstLine ? first : rest;
+      int room = width - (int)pre.size(); if (room < 8) room = 8;
+      std::size_t end = at + (std::size_t)room;
+      if (end >= text.size()) end = text.size();
+      else { std::size_t sp = text.rfind(' ', end); if (sp != std::string::npos && sp > at) end = sp; }
+      out.push_back({ pre + text.substr(at, end - at), colour });
+      at = end; while (at < text.size() && text[at] == ' ') ++at;
+      firstLine = false;
+    }
+  }
+  std::string squeeze(const std::string& s) {   // runs of spaces to one, ends trimmed
+    std::string o; bool sp = true;
+    for (char c : s) { if (c == ' ') { if (!sp) o += ' '; sp = true; } else { o += c; sp = false; } }
+    while (!o.empty() && o.back() == ' ') o.pop_back();
+    return o;
+  }
+}
+void flowPage(const char* const* lines, int n, int highlight, std::vector<FlowLine>& out) {
+  out.clear();
+  const int maxChars = (dlgBox().w - 16) / kContentW;
+  auto linkish = [](const char* s) {   // an address, or the rest of one broken over two lines
+    if (looksLikeLink(s)) return true;
+    return std::strchr(s, '/') != nullptr && std::strchr(s, ' ') == nullptr && *s != '\0';
+  };
+  auto colourOf = [&](const char* s, bool hl) {
+    const bool head = (*s >= '0' && *s <= '9');
+    return (linkish(s) || hl) ? theme::accent : (head ? theme::dim : theme::text);
+  };
+  // On the board, as written whenever it fits: the pages were wrapped by
+  // hand for its forty columns, and it shows them as they were meant. Any
+  // other screen lays the page out again for its own box, so a paragraph
+  // written short fills the width rather than leaving a margin.
+  bool fits = kScreenW == 480;
+  for (int i = 0; i < n && fits; ++i) if ((int)std::strlen(lines[i]) > maxChars) fits = false;
+  if (fits) {
+    for (int i = 0; i < n; ++i) out.push_back({ lines[i], colourOf(lines[i], i == highlight) });
+    return;
+  }
+  // Narrower than that, the page is read for what it is and laid out again:
+  // a table row is an item -- a token, then its meaning -- which keeps its
+  // indented continuation lines and wraps under its meaning; two items on
+  // one row become two; any other run of lines at one indent is a
+  // paragraph; a blank, a heading or a link stands alone.
+  int i = 0;
+  while (i < n) {
+    const std::string line = lines[i];
+    const bool hl = (i == highlight);
+    if (line.empty() || (line[0] >= '0' && line[0] <= '9') || linkish(lines[i])) {
+      std::string l = line;
+      if ((int)l.size() > maxChars) {
+        // A line that stands alone but does not fit: its indent goes
+        // first, and then it is broken after a slash, so an address
+        // reads as one across two lines. Each part remembers the whole,
+        // so a tap on either opens the same place.
+        const std::size_t a = l.find_first_not_of(' ');
+        if (a != std::string::npos && a > 0) l = l.substr(a);
+        while ((int)l.size() > maxChars) {
+          std::size_t cut = l.rfind('/', (std::size_t)maxChars - 1);
+          if (cut == std::string::npos || cut == 0) cut = (std::size_t)maxChars - 1;
+          out.push_back({ l.substr(0, cut + 1), colourOf(lines[i], hl), line });
+          l = l.substr(cut + 1);
+        }
+        out.push_back({ l, colourOf(lines[i], hl), line }); ++i; continue;
+      }
+      out.push_back({ line, colourOf(lines[i], hl) }); ++i; continue;
+    }
+    const int ind = indentOf(line);
+    // A row of entries set apart by three or more spaces -- "'+ add     '-
+    // subtract", "> walk east   < walk west" -- is a table row: each entry's
+    // first word is its token and the rest its meaning, and a lone word
+    // pairs with the entry after it.
+    if (line.find("   ", (std::size_t)ind) != std::string::npos && !itemToken(line, ind)) {
+      std::vector<std::string> pieces;
+      std::size_t at = (std::size_t)ind;
+      while (at < line.size()) {
+        std::size_t gap = line.find("   ", at);
+        if (gap == std::string::npos) gap = line.size();
+        std::string piece = squeeze(line.substr(at, gap - at));
+        if (!piece.empty()) pieces.push_back(piece);
+        at = gap; while (at < line.size() && line[at] == ' ') ++at;
+      }
+      std::vector<std::pair<std::string, std::string>> items;
+      for (std::size_t p = 0; p < pieces.size(); ++p) {
+        const std::size_t sp = pieces[p].find(' ');
+        if (sp == std::string::npos) {
+          if (p + 1 < pieces.size()) { items.push_back({ pieces[p], pieces[p + 1] }); ++p; }
+          else items.push_back({ pieces[p], "" });
+        }
+        else items.push_back({ pieces[p].substr(0, sp), pieces[p].substr(sp + 1) });
+      }
+      ++i;
+      for (const auto& it : items) {
+        const std::string first = std::string(2, ' ') + it.first + "  ";
+        const std::string rest2 = std::string(2 + it.first.size() + 2, ' ');
+        wrapInto(it.second, maxChars, first, rest2, hl ? theme::accent : theme::text, out);
+      }
+      continue;
+    }
+    const int tok = itemToken(line, ind);
+    if (tok) {
+      // The row may hold two items, "tok  meaning     tok  meaning".
+      std::string rest = line.substr(ind + tok);
+      std::vector<std::pair<std::string, std::string>> items;
+      std::string token = line.substr(ind, tok);
+      std::size_t split = rest.find("    ");
+      while (split != std::string::npos) {
+        std::string tail = rest.substr(split);
+        const int ind2 = indentOf(tail);
+        const int tok2 = itemToken(tail, ind2);
+        if (!tok2) break;
+        items.push_back({ token, squeeze(rest.substr(0, split)) });
+        token = tail.substr(ind2, tok2); rest = tail.substr(ind2 + tok2);
+        split = rest.find("    ");
+      }
+      std::string meaning = squeeze(rest);
+      ++i;
+      // Continuation lines: indented past the token, not items themselves.
+      while (i < n) {
+        const std::string c = lines[i];
+        if (c.empty() || indentOf(c) <= ind || itemToken(c, indentOf(c))) break;
+        meaning += (meaning.empty() ? "" : " ") + squeeze(c); ++i;
+      }
+      items.push_back({ token, meaning });
+      for (const auto& it : items) {
+        const std::string first = std::string(2, ' ') + it.first + "  ";
+        const std::string rest2 = std::string(2 + it.first.size() + 2, ' ');
+        wrapInto(it.second, maxChars, first, rest2, hl ? theme::accent : theme::text, out);
+      }
+      continue;
+    }
+    // A paragraph: lines at this indent until something else.
+    std::string para = squeeze(line); ++i;
+    while (i < n) {
+      const std::string c = lines[i];
+      if (c.empty() || indentOf(c) != ind || itemToken(c, indentOf(c)) || looksLikeLink(lines[i]) ||
+          (c[0] >= '0' && c[0] <= '9')) break;
+      para += " " + squeeze(c); ++i;
+    }
+    const std::string pre(ind > 2 ? 2 : ind, ' ');
+    wrapInto(para, maxChars, pre, pre, hl ? theme::accent : theme::text, out);
+  }
+}
+// Where the addresses on the page that is showing were drawn, so a tap on
+// one can hand it to the browser where there is one. The whole row is the
+// target: an address is short, and a finger is not precise.
+struct PageLink { int x, y, w, h; std::string url; };
+std::vector<PageLink> g_pageLinks;
+std::string linkUrl(const std::string& text) {
+  std::size_t a = text.find_first_not_of(' '), b = text.find_last_not_of(' ');
+  std::string u = a == std::string::npos ? std::string() : text.substr(a, b - a + 1);
+  return u.find("://") == std::string::npos ? "https://" + u : u;
+}
+void drawFlowed(int y, const std::vector<FlowLine>& flowed) {
+  g_pageLinks.clear();
+  for (const FlowLine& l : flowed) {
+    clabel(dlgTextX(), y, l.text.c_str(), l.colour, theme::panel);
+    const std::string& whole = l.whole.empty() ? l.text : l.whole;
+    if (plat::canOpenUrl() && looksLikeLink(whole.c_str()))
+      g_pageLinks.push_back({ g_dlg.x, y - 2, g_dlg.w, kContentH, linkUrl(whole) });
     y += kContentH;
   }
+}
+// The address under a tap on the page that is showing, if any.
+const PageLink* pageLinkAt(int x, int y) {
+  for (const PageLink& l : g_pageLinks)
+    if (x >= l.x && x < l.x + l.w && y >= l.y && y < l.y + l.h) return &l;
+  return nullptr;
+}
+
+// The tallest a set of pages gets once flowed, so a dialog's box can be
+// one size for all of them: a box that changed with the page meant the
+// page beneath had to be drawn again for every turn.
+int flowedLines(const TextPage* pages, int count) {
+  int most = 0;
+  std::vector<FlowLine> flowed;
+  for (int i = 0; i < count; ++i) {
+    flowPage(pages[i].lines, pages[i].n, pages[i].highlight, flowed);
+    if ((int)flowed.size() > most) most = (int)flowed.size();
+  }
+  return most;
+}
+void drawOnePage(const char* title, const TextPage& pg, int count) {
+  std::vector<FlowLine> flowed;
+  flowPage(pg.lines, pg.n, pg.highlight, flowed);
+  if (!g_dlgContentH) g_dlgContentH = (int)flowed.size() * kContentH;
+  int y = dlgFrame(title, pg.tag, count);
+  drawFlowed(y, flowed);
 }
 
 void drawTextPages(const char* title, const TextPage* pages, int count) {
   if (g_dialogPage >= count) g_dialogPage = count - 1;
+  if (kScreenW != 480 && !g_dlgContentH) g_dlgContentH = flowedLines(pages, count) * kContentH;
   drawOnePage(title, pages[g_dialogPage], count);
 }
 
@@ -5330,7 +5813,9 @@ bool drawPackPages(const char* title, uint8_t group) {
 
 void drawInfo()   { drawPackPages(pack::str(pack::kStrInfoTitle), pack::kGroupInfo); }
 void drawIrcis()  { drawTextPages("IRCIS", kIrcisPages, kIrcisCount); }
-void drawShortcuts() { drawTextPages("KEYBOARD SHORTCUTS", kShortcutPages, kShortcutCount); }
+void drawShortcuts() {
+  drawTextPages("KEYBOARD SHORTCUTS", plat::deviceMode() ? kShortcutPagesScreen : kShortcutPages, kShortcutCount);
+}
 // Shown once at power-on. Credit where it is due: this is a port of somebody
 // else's language, and the first thing the device says should say so.
 const char* const kSplashLocked[] = {
@@ -5353,12 +5838,11 @@ void drawSplash() {
     return;
   }
   const int n = (int)(sizeof(kSplashLocked) / sizeof(char*));
+  std::vector<FlowLine> flowed;
+  flowPage(kSplashLocked, n, -1, flowed);
+  g_dlgContentH = (int)flowed.size() * kContentH;
   int y = dlgFrame("WELCOME TO pIRCIS", "", 1);
-  for (int i = 0; i < n; ++i) {
-    clabel(20, y, kSplashLocked[i], looksLikeLink(kSplashLocked[i]) ? theme::accent : theme::text,
-           theme::panel);
-    y += kContentH;
-  }
+  drawFlowed(y, flowed);
 }
 
 // The last page of ABOUT THIS DEVICE says which build is on the board. The
@@ -5367,7 +5851,8 @@ void drawSplash() {
 // the first eight bytes of the app image hash, which is also what the device
 // watches to notice it has been reflashed.
 void drawFirmwarePage(int count) {
-  int y = dlgFrame("THIS DEVICE", "firmware", count);
+  if (kScreenW != 480 && !g_dlgContentH) g_dlgContentH = 4 + (plat::isApp() ? 2 : 4) * kContentH + 6 + kContentH;
+  int y = dlgFrame(aboutTitle(), plat::isApp() ? "this build" : "firmware", count);
   y += 4;
   struct { const char* k; std::string v; } rows[] = {
     { "version", PIRCIS_VERSION },
@@ -5376,13 +5861,15 @@ void drawFirmwarePage(int count) {
     { "panel",   std::string(SK_PANEL_NAME) },
   };
   char buf[96];
-  for (const auto& r : rows) {
+  const int shown = plat::isApp() ? 2 : 4;     // an app has no board id or panel
+  for (int i = 0; i < shown; ++i) {
+    const auto& r = rows[i];
     snprintf(buf, sizeof(buf), "%-8s %s", r.k, r.v.c_str());
-    clabel(20, y, buf, theme::text, theme::panel);
+    clabel(dlgTextX(), y, buf, theme::text, theme::panel);
     y += kContentH;
   }
   y += 6;
-  clabel(20, y, "github.com/jamesleaver/pIRCIS", theme::accent, theme::panel);
+  clabel(dlgTextX(), y, "github.com/jamesleaver/pIRCIS", theme::accent, theme::panel);
 }
 
 // Where the guide lives, as text and as a code a phone can read.
@@ -5411,28 +5898,59 @@ void drawQr(const char* text, int x, int y, int w) {
     return;
   }
 }
+int g_learnLines = 9;   // the guide's lines as flowed, for the button's place
+Btn btnLearnOpen() {
+  if (kScreenW != 480) return { g_dlg.x + (g_dlg.w - 148) / 2, g_dlg.y + 26 + g_learnLines * kContentH + 8, 148, kUi(36), "OPEN THE GUIDE", theme::accent, theme::panel };
+  return { kScreenW - 12 - 8 - 148, kDlgY + 32 + 56, 148, 36, "OPEN THE GUIDE", theme::accent, theme::panel };
+}
+// The guide, as the page says it. On the board the lines are drawn as
+// written beside the code; elsewhere they flow to the box and the button
+// sits under them.
+const char* const kLearnLines[] = {
+  "A guide to the language,",
+  "from the first runner to",
+  "reading a whole program,",
+  "in twenty short sections.",
+  "Every example in it runs.",
+  "",
+  "Open it, or type:",
+  "github.com/jamesleaver/",
+  "pIRCIS/blob/main/LEARN.md",
+};
+constexpr int kLearnLineCount = (int)(sizeof(kLearnLines) / sizeof(char*));
 void drawLearn() {
+  if (kScreenW != 480) {
+    std::vector<FlowLine> flowed;
+    flowPage(kLearnLines, kLearnLineCount, -1, flowed);
+    g_learnLines = (int)flowed.size();
+    g_dlgContentH = g_learnLines * kContentH + 8 + kUi(36);
+    int y = dlgFrame("LEARN IRCIS", "", 1);
+    drawFlowed(y, flowed);
+    if (plat::canOpenUrl()) drawBtn(btnLearnOpen(), false, true, true);
+    return;
+  }
   int y = dlgFrame("LEARN IRCIS", "", 1);
-  const char* lines[] = {
-    "A guide to the language,",
-    "from the first runner to",
-    "reading a whole program,",
-    "in twenty short sections.",
-    "Every example in it runs.",
-    "",
-    "Scan it, or type:",
-    "github.com/jamesleaver/",
-    "pIRCIS/blob/main/LEARN.md",
-  };
-  for (const char* l : lines) { clabel(20, y, l, theme::text, theme::panel); y += kContentH; }
-  drawQr(kLearnUrl, kScreenW - 12 - 8 - 148, kDlgY + 32, 148);
+  for (int i = 0; i < kLearnLineCount; ++i) {
+    const char* l = (i == 6 && !plat::canOpenUrl()) ? "Scan it, or type:" : kLearnLines[i];
+    clabel(dlgTextX(), y, l, theme::text, theme::panel); y += kContentH;
+  }
+  // Where there is a browser to hand the address to, a button does it; a
+  // board with none shows a code for a phone to scan instead.
+  if (plat::canOpenUrl()) drawBtn(btnLearnOpen(), false, true, true);
+  else drawQr(kLearnUrl, kScreenW - 12 - 8 - 148, kDlgY + 32, 148);
 }
 
 void drawDevice() {
   const int count = devicePageCount();
+  if (kScreenW != 480 && !Store::unlocked()) {
+    int most = flowedLines(kDeviceLockedPages, kDeviceCount);
+    if (plat::isApp()) { const int a = flowedLines(kAppPages, 1); if (a > most) most = a; }
+    g_dlgContentH = most * kContentH;
+  }
   if (g_dialogPage >= count - 1) { drawFirmwarePage(count); return; }
-  if (Store::unlocked() && drawPackPages("THIS DEVICE", pack::kGroupDevice)) return;
-  drawTextPages("THIS DEVICE", kDeviceLockedPages, kDeviceCount);
+  if (Store::unlocked() && drawPackPages(aboutTitle(), pack::kGroupDevice)) return;
+  if (plat::isApp() && g_dialogPage == 0) { drawTextPages(aboutTitle(), kAppPages, 1); return; }
+  drawTextPages(aboutTitle(), kDeviceLockedPages, kDeviceCount);
 }
 
 // These buttons sit INSIDE the dialog panel, so they cannot use modalBtnX():
@@ -5514,9 +6032,14 @@ void drawWifi(bool full = true) {
 // on a screen this size, a warning you have to lean in to read is a warning
 // half-read. The box sizes itself to the wrapped text instead of the text
 // being squeezed into the box.
-constexpr int kMsgWrap = 36;          // characters a line at the content font
+// Characters a line at the content font: the board's thirty-six, or as
+// many as the dialog's width holds elsewhere.
+inline int msgW() { return kScreenW == 480 ? kScreenW - 40 : dlgStdW(); }
+inline int msgX() { return (kScreenW - msgW()) / 2; }
+inline int msgWrap() { return kScreenW == 480 ? 36 : (msgW() - 2 * 12) / kContentW; }
+#define kMsgWrap msgWrap()
 constexpr int kMsgPad  = 12;
-constexpr int kMsgBtnH = 26;
+#define kMsgBtnH kUi(26)
 
 std::vector<std::string> msgLines() {
   std::vector<std::string> out;
@@ -5555,12 +6078,13 @@ Btn btnMsgOk()      { return { kScreenW / 2 - 52,  msgBtnY(), 104, kMsgBtnH, "OK
 void drawMessage() {
   const std::vector<std::string> lines = msgLines();
   const int y0 = msgY(), h = msgH();
-  gfx.fillRect(20, y0, kScreenW - 40, h, theme::panel);
-  gfx.drawRect(20, y0, kScreenW - 40, h, theme::accent);
+  gfx.fillRect(msgX(), y0, msgW(), h, theme::panel);
+  gfx.drawRect(msgX(), y0, msgW(), h, theme::accent);
 
   // The title in the larger content face, so it reads as the title rather
-  // than as a caption above bigger text.
-  useContentFont(true);
+  // than as a caption above bigger text -- unless the box is too narrow
+  // for it, when the ordinary face has to do.
+  useContentFont((int)g_msgTitle.size() * kContentBigW <= msgW() - 2 * kMsgPad);
   gfx.setTextDatum(textdatum_t::top_center);
   gfx.setTextColor(theme::accent, theme::panel);
   gfx.drawString(g_msgTitle.c_str(), kScreenW / 2, y0 + kMsgPad);
@@ -5758,7 +6282,7 @@ void playPause() {
 
 void handleRunTouch(int x, int y) {
   if (y < kHeaderH) {
-    if (!zoomOnly() && hit(btnView(), x, y)) {
+    if (!zoomOnly() && !noZoomBtn() && hit(btnView(), x, y)) {
       toggleView();
       return;
     }
@@ -5774,10 +6298,9 @@ void handleRunTouch(int x, int y) {
       // the list of cells the old runners and their trails were painted over,
       // and restoring exactly those is what makes this cost a handful of
       // cells instead of the whole program.
-      // Only when there is nothing on the grid but the runners. With the
-      // trail turned on the old path is painted into the cells, and restoring
-      // just the cells the runners stood on would leave the rest of it behind.
-      g_resetSameGrid = !traceOn();
+      // The trail comes off the same way: drawRunners restores the cells
+      // whose tint has gone, so the grid is never repainted for a reset.
+      g_resetSameGrid = true;
       // Deliberately NOT g_dirty. The rebuild happens on the run task, so
       // painting now would draw the state we are leaving, and the version
       // watch below would then paint the state we are going to -- the grid
@@ -5786,12 +6309,11 @@ void handleRunTouch(int x, int y) {
     // Stepping back rebuilds the machine and replays to the step before, on
     // the run task; the rebuild watch below paints that once. Asking for a
     // paint here as well drew the old state first: two frames for one tap.
-    // The grid's characters are the same afterwards, so with no trail on
-    // them only the runners, the header and the band need drawing, as for a
-    // reset; a trail has cells past the new step painted in, and those need
-    // the whole grid.
+    // The grid's characters are the same afterwards, so only the runners,
+    // the header and the band need drawing, as for a reset; the cells a
+    // trail had tinted past the new step are put back one by one.
     else if (steps() && hit(btnBack(), x, y) && run::snapshot().step > 0) {
-      flushEdits(true); g_resetSameGrid = !traceOn(); run::cmdStepBack();
+      flushEdits(true); g_resetSameGrid = true; run::cmdStepBack();
     }
     else if (steps() && hit(btnFwd(), x, y))  { flushEdits(true); run::cmdStep(1); }
     else if (hit(btnEnd(), x, y))   { flushEdits(true); run::cmdRunToEnd(); g_dirty = true; }
@@ -5829,7 +6351,7 @@ void handleRunTouch(int x, int y) {
     // program, not just a packed one. A program small enough to be shown
     // large already has nothing to zoom into and is exempt.
     // Not when a tap means edit: the editor shows the cell at whatever size
-    // the grid was, with the cursor on it, so the aim is checked there.
+    // the grid was, so the aim is checked there rather than by zooming.
     if (!zoomOnly() && g_view != View::Zoom && Store::gridTap() != Store::kTapEdit) { zoomToCell(r, c); return; }
 
     runCellAction(r, c);
@@ -5883,7 +6405,6 @@ void runCellAction(int r, int c) {
       wantAll();
       return;
     }
-
     g_cellRow = r; g_cellCol = c;
     g_modal = Modal::Cell;
     g_dirty = true;
@@ -6086,14 +6607,25 @@ void handleSysTouch(int x, int y) {
     g_sysTile = SysSteps; g_paint |= PaintSysTile; g_dirty = true;
   }
   else if (hit(btnSysRead(), x, y))  { g_modal = Modal::Device; g_dialogPage = 0; wantAll(); }
+  else if (sysHas(SysControls) && hit(btnSysControls(), x, y)) {
+    Store::setGestures(!Store::gestures());
+    g_sysTile = SysControls; g_paint |= PaintSysTile; g_dirty = true;
+  }
   else if (hit(btnSysLearn(), x, y)) { g_modal = Modal::Learn;  g_dialogPage = 0; wantAll(); }
   else if (hit(btnSysStart(), x, y)) {
-    const int next = (Store::gridTap() + 1) % 4;   // nothing -> start -> inspector -> edit
+    // nothing -> start -> inspector -> edit; the phone has no inspector.
+    int next = (Store::gridTap() + 1) % 4;
+    if (plat::isApp() && next == Store::kTapInspector) next = Store::kTapEdit;
     Store::setGridTap(next);
     if (next == Store::kTapNothing) {
-      // NOTHING also means the program starts where IRCIS would start it.
-      run::setStart(0, 0, 'E');
-      Store::setStartPoint(0, 0, 'E');
+      // NOTHING also means the program starts where it says it starts: a
+      // start put down by tapping is let go, a start its tag asks for is
+      // kept. It used to go back to the top left either way, which moved
+      // programs that had never been touched.
+      int sc, sr; char sd;
+      programStart(sc, sr, sd);
+      run::setStart(sc, sr, sd);
+      Store::setStartPoint(sc, sr, sd);
       markEdited();
     }
     g_sysTile = SysStart; g_paint |= PaintSysTile; g_dirty = true;
@@ -6391,9 +6923,65 @@ uint32_t g_lastTouchMs = 0;
 // Drag state. Only the ZOOM grid area defers its tap to release; everywhere
 // else still acts on press, so the rest of the UI feels exactly as before.
 bool g_deferTap = false;      // act on release, so a long press can be told apart
+bool g_deferSets = false;     // ...and this deferral is the SETS list's, which has one
 uint32_t g_pressMs = 0;
 int  g_pressX = 0, g_pressY = 0;
 constexpr uint32_t kLongPressMs = 600;
+// A finger on the grid, where it might be about to drag or pinch rather than
+// tap. The tap is decided when it lifts.
+bool g_dragging = false, g_dragMoved = false, g_pinched = false;
+int  g_dragX = 0, g_dragY = 0;
+constexpr int kDragDeadZone = 8;   // pixels of wobble a tap is allowed
+
+// Content follows the finger, a whole cell at a time.
+void dragTo(int x, int y) {
+  int dx = x - g_dragX, dy = y - g_dragY;
+  if (!g_dragMoved && dx * dx + dy * dy < kDragDeadZone * kDragDeadZone) return;
+  const int cw = (g_tab == Tab::Edit) ? edCellW() : cellW();
+  const int ch = (g_tab == Tab::Edit) ? edCellH() : cellH();
+  int dc = 0, dr = 0;
+  while (dx >= cw)  { --dc; dx -= cw; g_dragX += cw; }
+  while (dx <= -cw) { ++dc; dx += cw; g_dragX -= cw; }
+  while (dy >= ch)  { --dr; dy -= ch; g_dragY += ch; }
+  while (dy <= -ch) { ++dr; dy += ch; g_dragY -= ch; }
+  if (dc == 0 && dr == 0) return;
+  g_dragMoved = true;
+  scrollGridBy(dr, dc);
+}
+
+// Fingers apart zooms in on what is between them; together goes back out.
+// A wheel over the grid scrolls it, three rows or columns a notch; a
+// notch up is towards the top.
+void wheel(int dy, int dx, int x, int y) {
+  if (g_modal != Modal::None || (g_tab != Tab::Run && g_tab != Tab::Edit)) return;
+  GridEdges g;
+  if (!gridEdges(g) || x < g.x || x >= g.x + g.w || y < g.y || y >= g.y + g.h) return;
+  scrollGridBy(-dy * 3, dx * 3);
+}
+void pinch(int dir, int x, int y) {
+  if (!gestureMode()) return;
+  if (g_modal != Modal::None || (g_tab != Tab::Run && g_tab != Tab::Edit) || zoomOnly()) return;
+  if (dir > 0 && g_view != View::Zoom) {
+    GridEdges g;
+    if (gridEdges(g) && x >= g.x && x < g.x + g.w && y >= g.y && y < g.y + g.h) {
+      const int cw = (g_tab == Tab::Edit) ? edCellW() : cellW();
+      const int ch = (g_tab == Tab::Edit) ? edCellH() : cellH();
+      const int r = g_gridRow + (y - g.y) / ch, c = g_gridCol + (x - g.x) / cw;
+      if (g_tab == Tab::Run) { zoomToCell(r, c); return; }
+      // The editor: same view, then the window put around that cell.
+      toggleView();
+      g_gridRow = r - edRows() / 2;
+      int mr = g_edit.rows() - edRows(); if (mr < 0) mr = 0;
+      if (g_gridRow > mr) g_gridRow = mr;
+      if (g_gridRow < 0)  g_gridRow = 0;
+      setGridCol(c - visibleCols() / 2);
+      g_edManualScroll = true;
+      return;
+    }
+    toggleView();
+  }
+  else if (dir < 0 && g_view == View::Zoom) toggleView();
+}
 // How far the finger must travel from where it went down before the gesture
 // counts as a drag rather than a tap. Wider than a zoom cell: a press on a
 // resistive panel wanders, and a wander used to pan the grid and swallow the
@@ -6448,6 +7036,7 @@ void onTap(int x, int y) {
     // Any tap anywhere dismisses the welcome. When it is the one shown on
     // unlocking, it carries on into the info pages.
     case Modal::Splash:
+      if (const PageLink* l = pageLinkAt(x, y)) { plat::openUrl(l->url.c_str()); return; }
       if (g_msgThenInfo) { g_msgThenInfo = false; g_modal = Modal::Info; g_dialogPage = 0; }
       else               g_modal = Modal::None;
       g_dirty = true;
@@ -6460,6 +7049,11 @@ void onTap(int x, int y) {
     case Modal::Device: {
       const int pages = dialogPageCount();
       if (hit(btnDlgClose(), x, y)) { g_modal = Modal::None; wantAll(); }
+      else if (kScreenW != 480 && !inDlg(x, y)) { g_modal = Modal::None; g_dialogPage = 0; wantAll(); }
+      else if (g_modal == Modal::Learn && plat::canOpenUrl() && hit(btnLearnOpen(), x, y)) plat::openUrl(kLearnUrl);
+      // The guide's address is broken over two lines: either line is it.
+      else if (g_modal == Modal::Learn && pageLinkAt(x, y)) plat::openUrl(kLearnUrl);
+      else if (const PageLink* l = pageLinkAt(x, y)) plat::openUrl(l->url.c_str());
       else if (g_modal == Modal::Debug && hit(btnDlgDump(), x, y)) dumpGrid();
       else if (hit(btnDlgPrev(), x, y) && g_dialogPage > 0) { --g_dialogPage; wantModal(); }
       else if (hit(btnDlgNext(), x, y) && g_dialogPage + 1 < pages) { ++g_dialogPage; wantModal(); }
@@ -6562,6 +7156,13 @@ void drawAll(const run::Snapshot& snap) {
     return;
   }
   if (g_modal == Modal::Size)   { drawSize();   drawFocusRing(); return; }
+  // Off the board a page dialog is a box sized to its page, so turning a
+  // page can leave it smaller or elsewhere: the page beneath is drawn again
+  // first, and the box on top of it.
+  const bool pageDialog = g_modal == Modal::Ircis || g_modal == Modal::Shortcuts ||
+                          g_modal == Modal::Device || g_modal == Modal::Learn;
+  if (pageDialog && kScreenW != 480 && g_dlgMoved) { drawHeader(snap); drawBody(snap); g_tabsStale = true; drawTabs(); }
+  g_dlgMoved = false;
   if (g_modal == Modal::Ircis)  { drawIrcis();  return; }
   if (g_modal == Modal::Shortcuts) { drawShortcuts(); return; }
   if (g_modal == Modal::Device) { drawDevice(); return; }
@@ -6586,7 +7187,7 @@ int progRowsShown() {
   const int fixed = (int)actions.size();
   const int rest  = (int)files.size() - g_progTop;
   const int n     = fixed + (rest > 0 ? rest : 0);
-  const int cap   = progSlots(fixed);
+  const int cap   = progSlots(fixed, (int)files.size());
   return n < cap ? n : cap;
 }
 
@@ -6760,7 +7361,7 @@ void moveFocus(char k) {
       std::vector<ProgRow> actions, files;
       buildProgActions(actions);
       buildProgRows(files);
-      const int maxTop = (int)files.size() - (progVisible() - (int)actions.size());
+      const int maxTop = (int)files.size() - (progSlots((int)actions.size(), (int)files.size()) - (int)actions.size());
       if (!up && g_progTop < maxTop) ++g_progTop;
       else if (up && g_progTop > 0)  --g_progTop;
     }
@@ -6878,8 +7479,8 @@ void pollTypedKeys() {
     if (g_modal != Modal::None) {
       if (k == 'd' && g_modal == Modal::Debug) { dumpGrid(); continue; }
       const int pages = dialogPageCount();
-      if      (k == plat::kKeyLeft  && g_dialogPage > 0)         { --g_dialogPage; g_dirty = true; }
-      else if (k == plat::kKeyRight && g_dialogPage + 1 < pages) { ++g_dialogPage; g_dirty = true; }
+      if      (k == plat::kKeyLeft  && g_dialogPage > 0)         { --g_dialogPage; wantModal(); }
+      else if (k == plat::kKeyRight && g_dialogPage + 1 < pages) { ++g_dialogPage; wantModal(); }
       continue;
     }
 
@@ -6942,7 +7543,7 @@ void pollTypedKeys() {
       case 'p': playPause(); continue;
       case 'f': flushEdits(true); run::cmdStep(1); continue;
       case 'b':
-        if (run::snapshot().step > 0) { flushEdits(true); g_resetSameGrid = !traceOn(); run::cmdStepBack(); }
+        if (run::snapshot().step > 0) { flushEdits(true); g_resetSameGrid = true; run::cmdStepBack(); }
         continue;
       case 'r':
         // What the |< button does: back to the top, output cleared. Not a
@@ -6951,7 +7552,7 @@ void pollTypedKeys() {
         flushEdits(true);
         run::cmdReset();
         g_follow = true;
-        g_resetSameGrid = !traceOn();   // the trail has to go with it
+        g_resetSameGrid = true;         // the trail comes off cell by cell
         continue;
       case 'e': flushEdits(true); run::cmdRunToEnd(); g_dirty = true; continue;
       case 's': {
@@ -7063,7 +7664,7 @@ void markCellEdited(int row, int col, char ch) {
 void markLoaded() { g_dirty = true; }
 void repaint() { g_dirty = true; }
 void injectTap(int x, int y) { onTap(x, y); }
-void injectWheel(int dy, int dx, int x, int y) { wheelScroll(dy, dx, x, y); }
+void injectWheel(int dy, int dx, int x, int y) { wheel(dy, dx, x, y); }
 // Scratch harness: draw the same row in every candidate font so the choice
 // for the detail pane is made by looking at it.
 void fontSampler() {
@@ -7186,7 +7787,43 @@ void begin() {
   g_dirty = true;
 }
 
+// Tell the platform what its keyboard should show, every tick; it acts only
+// on a change. Shown while the editor is up with its keys on screen and
+// nothing over it.
+void syncNativeKeys() {
+  static bool ever = false;
+  if (!plat::hasNativeKeys()) return;
+  plat::NativeKeys k;
+  k.shown = nativeKeys() && g_tab == Tab::Edit && !Store::unlocked() && onScreenKeys() &&
+            g_modal == Modal::None;
+  if (!k.shown && !ever) return;
+  ever = true;
+  if (k.shown) {
+    k.cols = edKeyCols(); k.rows = edKeyRows(); k.keyW = edKeyW(); k.keyH = edKeyH(); k.gap = edKeyGap();
+    k.x = edKeyX0(); k.y = kEdKeyY;
+    k.keys.assign(k.cols * k.rows, '\0');
+    for (int i = 0; i < k.cols * k.rows; ++i) k.keys[i] = edKeyChar(i);
+    k.commands = "><^v+-*/%V'\"@&#$?!prR|";
+    k.bg = theme::bg; k.panel = theme::panel; k.text = theme::text; k.accent = theme::accent;
+  }
+  plat::nativeKeys(k);
+}
+
+// Everything the pages worked out from the old size is stale: the window on
+// the program goes back to its corner and the lot is drawn again.
+void onResize() {
+  g_gridRow = 0;
+  setGridCol(0);
+  g_edManualScroll = false;
+  g_prevRunners.clear();
+  g_tabsStale = true;               // the tabs remember what they drew; that is gone
+  gfx.fillScreen(theme::bg);        // the new frame buffer holds whatever was in memory
+  wantAll();
+  g_dirty = true;
+}
+
 void tick() {
+  syncNativeKeys();
   int32_t tx, ty;
   bool touched = readTouch(tx, ty);
   uint32_t now = plat::millis();
@@ -7194,6 +7831,52 @@ void tick() {
   // A pause in the typing is what makes the deferred rebuild land.
   flushEdits();
   pollTypedKeys();
+  // A file chosen in the system's picker arrives here. It is loaded the way
+  // a saved program is, but it belongs to no store until it is saved.
+  {
+    std::string name, text;
+    if (plat::takePickedFile(name, text)) {
+      // A program is printable ASCII in lines. Anything else -- a binary,
+      // a document in another encoding -- is refused before it reaches
+      // the grid.
+      bool plain = !text.empty();
+      for (unsigned char ch : text)
+        if (ch != '\n' && ch != '\r' && ch != '\t' && (ch < 0x20 || ch > 0x7e)) { plain = false; break; }
+      // And a rectangle: every line the same length. A ragged file is a
+      // document, not a grid, and padding it out would only hide that.
+      bool rectangular = true;
+      if (plain) {
+        std::size_t width = std::string::npos, at = 0;
+        while (at < text.size()) {
+          std::size_t nl = text.find('\n', at);
+          if (nl == std::string::npos) nl = text.size();
+          std::size_t len = nl - at;
+          if (len && text[at + len - 1] == '\r') --len;
+          const bool last = (nl == text.size()) || (nl + 1 == text.size());
+          if (!(len == 0 && last)) {                 // a final empty line is just the newline
+            if (width == std::string::npos) width = len;
+            else if (len != width) { rectangular = false; break; }
+          }
+          at = nl + 1;
+        }
+      }
+      if (!plain) {
+        message("Not a program", "That file is not plain text. A program is letters, digits and symbols in lines.");
+      }
+      else if (!rectangular) {
+        message("Not a program", "The lines are not all the same length. A program is a rectangle of characters.");
+      }
+      else if (!loadProgramText(text, name.c_str())) {
+        message("Not a program", "That file is empty, or too big for the grid.");
+      } else {
+        g_progFile.clear();
+        g_progWhere = plat::Where::Device;
+        g_modal = Modal::None;
+        g_tab = Tab::Run;
+        wantAll();
+      }
+    }
+  }
 
   if (touched && !g_wasTouched) {
     g_pressX = tx; g_pressY = ty;
@@ -7203,26 +7886,40 @@ void tick() {
     // program is scrolled by its edge bars rather than by dragging.
     bool setsList = (g_modal == Modal::None && g_tab == Tab::Keys &&
                      ty >= kBodyY && ty < kTabY);
-    g_deferTap = setsList;
+    // On glass that can be dragged and pinched, a finger on the program
+    // waits too: only a finger that lifts where it landed was a tap.
+    const bool grid = gestureMode() && g_modal == Modal::None &&
+                      (g_tab == Tab::Run || g_tab == Tab::Edit) && onGrid(tx, ty);
+    g_deferTap  = setsList || grid;
+    g_deferSets = setsList;
+    g_dragging  = grid; g_dragMoved = false; g_pinched = false;
+    g_dragX = tx; g_dragY = ty;
     if (!g_deferTap && now - g_lastTouchMs > 120) {
       g_lastTouchMs = now;
       onTap(tx, ty);
     }
+  }
+  else if (touched && g_wasTouched && g_dragging) {
+    dragTo(tx, ty);
   }
   else if (!touched && g_wasTouched && g_deferTap) {
     if (now - g_lastTouchMs > 120) {
       g_lastTouchMs = now;
       // Press coordinates, not release: resistive touch gets noisy as the
       // pressure drops.
-      if (now - g_pressMs >= kLongPressMs) handleKeysLongPress(g_pressX, g_pressY);
-      else                                 onTap(g_pressX, g_pressY);
+      if (g_dragMoved || g_pinched) { /* the gesture was the whole of it */ }
+      else if (g_deferSets && now - g_pressMs >= kLongPressMs) handleKeysLongPress(g_pressX, g_pressY);
+      else                                                     onTap(g_pressX, g_pressY);
     }
     g_deferTap = false;
+    g_dragging = false;
   }
   g_wasTouched = touched;
   {
-    int wy, wx, px, py;
-    if (plat::takeWheel(wy, wx, px, py)) wheelScroll(wy, wx, px, py);
+    int dir, px, py;
+    if (plat::takePinch(dir, px, py)) { g_pinched = true; pinch(dir, px, py); }
+    int wy, wx;
+    if (plat::takeWheel(wy, wx, px, py)) wheel(wy, wx, px, py);
   }
 
   static uint32_t lastDraw = 0;
@@ -7296,8 +7993,9 @@ void tick() {
       g_resetSameGrid = false;
       WriteBatch batch;
       drawRunners(snap);
+      drawEdgeBars();        // cells put back near an edge paint over them
       drawHeader(snap);      g_headerSig = headerSignature(snap);
-      drawRunnerList(snap);  g_bandSig   = bandSignature(snap);
+      drawRunnerList(snap, true); g_bandSig = bandSignature(snap);
       // Resetting a running program stops it, so the RUN tab has to come off
       // the pause bars. This path repainted the grid and the header and left
       // the tab bar alone, so a reset mid-run left it saying pause for a run
@@ -7491,7 +8189,11 @@ void tick() {
       // where they were and the cells they left are put back, as for any
       // other step, unless TRAIL has painted the path past that point, when
       // the whole grid is the only way to take those cells back.
-      const bool restarted = snap.step < lastStep && (snap.step == 0 || traceOn());
+      // A step that went backwards outside the rebuild watch above: a run
+      // sent back to the top by something other than the buttons. The
+      // trail no longer needs the whole grid for it, since drawRunners
+      // takes the tint off the cells walked past the new step.
+      const bool restarted = snap.step < lastStep && snap.step == 0;
       const bool due = restarted || !snap.running ||
                        (uint32_t)(now - g_lastRunPaintMs) >= kRunPaintMs;
       if (!due) return;                  // let it get on with running

@@ -1,4 +1,4 @@
->'200311296.r'*.'118489298.'+.%!
+>'200311296.r'*.'118489298.'+.%!....
 ...no branch at all: r gives 0 or 1,
 ...which picks between two constants
 ...that % prints as HEADS and TAILS.

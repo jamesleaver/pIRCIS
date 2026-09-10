@@ -235,6 +235,16 @@ cd host && make
 ./sk_emu --visits
 ```
 
+## Run it on a phone
+
+`ios/` builds the same program as an iPhone and iPad app. On a Mac with
+Xcode, `ios/setup.sh` fetches what it needs and generates the project;
+open it, pick a simulator or your phone, and press Run. The app carries no
+WiFi page and no hidden program, shares programs through the phone's own
+sheet, and opens `.txt` files from the Files app. Its privacy policy and
+support page are [ios/PRIVACY.md](ios/PRIVACY.md) and
+[ios/SUPPORT.md](ios/SUPPORT.md).
+
 ## Using it
 
 Five tabs along the bottom: **RUN**, **OUT**, **EDIT**, **PROG**, **SYS**.
@@ -290,7 +300,7 @@ pages moves nothing. Small arrows on the grid's edges page through a program
 larger than the window, and only appear on the sides where there is more to
 see. Opening EDIT pauses a run.
 
-### Under the grid — what each runner is about to do
+### Under the grid — see what each runner is doing
 
 <p align="center">
   <img src="shots/runners.png" alt="the runner readout" width="420">
@@ -300,16 +310,12 @@ see. Opening EDIT pauses a run.
 **OUTPUT** is what the program has printed so far. **RUNNERS** gives every
 runner a line: its row and column and which way it faces, the character it is
 standing on, what that character will do when the runner steps, and the top of
-its stack, newest value last. So `turn south`; `split`; `int mode on`, then
-`int 2` and `int 20` as a number is read and `push 20` on the blank that ends
-it; `pop mode`, `&N`, `save N=20`; `print 3`; `check false`; `pause 5`. It is
-the interpreter's own debug log, one step ahead of it, and the quickest way to
-see what a program you are writing actually does: put a few characters down in
-EDIT, come back to RUN, and step through them with **STEP BUTTONS** on,
-reading the line as you go. While a run is going the runners still alive are
-listed first; a list longer than the strip scrolls with the pair of arrows at
-its left. `d` in a program's tag asks for this readout, `n` for nothing
-underneath, which gives the program the whole screen.
+its stack, newest value last. This is the interpreter's own debug log, and the
+quickest way to see what a program you are writing actually does: put a few
+characters down in **EDIT**, come back to **RUN**, and step through them with
+**STEP BUTTONS** on. A program can ask for a particular strip in its tag: `d`
+for the runner readout, `n` for nothing underneath, which gives the program
+the whole screen (see [Telling a program how to show itself](#telling-a-program-how-to-show-itself)).
 
 ### OUT — read what it printed
 
@@ -337,10 +343,11 @@ appears when there is a card in the slot.
 ### EDIT — change it with your finger
 
 Tap a cell to put the cursor there, then type. `.` is the blank, so it doubles
-as delete. The grid here is the RUN page's grid at the same size and position,
-with the same ZOOM button, so nothing shifts when you switch between them; the
-edge arrows scroll a program larger than the window, and the cursor stays
-where it was.
+as delete.
+
+The main keyboard is the thirty-three characters you actually write IRCIS with.
+Tapping **EDIT** while you are already on it cycles the keyboard to CAPITALS and
+then the lower case. The tab tells you which keyboard you are looking at.
 
 | | |
 |---|---|
@@ -350,24 +357,12 @@ where it was.
 you are writing.
 
 The size button next to the name reshapes the program, and has two pages. The
-first adds or removes rows and columns at a named edge, which is the one that
-matters when a runner starts at 0,0: it says whether a new row lands above the
-program or below it. The second inserts a row or column before a numbered one,
-or deletes that one, for making room in the middle of a program rather than at
-its edges. Those changes happen as you press them rather than on OK, so that
-page has UNDO and DONE instead: UNDO takes them back a step at a time, and
-reads CANCEL until there is something to take back. Delete asks twice as well,
-since it throws cells away.
-
-The main keyboard is the thirty-three characters you actually write IRCIS with.
-Tapping **EDIT** while you are already on it cycles to the capitals and then the
-lower case, laid out QWERTY. The tab tells you which keyboard you are looking
-at.
+first adds or removes rows and columns at the edges. The second inserts a row
+or column, or deletes one, inside the grid rather than at its edges.
 
 - **UNDO / REDO** go back through the last 128 cell edits.
 - The size button asks which **side** to add to or take from: top, bottom, left
-  or right. "Eleven rows" never said whether the new one lands above your
-  program or below it.
+  or right.
 - **PROG** grows a **Discard changes** row whenever there is something to throw
   away.
 
@@ -379,17 +374,15 @@ at.
 
 WiFi, what sits under the grid, what tapping the grid does, SD logging, a
 day/night palette, and restoring the built-ins. **LEARN IRCIS** shows where
-the learning guide is, with a code a phone can scan to open it.
+the learning guide is, with a QR code a phone can scan to open it.
 
 **TRAIL** keeps every cell a runner has crossed tinted, so the whole path
-builds up on screen instead of fading behind it. The same thing `t` in a
-program's tag asks for.
+builds up on screen. The same thing `t` in a program's tag asks for.
 
 **FOLLOW RUNNER** decides whether the view chases the runner through a program
 larger than the window. On for a program too big to see at once; off when you
-have put the view somewhere and want it to stay there. Scrolling by hand holds
-the view still until the next run either way. A program can ask for it off with
-`h` in its tag.
+want the view to stay where you choose. Scrolling by hand holds the view still
+until the next run either way. A program can ask for it off with `h` in its tag.
 
 **CHECK TOUCH** asks you to tap three rings and tells you how far out the worst
 one was, then offers to recalibrate. A key is about 43 px wide, so within six
@@ -506,10 +499,25 @@ Four things are easy to get wrong:
   will take that turn again and loop for ever.
 
 The full command list and the language rules are in
-[Arjun Nair's README](https://github.com/batman-nair/IRCIS), which is where I
-learned all of this.
+[Arjun Nair's README](https://github.com/batman-nair/IRCIS).
 
-## Over serial and over WiFi
+I've written this guide as well: **[Learn IRCIS](LEARN.md)**, which teaches the
+language from scratch and builds up to writing your own programs. Every example
+in it is a real program you can run.
+
+## Over WiFi
+
+`SYS > WIFI` serves the device on your network. Via a browser on a computer
+connected to the same network, you can see the last run, an editable copy
+of the loaded program, both program stores, and the saved outputs. You can
+paste a program in from a browser and it runs on the device.
+
+**There is no password on any of it.** Anyone who can reach the board can read
+what is on the card and write a program onto it. That is fine for something on
+your own desk, but it should be your choice. Turn WiFi off on a network you
+share.
+
+## Over serial
 
 The serial console (115200) drives the same grid as the screen:
 
@@ -523,15 +531,6 @@ report        the whole run, with statistics
 
 `help` lists the rest. Output is mirrored to serial as it appears, so you can
 watch a long run from a laptop.
-
-`SYS > WIFI` serves the device on your network: the last run, an editable copy
-of the loaded program, both program stores, and the saved outputs. You can
-paste a program in from a browser and it runs on the device.
-
-**There is no password on any of it.** Anyone who can reach the board can read
-what is on the card and write a program onto it. That is fine for something on
-your own desk, but it should be your choice. Turn WiFi off on a network you
-share.
 
 ## What's inside
 
@@ -563,12 +562,13 @@ running build.
 There is an IRCIS program on this device that the list does not show.
 
 It is encrypted, and two words open it. Enter them correctly and you get an
-easter egg.
+easter egg. The iOS app leaves it out: the board and the emulator carry it,
+the phone does not.
 
 ## Copyright
 
-The firmware, UI, host tools and tests are **Copyright (c) 2026 James Leaver**,
-released under the [MIT License](LICENSE).
+The firmware, UI, host tools and tests and the learning guide at **[Learn IRCIS](LEARN.md)**
+are **Copyright (c) 2026 James Leaver**, released under the [MIT License](LICENSE).
 
 Two things here are not mine. `lib/ircis/`, the interpreter core, is Arjun
 Nair's ([batman-nair/IRCIS](https://github.com/batman-nair/IRCIS), MIT — see

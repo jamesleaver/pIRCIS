@@ -56,15 +56,27 @@
 #define LED_G      16
 #define LED_B      17
 
-// Screen geometry, landscape.
-static constexpr int kScreenW = 480;
-static constexpr int kScreenH = 320;
+// Screen geometry, landscape. The board's panel is 480 x 320 and that is
+// what everything was drawn for; a platform whose screen is another size
+// says so before the display is started, and the pages lay themselves out
+// to it. The names stay as they were: they read as the constants they used
+// to be, and on the board they still are.
+namespace screen { inline int w = 480; inline int h = 320; inline int ui = 100; }
+#define kScreenW (screen::w)
+#define kScreenH (screen::h)
+// How big the controls are, in hundredths of the board's: a finger on glass
+// gets them a little larger than a stylus on a small panel does. The text
+// in them is a fixed font and stays its size; the room around it grows.
+#define kUi(v) ((v) * screen::ui / 100)
 
-static constexpr int kHeaderH = 22;
-static constexpr int kTabH    = 28;
-static constexpr int kTabY    = kScreenH - kTabH;
-static constexpr int kBodyY   = kHeaderH;
-static constexpr int kBodyH   = kTabY - kHeaderH;
+#define kHeaderH kUi(22)
+#define kTabH    kUi(28)
+// A header button: as tall as leaves the header's margins, centred in it.
+#define kHdrBtnH kUi(18)
+#define kHdrBtnY ((kHeaderH - kHdrBtnH) / 2)
+#define kTabY  (kScreenH - kTabH)
+#define kBodyY kHeaderH
+#define kBodyH (kTabY - kHeaderH)
 
 // Two ways to look at a program too wide to read whole.
 //
@@ -78,10 +90,10 @@ static constexpr int kBodyH   = kTabY - kHeaderH;
 static constexpr int kEdgeBar   = 16;
 static constexpr int kWideCellW = 6;     // built-in font, its natural 1 px gap
 static constexpr int kWideCellH = 15;
-static constexpr int kWideCols  = kScreenW / kWideCellW;                    // 80
+#define kWideCols (kScreenW / kWideCellW)                                     // 80 on the board
 // Level with the editor's grid, so the program does not shift by a pixel when
 // you move between the two pages.
-static constexpr int kWideY     = kHeaderH + 4;
+#define kWideY (kHeaderH + 4)
 
 // ZOOM gives up fitting the width and makes the text big instead: a quarter of
 // the columns at a time, panned by the edge bars or by following a runner. This
@@ -92,4 +104,4 @@ static constexpr int kWideY     = kHeaderH + 4;
 // size when you move between the two pages.
 static constexpr int kZoomCellW = 24;
 static constexpr int kZoomCellH = 26;
-static constexpr int kZoomCols  = kScreenW / kZoomCellW;                   // 34
+#define kZoomCols (kScreenW / kZoomCellW)                                    // 20 on the board

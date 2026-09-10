@@ -35,7 +35,6 @@ device/
 # run from. They are not ours and must never ship.
 debug.log
 output.html
-
-# Dependencies fetched by linux/setup.sh and ios/setup.sh, and the iOS build
+# Dependencies fetched by ios/setup.sh, and the iOS build
 third_party/
 ios/build*/

@@ -126,8 +126,13 @@ int  g_visitCols = 0;
     setEventLocked("ready");   // buildMachine already holds the mutex
   }
 
+  void publishLocked();
   void publish() {
     plat::Guard g(g_mutex);
+    publishLocked();
+  }
+  // The snapshot from the machine, with the mutex already held.
+  void publishLocked() {
     if (!g_machine) return;
     g_snap.step = g_machine->step_number();
     g_snap.running = g_running;
@@ -377,15 +382,24 @@ int  g_visitCols = 0;
             // No local copy: prog::Program is over 3 KB and this task has
             // 12 KB of stack. buildMachine() reads g_loaded and writes it
             // straight back, so passing it directly is both correct and free.
+            // The screen keeps the step it is showing until the step before
+            // it is ready: the rebuild resets the snapshot and bumps the
+            // build version, and the UI, seeing either, would lay out a
+            // program at step nought and then lay it out again a moment
+            // later. Both are put back and only change once, together, when
+            // the replay has caught up.
+            Snapshot keep; uint32_t bv;
+            { plat::Guard g(g_mutex); keep = g_snap; bv = g_buildVersion; }
             g_replaying = true;
             buildMachine(g_loaded);
+            { plat::Guard g(g_mutex); g_snap = keep; g_buildVersion = bv; }
             for (uint32_t i = 0; i < target; ++i) {
               if (!g_machine->update()) break;
               // Replaying 150,000 steps must not starve the watchdog.
               if ((i & 0x3FFF) == 0x3FFF) plat::taskYield(0);
             }
             g_replaying = false;
-            publish();
+            { plat::Guard g(g_mutex); publishLocked(); ++g_buildVersion; }
             setEvent("stepped back");
             break;
           }

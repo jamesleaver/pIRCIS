@@ -8,15 +8,24 @@
 #if defined(SK_HOST)
 
 #include "Platform.h"
-#include "Config.h"
+#include "Display.h"
 
 #include <SDL.h>
+#include <cstdlib>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+#if !defined(TARGET_OS_IPHONE)
+#define TARGET_OS_IPHONE 0
+#endif
 
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <fcntl.h>
 #include <fstream>
+#include <unistd.h>
 #include <iostream>
 #include <random>
 #include <istream>
@@ -32,7 +41,14 @@
 namespace plat {
 namespace {
   const auto g_start = std::chrono::steady_clock::now();
-  const char* kStorePath = "emulator_nvs.txt";
+  // Settings sit beside the programs on the desktop. A phone shows its
+  // Documents folder to the person, so there they go in the app's own
+  // Library, which it does not.
+  std::string storePath() {
+    if (!TARGET_OS_IPHONE) return "emulator_nvs.txt";
+    const char* home = std::getenv("HOME");
+    return std::string(home ? home : "") + "/Library/settings.txt";
+  }
   const char* kSdDir = "sdcard";
 }
 
@@ -74,14 +90,41 @@ namespace {
   std::mutex               g_lineMx;
   std::vector<std::string> g_lines;
 
-  void stdinReader() {
-    std::string s;
-    while (std::getline(std::cin, s)) {
-      while (!s.empty() && (s.back() == '\r' || s.back() == '\n')) s.pop_back();
-      if (s.empty()) continue;
-      std::lock_guard<std::mutex> g(g_lineMx);
-      g_lines.push_back(s);
+  void pushLine(std::string s) {
+    while (!s.empty() && (s.back() == '\r' || s.back() == '\n')) s.pop_back();
+    if (s.empty()) return;
+    std::lock_guard<std::mutex> g(g_lineMx);
+    g_lines.push_back(std::move(s));
+  }
+
+  // The console is the terminal, or a file or named pipe given by
+  // PIRCIS_CONSOLE where there is no terminal to type into, as in the phone
+  // simulator. A pipe ends whenever its writer goes away, so it is opened
+  // again for the next one.
+  void pipeReader(const char* path) {
+    std::string carry;
+    for (;;) {
+      const int fd = ::open(path, O_RDONLY);
+      if (fd < 0) return;
+      char buf[256];
+      for (;;) {
+        const ssize_t n = ::read(fd, buf, sizeof(buf));
+        if (n <= 0) break;
+        carry.append(buf, (std::size_t)n);
+        std::size_t nl;
+        while ((nl = carry.find('\n')) != std::string::npos) {
+          pushLine(carry.substr(0, nl));
+          carry.erase(0, nl + 1);
+        }
+      }
+      ::close(fd);
     }
+  }
+
+  void stdinReader() {
+    if (const char* path = std::getenv("PIRCIS_CONSOLE")) { pipeReader(path); return; }
+    std::string s;
+    while (std::getline(std::cin, s)) pushLine(s);
   }
 }
 
@@ -135,7 +178,7 @@ namespace {
     return v;
   }
   void save() {
-    std::ofstream f(kStorePath, std::ios::trunc);
+    std::ofstream f(storePath(), std::ios::trunc);
     for (const auto& kvp : g_map) f << kvp.first << ' ' << toHex(kvp.second) << '\n';
   }
 }
@@ -143,7 +186,7 @@ namespace {
 void begin() {
   if (g_loaded) return;
   g_loaded = true;
-  std::ifstream f(kStorePath);
+  std::ifstream f(storePath());
   std::string line;
   while (std::getline(f, line)) {
     auto sp = line.find(' ');
@@ -185,7 +228,7 @@ void putBool(const char* key, bool value) { putInt(key, value ? 1 : 0); }
 void clearAll() { g_map.clear(); save(); }
 }
 
-bool sdPresent() { return true; }   // the emulator writes to ./sdcard/
+bool sdPresent() { return !TARGET_OS_IPHONE; }   // the emulator writes to ./sdcard/; a phone has no card
 
 bool writeRunFile(const std::string& text, std::string& pathOut) {
   std::error_code ec;
@@ -206,6 +249,85 @@ bool webBegin(const std::string&, const std::string&, std::string&) { return fal
 void webStop() { }
 void webTick() { }
 bool webAvailable() { return false; }
+
+// The desktop keeps every tile so the whole page can be tried here; a phone
+// has no radio, no card slot and no panel to calibrate, and both have a
+// browser to hand an address to.
+// A screen of its own has no radio this program drives and a touch panel
+// the system calibrates, not us; the card is a directory and stays.
+bool hasWifi()       { return !TARGET_OS_IPHONE && !deviceMode(); }
+bool hasSdSlot()     { return !TARGET_OS_IPHONE; }
+bool hasTouchCheck() { return !TARGET_OS_IPHONE && !deviceMode(); }
+bool canOpenUrl()    { return true; }
+bool openUrl(const char* url) { return SDL_OpenURL(url) == 0; }
+
+// A phone's glass, or a screen this program is the whole of: a mouse is
+// one finger that drags but cannot pinch.
+namespace {
+  bool g_device = false;                 // --kiosk: the program is the screen
+  bool g_touch = false, g_keyboard = true, g_mouse = true;
+  std::atomic<int>  g_scaleAsk{0};
+  std::atomic<bool> g_quitAsk{false};
+}
+void setDeviceMode(bool on, bool touch, bool keyboard, bool mouse) {
+  g_device = on; g_touch = touch; g_keyboard = keyboard; g_mouse = mouse;
+}
+bool deviceMode() { return g_device; }
+int  takeScaleRequest() { return g_scaleAsk.exchange(0); }
+bool quitAsked() { return g_quitAsk.exchange(false); }
+bool hideCursor()  { return g_device && g_touch && !g_mouse; }
+bool hasGestures() { return TARGET_OS_IPHONE || g_device; }
+bool hasPinch()    { return TARGET_OS_IPHONE || g_touch; }
+bool takePinch(int& dir, int& x, int& y) { return gfx.sdl().takePinch(dir, x, y); }
+bool takeWheel(int& dy, int& dx, int& x, int& y) { return gfx.sdl().takeWheel(dy, dx, x, y); }
+// The desktop emulator keeps the board's default, the on-screen keys, so
+// the pages can be tried as the board shows them; a screen with a keyboard
+// plugged in starts with that keyboard.
+bool preferHardwareKeys() { return g_device && g_keyboard; }
+
+// What is plugged in, as Linux lists it: a device whose handlers include
+// kbd and whose event bits are a keyboard's (EV=120013, or the same with a
+// LED bit dropped) is a keyboard; one with a mouse handler is a mouse or a
+// touchpad. Elsewhere both are assumed present.
+void probeInput(bool& keyboard, bool& mouse) {
+  keyboard = true; mouse = true;
+#if defined(__linux__)
+  std::ifstream f("/proc/bus/input/devices");
+  if (!f) return;
+  keyboard = false; mouse = false;
+  std::string line, handlers, ev;
+  auto flush = [&]() {
+    if (handlers.find("kbd") != std::string::npos && (ev == "120013" || ev == "100013" || ev == "120003")) keyboard = true;
+    if (handlers.find("mouse") != std::string::npos) mouse = true;
+    handlers.clear(); ev.clear();
+  };
+  while (std::getline(f, line)) {
+    if (line.empty()) { flush(); continue; }
+    if (line.rfind("H: Handlers=", 0) == 0) handlers = line.substr(12);
+    else if (line.rfind("B: EV=", 0) == 0) ev = line.substr(6);
+  }
+  flush();
+#endif
+}
+
+#if !TARGET_OS_IPHONE
+// A screen that this program is the whole of is an app in the pages'
+// sense too: no board to speak of, and the editor a tap away.
+bool isApp() { return g_device; }
+bool screenArea(ScreenArea&) { return false; }
+bool screenChanged() { return false; }
+bool isActive() { return true; }
+bool hasNativeKeys() { return false; }
+void nativeKeys(const NativeKeys&) {}
+void nativeKeysRelayout() {}
+// The desktop has the file system itself; the phone's sheets are in
+// Platform_ios.mm.
+bool canShareFiles() { return false; }
+bool shareText(const std::string&, const std::string&) { return false; }
+bool canPickFiles() { return false; }
+void pickFile() {}
+bool takePickedFile(std::string&, std::string&) { return false; }
+#endif
 
 
 // --- saved programs --------------------------------------------------------
@@ -330,19 +452,16 @@ namespace {
     if (g_keys.size() < 64) g_keys.push_back(c);
   }
 
-  // The wheel: notches since last asked, and where the pointer was. A wheel
-  // flipped to scroll "naturally" reports the opposite sign, and SDL says
-  // which; either way up means towards the top of the grid.
-  std::atomic<int> g_wheelY{0}, g_wheelX{0}, g_wheelPx{0}, g_wheelPy{0};
-
   int keyWatch(void*, SDL_Event* e) {
-    if (e->type == SDL_MOUSEWHEEL) {
-      const int flip = e->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1;
-      g_wheelY += e->wheel.y * flip; g_wheelX += e->wheel.x * flip;
-      int mx, my; SDL_GetMouseState(&mx, &my);
-      g_wheelPx = mx; g_wheelPy = my;
+    // On a screen of its own, Alt with a digit picks the picture scale and
+    // Alt-Q leaves; the panel's own resize keys are switched off there,
+    // since the window is the screen.
+    if (e->type == SDL_KEYDOWN && g_device && (e->key.keysym.mod & KMOD_ALT)) {
+      const SDL_Keycode k = e->key.keysym.sym;
+      if (k >= SDLK_1 && k <= SDLK_4) { g_scaleAsk = (int)(k - SDLK_1) + 1; return 1; }
+      if (k == SDLK_q) { g_quitAsk = true; return 1; }
     }
-    else if (e->type == SDL_TEXTINPUT) {
+    if (e->type == SDL_TEXTINPUT) {
       for (const char* p = e->text.text; *p; ++p)
         if (*p >= 0x20 && *p < 0x7f) pushKey(*p);
     }
@@ -392,7 +511,14 @@ namespace {
 
 char pollKey() {
   static bool armed = false;
-  if (!armed) { armed = true; SDL_AddEventWatch(keyWatch, nullptr); SDL_StartTextInput(); }
+  if (!armed) {
+    armed = true;
+    SDL_AddEventWatch(keyWatch, nullptr);
+    // Asking SDL for text input is how a desktop gets typed characters. On a
+    // phone the same call raises the system keyboard, from this thread,
+    // which UIKit forbids; the phone types on the drawn keyboard instead.
+    if (!TARGET_OS_IPHONE) SDL_StartTextInput();
+  }
   std::lock_guard<std::mutex> g(g_keyMx);
   if (g_keys.empty()) return 0;
   const char c = g_keys.front();
@@ -411,18 +537,9 @@ std::string clipboard() {
   return s;
 }
 
-bool haveKeyboard() { return true; }
-bool takeWheel(int& dy, int& dx, int& x, int& y) {
-  if (!g_wheelY && !g_wheelX) return false;
-  dy = g_wheelY.exchange(0); dx = g_wheelX.exchange(0);
-  // The pointer comes in window units and the panel fills the window.
-  SDL_Window* w = SDL_GetMouseFocus();
-  int ww = kScreenW, wh = kScreenH;
-  if (w) SDL_GetWindowSize(w, &ww, &wh);
-  x = ww ? g_wheelPx * kScreenW / ww : 0;
-  y = wh ? g_wheelPy * kScreenH / wh : 0;
-  return true;
-}
+// A phone has no keyboard of its own; like the board, it types on the one
+// the program draws.
+bool haveKeyboard() { return !TARGET_OS_IPHONE; }
 
 // No radio on the desktop, so the hooks are stored and never used.
 void webSetHooks(const WebHooks&) {}

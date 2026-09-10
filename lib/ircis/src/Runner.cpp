@@ -541,6 +541,9 @@ namespace ircis {
     // A stack read that would step past the bottom answers 0 in step(); the
     // same here, without touching the counter that says it happened.
     auto at = [this](std::size_t k) { return k < st_.size() ? st_.from_top(k) : Data(); };
+    // A value as the readout shows it: a number, or the character itself --
+    // except a space, which would read as nothing, so it is shown quoted.
+    auto show = [](const Data& d) { return !d.is_integer && d.value == ' ' ? std::string("' '") : d.to_string(); };
 
     // --- a number being read, and the blank that ends it ---
     if (integer_mode_ || c == CH_INT) {
@@ -603,7 +606,7 @@ namespace ircis {
           const auto& map = lower ? var_map_ : *global_var_map_;
           const auto it = map.find(m);
           if (it == map.end()) std::snprintf(out, n, "no %s %s", lower ? "local" : "global", m.c_str());
-          else std::snprintf(out, n, "push %s=%s", m.c_str(), it->second.to_string().c_str());
+          else std::snprintf(out, n, "push %s=%s", m.c_str(), show(it->second).c_str());
           return;
         }
         int num = 0;
@@ -611,18 +614,18 @@ namespace ircis {
           if (!std::isdigit((unsigned char)ch)) { std::snprintf(out, n, "bad push %s", m.c_str()); return; }
           num = num * 10 + (ch - '0');
         }
-        std::snprintf(out, n, "push @%d=%s", num, at((std::size_t)num).to_string().c_str());
+        std::snprintf(out, n, "push @%d=%s", num, show(at((std::size_t)num)).c_str());
         return;
       }
       // STACK_POP
-      if (lower || upper) { std::snprintf(out, n, "save %s=%s", m.c_str(), at(0).to_string().c_str()); return; }
+      if (lower || upper) { std::snprintf(out, n, "save %s=%s", m.c_str(), show(at(0)).c_str()); return; }
       int num = 0;
       for (char ch : m) {
         if (!std::isdigit((unsigned char)ch)) { std::snprintf(out, n, "bad pop %s", m.c_str()); return; }
         num = num * 10 + (ch - '0');
       }
       std::string popped;
-      for (int i = 0; i < num && (std::size_t)i < st_.size(); ++i) popped += " " + st_.from_top((std::size_t)i).to_string();
+      for (int i = 0; i < num && (std::size_t)i < st_.size(); ++i) popped += " " + show(st_.from_top((std::size_t)i));
       std::snprintf(out, n, "pop%s", popped.empty() ? " nothing" : popped.c_str());
       return;
     }
@@ -641,23 +644,23 @@ namespace ircis {
       case CH_CHECK: std::snprintf(out, n, at(0).value ? "check true" : "check false"); return;
       case CH_RAND_INT:
         if (st_.empty()) std::snprintf(out, n, "rand needs a limit");
-        else std::snprintf(out, n, "rand 0..%s", at(0).to_string().c_str());
+        else std::snprintf(out, n, "rand 0..%s", show(at(0)).c_str());
         return;
       case CH_RAND:  std::snprintf(out, n, "rand 0 or 1"); return;
       case CH_PAUSE:
         if (st_.empty()) std::snprintf(out, n, "pause needs a time");
-        else std::snprintf(out, n, "pause %s", at(0).to_string().c_str());
+        else std::snprintf(out, n, "pause %s", show(at(0)).c_str());
         return;
       case CH_END:   std::snprintf(out, n, "end"); return;
       case CH_PRINT:
         if (st_.empty()) std::snprintf(out, n, "print, stack empty");
-        else std::snprintf(out, n, "print %s", at(0).to_string().c_str());
+        else std::snprintf(out, n, "print %s", show(at(0)).c_str());
         return;
       case CH_PRINT_BASE64:
         if (st_.empty()) std::snprintf(out, n, "print, stack empty");
         else if (at(0).is_integer)
-          std::snprintf(out, n, "print %s as %s", at(0).to_string().c_str(), base64_encode_int(at(0).value).c_str());
-        else std::snprintf(out, n, "print %s", at(0).to_string().c_str());
+          std::snprintf(out, n, "print %s as %s", show(at(0)).c_str(), base64_encode_int(at(0).value).c_str());
+        else std::snprintf(out, n, "print %s", show(at(0)).c_str());
         return;
       default: return;      // a blank, or a character IRCIS steps over
     }

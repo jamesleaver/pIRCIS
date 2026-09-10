@@ -21,6 +21,11 @@
 #
 #   SK_SCENE=path/to/scene.txt SK_GOLD=path/to/goldens tools/ui_regression.sh
 #
+# tests/board_scene.txt with tests/ui_golden_board is a second, wider set --
+# the readout, GRID TAP in each mode, the trail, the dialogs, the keyboards --
+# blessed from the board as it ran on 2026-09-07 (tag board-2026-09-07).
+# Give the paths in full: the harness changes directory before it reads them.
+#
 # Each scene line is "<delay> <command>", or just "<command>" for the default
 # delay; blank lines and # comments are ignored.
 set -u

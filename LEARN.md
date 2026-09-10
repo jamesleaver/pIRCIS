@@ -86,22 +86,18 @@ There is only one `v`, not two. Once the runner is heading south it keeps going
 south across the blanks on its own. **You only need an arrow where you want the
 direction to change.**
 
-Strictly the `>` in the corner is not doing anything either, because the runner
-already starts facing east. I write it anyway, and so does every bundled
-program, because it shows where things begin.
-
-On the device, set `SYS > UNDER GRID` to `RUNNERS` and the speed to `SLOW`, and
-you can watch it walk the path. The readout gives each runner a line: where it
-is and which way it faces, the character under it, what that character will do
-when the runner steps (`turn south`, `split`, `int 19` while a number is being
-read and `push 1921` on the blank that ends it, `save n=7`, `print 3`,
-`check false`), and the top of its stack, newest value last. It is the
-interpreter's own debug log, one step ahead. Writing a program of your own,
-this is how to check it: a few characters in EDIT, back to RUN, and step them
-with `SYS > STEP BUTTONS` on, reading the line as you go.
+Strictly, the `>` in the top left corner is not doing anything either, because
+the runner already starts facing east. I write it anyway, because it shows where
+things begin.
 
 **A runner that leaves the grid dies.** Plenty of programs end that way on
 purpose.
+
+If you want to see what each of the characters is doing when you're writing a
+program of your own, set `SYS > UNDER GRID` to `RUNNERS` and the speed to `SLOW`.
+You can watch a runner walk its path and see what each character it steps on tells
+the runner to do as your program is running. If you turn on the step buttons
+(`SYS > STEP BUTTONS` on) you can step through your program at your own pace.
 
 ---
 
@@ -134,16 +130,6 @@ prints `Hi`
 Read that carefully, because it explains something unexpected. Here is what
 each character does to the stack. The top of the pile is shown on the right.
 
-The device can show you this table live. Set `SYS > UNDER GRID` to `RUNNERS`
-and each runner gets a line under the grid: the character it is standing on,
-what that character will do when the runner steps (`stack mode on`, `"i` and
-`"iH` as the letters are read, `push "iH"` on the closing quote, `print H`),
-and the top of its stack on the right, in the same order as these tables.
-Turn on `SYS > STEP BUTTONS` and step through a program one character at a
-time, reading the line before each step, and you can see the logic of a
-program you are writing as you write it: every push and pop, every value saved
-to a variable, every question asked, and the state of the stack after each.
-
 | reads | does | stack afterwards |
 |---|---|---|
 | `"` | turn stack mode on | empty |
@@ -157,6 +143,14 @@ to a variable, every question asked, and the state of the stack after each.
 
 **This is why text in IRCIS programs is written backwards.** The stack hands it
 back to you in reverse, so you write it in reverse to start with.
+
+Set `SYS > UNDER GRID` to `RUNNERS` to see the character the runner is standing
+on and what it does (`stack mode on`, `"i` and `"iH` as the letters are
+read, `push "iH"` on the closing quote, `print H` etc). You can also see the
+top of the runner's stack on the right, in the same order as these tables.
+Turn on `SYS > STEP BUTTONS` and step through a program one character at a
+time, and you can see the logic of a program you are writing as you write it:
+every push and pop, and the state of the stack after each.
 
 Try it with a longer word:
 
@@ -1299,7 +1293,7 @@ have to come back here for it.
 
 When something does not work, the two questions that solve most problems are:
 
-1. **Is the runner where I think it is?** Set `UNDER GRID` to `RUNNERS`, put it
+1. **Is the runner doing what I think it is?** Set `UNDER GRID` to `RUNNERS`, put it
    on `SLOW`, and watch. Turn on `SYS > STEP BUTTONS` and walk it one step at a
    time.
 2. **Is the stack what I think it is?** Remember that `?` and `&name` both leave

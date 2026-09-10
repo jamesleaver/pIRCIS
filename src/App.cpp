@@ -6,6 +6,7 @@
 // and is not covered by this notice.
 
 #include "App.h"
+#include <atomic>
 
 #include <cstdlib>
 #include <string>
@@ -64,6 +65,7 @@ void printHelp() {
     "  wheel <dy> <dx> <x> <y>        (emulator) a mouse wheel turned over x,y\n"
     "  key <char|name>                (emulator) synthetic keystroke\n"
     "  drag <dx>                      (emulator) pan the ZOOM view by dx px\n"
+    "  size <WxH>                     (emulator) the screen becomes WxH, as a phone turning\n"
     "  quit                           (emulator) close the window"
 #endif
     );
@@ -123,6 +125,13 @@ std::string nextToken(std::string& line) {
 bool g_quit = false;
 // Scratch for run::loadedGridInto(). File scope: see RunTask.h.
 prog::Program g_ranGrid;
+
+namespace {
+  std::atomic<bool> g_sizeAsked{false};
+  std::atomic<int> g_sizeAskW{0}, g_sizeAskH{0};
+  std::atomic<int> g_resizeState{0};   // 0 none, 1 asked, 2 the program's half is done
+  std::atomic<int> g_resizeW{0}, g_resizeH{0};
+}
 
 void handleCommand(std::string line) {
   line = trim(line);
@@ -274,6 +283,16 @@ void handleCommand(std::string line) {
     ui::injectDrag(dx);
     plat::logf("dragged %d px\n", dx);
   }
+  else if (cmd == "size") {
+    // The screen becoming another size while running, as a phone's does
+    // when it is turned. The platform's loop carries it out.
+    int w = 0, h = 0;
+    if (std::sscanf(line.c_str(), "%dx%d", &w, &h) != 2 || w < 320 || h < 240 || w > 4096 || h > 4096) {
+      plat::logln("usage: size WxH (at least 320x240)"); return;
+    }
+    g_sizeAskW = w; g_sizeAskH = h; g_sizeAsked = true;
+    plat::logf("size %dx%d requested\n", w, h);
+  }
   else if (cmd == "progsave") {
     std::string name = nextToken(line);
     if (name.empty()) { plat::logln("usage: progsave [card:]<name>"); return; }
@@ -389,6 +408,32 @@ void handleCommand(std::string line) {
 
 bool quitRequested() { return g_quit; }
 
+bool takeSizeRequest(int& w, int& h) {
+  if (!g_sizeAsked) return false;
+  g_sizeAsked = false; w = g_sizeAskW; h = g_sizeAskH; return true;
+}
+// The platform asks; the program's loop parks at its next turn -- outside
+// any drawing -- and stays parked while the platform rebuilds the display
+// at the new size; then it goes on, starting its view over.
+// Only while nothing is in flight: a second request while the program is
+// parked for the first left both sides waiting. The loop asks again later.
+bool requestResize(int w, int h) {
+  if (g_resizeState != 0) return false;
+  g_resizeW = w; g_resizeH = h; g_resizeState = 1;
+  return true;
+}
+bool resizeBusy() { return g_resizeState != 0; }
+bool resizeParked() { return g_resizeState == 2; }
+void resizeSize(int& w, int& h) { w = g_resizeW; h = g_resizeH; }
+void clearResize() { g_resizeState = 0; }
+void parkForResizeIfAsked() {
+#if defined(SK_HOST)
+  if (g_resizeState != 1) return;
+  g_resizeState = 2;
+  while (g_resizeState != 0 && !g_quit) plat::delayMs(1);
+  ui::onResize();
+#endif
+}
 void setup() {
 #if !defined(SK_HOST)
   pinMode(LED_R, OUTPUT); pinMode(LED_G, OUTPUT); pinMode(LED_B, OUTPUT);
@@ -424,6 +469,9 @@ void setup() {
 }
 
 void loop() {
+#if defined(SK_HOST)
+  parkForResizeIfAsked();
+#endif
   ui::tick();
   web::tick();
 
