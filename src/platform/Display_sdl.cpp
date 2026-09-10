@@ -24,8 +24,24 @@ CydDisplay::CydDisplay() {
   panel_.config(cfg);
   // 2x so the 6x8 program text is comfortable on a retina display.
   panel_.setScaling(2, 2);
-  panel_.setWindowTitle("pIRCIS -- ESP32-2432S028R emulator");
+  panel_.setWindowTitle("pIRCIS");
   setPanel(&panel_);
+}
+
+void CydDisplay::setPanelSize(int w, int h) {
+  auto cfg = panel_.config();
+  cfg.memory_width  = w;
+  cfg.memory_height = h;
+  cfg.panel_width   = w;
+  cfg.panel_height  = h;
+  panel_.config(cfg);
+}
+
+bool CydDisplay::resizePanel(int w, int h) {
+  const bool ok = panel_.resizeBuffers(w, h);
+  setRotation(getRotation());          // the device's idea of its width follows the panel's
+  setClipRect(0, 0, w, h);
+  return ok;
 }
 
 // The mouse is the touch panel, so there is nothing to calibrate.

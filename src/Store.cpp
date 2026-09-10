@@ -161,7 +161,7 @@ void factoryReset() { plat::kv::clearAll(); }
 int  runView() { int v = plat::kv::getInt("runview", 0); return (v < 0 || v > 1) ? 0 : v; }
 void setRunView(int v) { plat::kv::putInt("runview", v); }
 
-bool hardwareKeys() { return plat::kv::getBool("hwkeys", false); }
+bool hardwareKeys() { return plat::kv::getBool("hwkeys", plat::preferHardwareKeys()); }
 void setHardwareKeys(bool on) { plat::kv::putBool("hwkeys", on); }
 
 bool stepButtons() { return plat::kv::getBool("stepbtn", false); }
@@ -175,6 +175,8 @@ void setFollowRunners(bool on) { plat::kv::putBool("follow", on); }
 
 bool tracePath() { return plat::kv::getBool("trace", false); }
 void setTracePath(bool on) { plat::kv::putBool("trace", on); }
+bool gestures() { return plat::kv::getBool("gest", true); }
+void setGestures(bool on) { plat::kv::putBool("gest", on); }
 
 bool debugMode() { return plat::kv::getBool("dbg", false); }
 void setDebugMode(bool on) { plat::kv::putBool("dbg", on); }
@@ -221,9 +223,15 @@ int gridTap() {
   // Devices from before this was a three-way stored a bool under "adv": set
   // meant the inspector opened on a tap, clear meant nothing happened. Read
   // that when the new key is absent, so an existing device keeps its setting.
-  const int fallback = plat::kv::getBool("adv", false) ? kTapInspector : kTapNothing;
-  const int v = plat::kv::getInt("gtap", fallback);
-  return (v < kTapNothing || v > kTapEdit) ? kTapNothing : v;
+  // On a phone the editor is what a tap on a cell opens, from the first
+  // run; the inspector is a board thing, and a stored inspector setting
+  // means the editor there too.
+  const int fallback = plat::isApp() ? kTapEdit
+                     : plat::kv::getBool("adv", false) ? kTapInspector : kTapNothing;
+  int v = plat::kv::getInt("gtap", fallback);
+  if (v < kTapNothing || v > kTapEdit) v = kTapNothing;
+  if (plat::isApp() && v == kTapInspector) v = kTapEdit;
+  return v;
 }
 void setGridTap(int mode) {
   if (mode < kTapNothing || mode > kTapEdit) mode = kTapNothing;

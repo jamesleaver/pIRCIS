@@ -105,6 +105,9 @@ namespace Store {
   void setFollowRunners(bool on);
   bool tracePath();
   void setTracePath(bool on);
+  // Gestures on a screen that has them; off, it behaves as the board does.
+  bool gestures();
+  void setGestures(bool on);
 
   int  gridView();                // RUN tab view: 1 = wide, 2 = zoom
   void setGridView(int view);

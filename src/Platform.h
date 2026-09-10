@@ -161,4 +161,77 @@ namespace plat {
   void webStop();
   void webTick();
   bool webAvailable();   // false in the emulator
+
+  // What this hardware has, so the pages offer only what can be done here.
+  bool hasWifi();          // a radio, and the WIFI tile with it
+  bool hasSdSlot();        // somewhere a card could go; sdPresent() says if one is in
+  bool hasTouchCheck();    // a touch panel worth calibrating
+  bool canOpenUrl();       // a browser this program can hand an address to
+  bool openUrl(const char* url);
+
+  // Handing a program to other apps and taking one from them, through the
+  // system's own sheets. A platform without them answers false to both
+  // questions and the pages do not offer either.
+  bool canShareFiles();
+  bool shareText(const std::string& name, const std::string& text);   // name.txt
+  bool canPickFiles();
+  void pickFile();                                     // asks; the answer arrives later
+  bool takePickedFile(std::string& nameOut, std::string& textOut);   // once, when it has
+
+  // A touch screen that reports more than one finger and is read often
+  // enough for a drag to be followed. With it, a tap on the grid waits for
+  // the finger to lift, so a drag or a pinch is not also a tap.
+  bool hasGestures();
+  // Two fingers that can be brought together: without it, a screen that
+  // can be dragged still needs its ZOOM button.
+  bool hasPinch();
+  // A pinch that has grown far enough to mean something: dir is +1 to zoom
+  // in and -1 to zoom out, at panel coordinates x, y. Answered once.
+  bool takePinch(int& dir, int& x, int& y);
+  // A mouse wheel's turns since last asked, in notches, and where the
+  // pointer was, in panel coordinates. Answered once.
+  bool takeWheel(int& dy, int& dx, int& x, int& y);
+  // A keyboard is attached, so the on-screen one can stay away until asked
+  // for. Only a default: the KEYBOARD tile has the last word.
+  bool preferHardwareKeys();
+
+  // A desktop build that is the whole of a screen -- a Raspberry Pi with a
+  // display -- rather than a window on someone's desktop. Set once at start
+  // with what was found plugged in; the pages and the pointer follow.
+  void setDeviceMode(bool on, bool touch, bool keyboard, bool mouse);
+  bool deviceMode();
+  bool hideCursor();                             // glass and no mouse: nothing to point with
+  void probeInput(bool& keyboard, bool& mouse);  // what the system lists as plugged in
+  int  takeScaleRequest();                       // Alt with a digit: that picture scale, once
+  bool quitAsked();                              // Alt-Q, once
+
+  // A keyboard the platform draws itself over the panel's own key area,
+  // where it can be sharper and can click under the finger. The program
+  // says what keys go where, in panel coordinates, and what colours the
+  // page is wearing; a key pressed comes back through injectKey().
+  struct NativeKeys {
+    bool shown = false;
+    int  x = 0, y = 0, cols = 0, rows = 0, keyW = 0, keyH = 0, gap = 1;   // panel px
+    std::string keys;        // row-major, cols*rows, '\0' for no key
+    std::string commands;    // the keys shown in the accent colour
+    uint16_t bg = 0, panel = 0, text = 0, accent = 0;            // RGB565
+  };
+  bool hasNativeKeys();
+  void nativeKeys(const NativeKeys& spec);
+  void nativeKeysRelayout();   // the display was rebuilt: place the keys afresh
+
+  // An app on a phone rather than a device of its own: the pages that
+  // speak of "this device" speak of the app instead.
+  bool isApp();
+
+  // The screen, in its own units, the shape it is held in, and the part of
+  // it this program may draw on: everything but what the platform reserves
+  // -- a camera cut-out on one side, a home bar along the bottom. False
+  // where the screen is simply the panel.
+  struct ScreenArea { int fullW = 0, fullH = 0, x = 0, y = 0, w = 0, h = 0; };
+  bool screenArea(ScreenArea& a);
+  // True once, after something that may have changed the area: the app
+  // coming back to the front, or the device being turned.
+  bool screenChanged();
+  bool isActive();         // able to draw: false only in the background
 }

@@ -418,7 +418,30 @@ void injectKey(char) {}
 std::string clipboard() { return std::string(); }
 
 bool haveKeyboard() { return false; }
+
+bool hasWifi()       { return true; }
+bool hasSdSlot()     { return true; }
+bool hasTouchCheck() { return true; }
+bool canOpenUrl()    { return false; }
+bool openUrl(const char*) { return false; }
+bool canShareFiles() { return false; }
+bool shareText(const std::string&, const std::string&) { return false; }
+bool canPickFiles() { return false; }
+void pickFile() {}
+bool takePickedFile(std::string&, std::string&) { return false; }
+bool hasGestures() { return false; }
+bool hasPinch() { return false; }
+bool takePinch(int&, int&, int&) { return false; }
 bool takeWheel(int&, int&, int&, int&) { return false; }
+bool preferHardwareKeys() { return false; }
+bool deviceMode() { return false; }
+bool hasNativeKeys() { return false; }
+bool screenArea(ScreenArea&) { return false; }
+bool screenChanged() { return false; }
+bool isActive() { return true; }
+bool isApp() { return false; }
+void nativeKeys(const NativeKeys&) {}
+void nativeKeysRelayout() {}
 
 
 

@@ -1,0 +1,91 @@
+# The board's screens as they were on 2026-09-07, beyond the ones the default
+# scene covers: the runner readout, GRID TAP in each mode, the trail, the
+# dialogs, a folder and the editor's keyboards. Every run is driven with
+# `step`, never with a timed `run`, so the frames are the same every time.
+#
+#   SK_SCENE=tests/board_scene.txt SK_GOLD=tests/ui_golden_board tools/ui_regression.sh
+#
+# One screen is the emulator's rather than the board's: b15, LEARN IRCIS,
+# shows OPEN THE GUIDE because the desktop has a browser to hand the address
+# to. The board has none and draws the code to scan instead; that path is
+# plat::canOpenUrl() in Platform_arduino.cpp, which answers false.
+#
+2    tap 240 160
+     progload Watching/Motto
+1    shot b00_motto_run.ppm
+     tap 432 306
+     tap 120 63
+     tap 120 141
+1    shot b01_sys_runners_steps.ppm
+     tap 48 306
+1    shot b02_readout_step0.ppm
+     tap 432 306
+     tap 120 89
+     tap 120 89
+     tap 120 89
+     tap 120 89
+     tap 48 306
+1    shot b02b_start_kept_after_nothing.ppm
+     step 20
+1    shot b03_readout_step20.ppm
+     tap 391 11
+1    shot b03b_readout_back.ppm
+     step 200
+1    shot b04_readout_done.ppm
+     tap 15 260
+1    shot b05_readout_scrolled.ppm
+     progload Counting/Count-to-20
+     step 7
+1    shot b06_readout_count.ppm
+     tap 432 306
+     tap 120 63
+     tap 48 306
+1    shot b07_under_nothing.ppm
+     tap 432 306
+     tap 120 63
+     tap 120 89
+1    shot b08_sys_tap_start.ppm
+     tap 120 89
+     tap 120 89
+1    shot b09_sys_tap_edit.ppm
+     tap 48 306
+     progload Talking/Hello-World
+     tap 253 11
+1    shot b10_zoom_hello.ppm
+     tap 300 120
+1    shot b11_tap_opened_editor.ppm
+     tap 48 306
+     tap 253 11
+1    shot b12_wide_hello.ppm
+     tap 432 306
+     tap 359 141
+     tap 48 306
+     step 30
+1    shot b13_trail.ppm
+     tap 391 11
+1    shot b13b_trail_back.ppm
+     tap 355 11
+1    shot b13c_trail_reset.ppm
+     tap 432 306
+     tap 359 141
+     tap 120 251
+1    shot b14_about_ircis.ppm
+     tap 424 265
+     tap 359 277
+1    shot b15_learn.ppm
+     tap 424 265
+1    shot b16_sys_after_dialogs.ppm
+     tap 336 306
+     tap 240 193
+1    shot b17_prog_watching.ppm
+     tap 240 306
+1    shot b18_edit_keys.ppm
+     tap 240 306
+1    shot b19_edit_letters.ppm
+     tap 48 306
+     progload Counting/Count-to-20
+     speed full
+3    run
+     tap 144 306
+1    shot b20_out_two_lines.ppm
+1.5  quit
