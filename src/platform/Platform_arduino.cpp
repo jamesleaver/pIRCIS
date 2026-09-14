@@ -416,6 +416,7 @@ void injectKey(char) {}
 
 // No clipboard on the board.
 std::string clipboard() { return std::string(); }
+bool hasClipboard() { return false; }
 
 bool haveKeyboard() { return false; }
 
@@ -434,6 +435,9 @@ bool hasPinch() { return false; }
 bool takePinch(int&, int&, int&) { return false; }
 bool takeWheel(int&, int&, int&, int&) { return false; }
 bool preferHardwareKeys() { return false; }
+bool onMac() { return false; }
+void startTextInputOnMain() {}
+void keepTextInput() {}
 bool deviceMode() { return false; }
 bool hasNativeKeys() { return false; }
 bool screenArea(ScreenArea&) { return false; }

@@ -279,7 +279,13 @@ enum : uint16_t {
 };
 uint16_t g_paint = 0;
 void wantAll()   { g_paint |= PaintAll;   g_dirty = true; }
-void wantModal() { if (kScreenW != 480) { wantAll(); return; } g_paint |= PaintModal; g_dirty = true; }
+// A modal's own partial repaint. The keyboard page lays itself out from its
+// geometry at any size, so it takes the partial path everywhere; the boxed
+// dialogs are laid out for their box off the board and are drawn whole there.
+void wantModal() {
+  if (kScreenW != 480 && g_modal != Modal::Picker) { wantAll(); return; }
+  g_paint |= PaintModal; g_dirty = true;
+}
 int g_sysTile = -1;
 int g_editRow = -1;
 
@@ -2429,7 +2435,11 @@ bool g_sizeIsNew = true;         // false when resizing the loaded program
 // below it -- and for a program whose runner starts at 0,0, that is the whole
 // question.
 inline int szY() { return g_sizeIsNew ? 60 : 34; }
-inline int szH() { return g_sizeIsNew ? 150 : 222; }
+// A new program can also be pasted in whole, where there is a clipboard to
+// take it from; that row makes the dialog taller.
+inline bool szPaste() { return g_sizeIsNew && plat::hasClipboard(); }
+inline int szH() { return g_sizeIsNew ? (szPaste() ? 186 : 150) : 222; }
+void pasteProgram();     // the clipboard as the program, defined with the loaders
 #define kSzY szY()
 #define kSzH szH()
 
@@ -2531,6 +2541,7 @@ Btn btnSzRowsDn() { return { szDnX(), kSzY + 40, 40, 28, "-" }; }
 Btn btnSzRowsUp() { return { fromRight(250), kSzY + 40, 40, 28, "+" }; }
 Btn btnSzColsDn() { return { szDnX(), kSzY + 76, 40, 28, "-" }; }
 Btn btnSzColsUp() { return { fromRight(250), kSzY + 76, 40, 28, "+" }; }
+Btn btnSzPaste()  { return { 40,  kSzY + 112, kScreenW - 80, 28, "PASTE FROM THE CLIPBOARD" }; }
 Btn btnSzCancel() { return { 40,  kSzY + kSzH - 36, 120, 28, "CANCEL", theme::bad }; }
 Btn btnSzOk()     { return { kScreenW - 160, kSzY + kSzH - 36, 120, 28, "OK",
                              theme::bg, theme::good }; }
@@ -2636,6 +2647,7 @@ void drawSize() {
 
   drawBtn(btnSzRowsDn()); drawBtn(btnSzRowsUp());
   drawBtn(btnSzColsDn()); drawBtn(btnSzColsUp());
+  if (szPaste()) drawBtn(btnSzPaste());
   drawBtn(btnSzCancel()); drawBtn(btnSzOk());
   gfx.setFont(&fonts::Font0);
 }
@@ -2714,6 +2726,7 @@ void handleSizeTouch(int x, int y) {
   if (hit(btnSzColsDn(), x, y)) { --g_sizeCols; clampC(); g_dirty = true; return; }
   if (hit(btnSzColsUp(), x, y)) { ++g_sizeCols; clampC(); g_dirty = true; return; }
   if (hit(btnSzCancel(), x, y)) { g_modal = Modal::None; wantAll(); return; }
+  if (szPaste() && hit(btnSzPaste(), x, y)) { g_modal = Modal::None; pasteProgram(); return; }
   if (hit(btnSzOk(), x, y)) {
     if (g_sizeIsNew) { g_edit.newProgram(g_sizeRows, g_sizeCols); g_progFile.clear(); }
     else {
@@ -3717,6 +3730,19 @@ bool loadProgramText(const std::string& text, const char* name = nullptr) {
   if (name) g_edit.setProgramName(name);
   afterProgramChange();
   return true;
+}
+
+// The clipboard as the program: Ctrl/Cmd-V anywhere, or the button on the
+// NEW PROGRAM dialog, which is how a phone gets there. The grid takes the
+// shape of what arrives, and RUN shows it.
+void pasteProgram() {
+  const std::string text = plat::clipboard();
+  if (text.empty()) message("Nothing to paste", "The clipboard is empty.");
+  else if (!loadProgramText(text, "Pasted"))
+    message("Cannot paste that",
+            "It has to be lines of characters, no wider than 96 and no more "
+            "than 32 of them.");
+  else { g_tab = Tab::Run; g_dirty = true; }
 }
 
 // The SAME program, edited elsewhere -- the web editor. Writing the cells into
@@ -7214,6 +7240,7 @@ int focusList(Btn* out) {
   if (g_modal == Modal::Size) {
     add(btnSzRowsDn()); add(btnSzRowsUp());
     add(btnSzColsDn()); add(btnSzColsUp());
+    if (szPaste()) add(btnSzPaste());
     add(btnSzCancel()); add(btnSzOk());
     return n;
   }
@@ -7488,16 +7515,7 @@ void pollTypedKeys() {
     // of the program being written.
     // A program copied out of the guide, or out of anywhere else, pasted
     // straight in. The grid takes the shape of what arrives.
-    if (k == plat::kKeyPaste) {
-      const std::string text = plat::clipboard();
-      if (text.empty()) message("Nothing to paste", "The clipboard is empty.");
-      else if (!loadProgramText(text, "Pasted"))
-        message("Cannot paste that",
-                "It has to be lines of characters, no wider than 96 and no more "
-                "than 32 of them.");
-      else { g_tab = Tab::Run; g_dirty = true; }
-      continue;
-    }
+    if (k == plat::kKeyPaste) { pasteProgram(); continue; }
     if (k == plat::kKeyName) { openRenameDialog(); continue; }
     if (k == plat::kKeyZoom) {
       if (typingIntoGrid()) toggleView();

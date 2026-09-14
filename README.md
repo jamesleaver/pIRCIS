@@ -8,6 +8,16 @@ No computer needed once it is flashed.
 
 The `p` is for pocket.
 
+No board? There are two other ways to run the same program, and neither
+needs any hardware:
+
+- **On your own computer**, with the emulator: the real firmware in a window
+  on macOS, Windows or Linux, built from this repository in a few commands.
+  See [Run it on your computer instead](#run-it-on-your-computer-instead).
+- **On an iPhone, iPad or Apple silicon Mac**, with the app
+  **[on the App Store](https://apps.apple.com/app/id6809655892)**.
+  See [Run it on a phone](#run-it-on-a-phone).
+
 IRCIS stands for *"I Run Chars I See"*. It is a two-dimensional esolang by
 [Arjun Nair (batman-nair)](https://github.com/batman-nair/IRCIS). A program is
 a grid of characters, one instruction per cell. A *runner* walks it in a
@@ -207,7 +217,7 @@ you have a real one. The shortcut list comes up when you switch it over, and
 | `z` | ZOOM or WIDE |
 | `n` | rename the program |
 | `x` | delete the program the ring is on, in PROG |
-| Ctrl/Cmd `V` | paste a program in from the clipboard |
+| Ctrl/Cmd `V` | paste a program in from the clipboard (also a button on PROG > New program) |
 | F1 | the shortcut list |
 
 On RUN the arrows scroll the view. If **SYS > GRID TAP** is set to inspect
@@ -238,9 +248,11 @@ cd host && make
 ## Run it on a phone
 
 The same program is **[pIRCIS on the App Store](https://apps.apple.com/app/id6809655892)**,
-for iPhone and iPad. The app carries no WiFi page and no hidden program,
-shares programs through the phone's own sheet, and opens `.txt` files from
-the Files app. Its privacy policy and support page are
+for iPhone and iPad, and it runs on a Mac with Apple silicon as an iPad app.
+The app carries no WiFi page and no hidden program, shares programs through
+the phone's own sheet, opens `.txt` files from the Files app, and takes a
+program copied in any other app through the PASTE button on PROG > New
+program. Its privacy policy and support page are
 [ios/PRIVACY.md](ios/PRIVACY.md) and [ios/SUPPORT.md](ios/SUPPORT.md).
 
 ## Using it

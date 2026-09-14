@@ -1,3 +1,20 @@
+# pIRCIS 1.4.4
+
+The iPad app runs on a Mac with Apple silicon, and this release makes it
+usable there: a click lands where the pointer is, the pointer stays visible
+over the window, and the Mac's keyboard types into the grid and drives the
+pages as a keyboard does on the board's emulator. The system had been
+swallowing clicks as game-controller input, the pointer was hidden as it is
+on glass, and typed characters were never collected because the field that
+collects them was asked for before the window was there.
+
+PROG > New program has a PASTE FROM THE CLIPBOARD button wherever there is
+a clipboard: the app, the emulator, a Pi. A program copied in any other app
+lands in the grid and RUN shows it, the same as Ctrl/Cmd-V from a keyboard.
+
+The program-name page repaints only what changed when a key is pressed, on
+every screen. The board is otherwise unchanged.
+
 # pIRCIS 1.4.3
 
 The same program on the phone: pIRCIS is on the App Store for iPhone and

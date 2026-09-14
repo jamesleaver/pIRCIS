@@ -6,7 +6,7 @@ what it steps on.
 
 This guide starts from nothing and builds up. Every example is a real program.
 You can type any of them into [pIRCIS](https://github.com/jamesleaver/pIRCIS)
-and press play, or run them on a computer.
+and press play, on the board, on a phone, or on a computer.
 By the end you will be able to write your own.
 
 > **Finding a program.** Programs are named here as the device names them, and
@@ -15,12 +15,20 @@ By the end you will be able to write your own.
 > [Dice Roll](programs/Watching/Dice-Roll.txt) (Watching) is
 > `programs/Watching/Dice-Roll.txt`.
 
-> **You do not need the hardware.** The emulator runs the same thing in a
-> window on your own computer: same interpreter, same screen, same programs.
-> [How to set it up](README.md#run-it-on-your-computer-instead) is in the
-> readme. In there, set `SYS > KEYBOARD` to `REAL` and you can type straight
-> into the grid with your own keyboard, which makes working through this guide
-> much quicker.
+> **You do not need the hardware.** There are two other ways to run pIRCIS,
+> and both are the same interpreter, the same screen and the same programs:
+>
+> - **The emulator, on your own computer.** It runs in a window on macOS,
+>   Windows or Linux, and
+>   [setting it up](README.md#run-it-on-your-computer-instead) takes a few
+>   commands. In there, set `SYS > KEYBOARD` to `REAL` and you can type
+>   straight into the grid with your own keyboard, which makes working through
+>   this guide much quicker. Ctrl/Cmd-V pastes a program copied from this
+>   guide straight in.
+> - **The app, on an iPhone, iPad or Apple silicon Mac**, from
+>   [the App Store](https://apps.apple.com/app/id6809655892). A program copied
+>   from this guide lands in the grid through the PASTE button under
+>   **PROG > New program**.
 
 **Contents**
 

@@ -116,6 +116,7 @@ namespace plat {
   // What the machine has on its clipboard, empty if nothing or if this build
   // has no clipboard to ask.
   std::string clipboard();
+  bool hasClipboard();      // whether there is one to ask at all
   // Whether this build can receive typed keys at all -- what SYS uses to
   // decide whether offering the setting makes any sense.
   bool haveKeyboard();
@@ -194,6 +195,16 @@ namespace plat {
   // A keyboard is attached, so the on-screen one can stay away until asked
   // for. Only a default: the KEYBOARD tile has the last word.
   bool preferHardwareKeys();
+  // The iPad app running on a Mac: a mouse, a real keyboard, no pinch.
+  bool onMac();
+  // Ask for typed characters from the main thread, which is where UIKit
+  // wants to be asked; a no-op elsewhere.
+  void startTextInputOnMain();
+  // Main thread, once the window is up. On a Mac the typed characters come
+  // through SDL's hidden text field, which has to hold the keyboard: this
+  // gives it the keyboard when it lacks it, and keeps its caret at the end,
+  // where a typed character is read as one. Nothing elsewhere.
+  void keepTextInput();
 
   // A desktop build that is the whole of a screen -- a Raspberry Pi with a
   // display -- rather than a window on someone's desktop. Set once at start

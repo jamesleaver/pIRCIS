@@ -277,13 +277,18 @@ int  takeScaleRequest() { return g_scaleAsk.exchange(0); }
 bool quitAsked() { return g_quitAsk.exchange(false); }
 bool hideCursor()  { return g_device && g_touch && !g_mouse; }
 bool hasGestures() { return TARGET_OS_IPHONE || g_device; }
-bool hasPinch()    { return TARGET_OS_IPHONE || g_touch; }
+bool hasPinch()    { return (TARGET_OS_IPHONE && !onMac()) || g_touch; }
 bool takePinch(int& dir, int& x, int& y) { return gfx.sdl().takePinch(dir, x, y); }
 bool takeWheel(int& dy, int& dx, int& x, int& y) { return gfx.sdl().takeWheel(dy, dx, x, y); }
 // The desktop emulator keeps the board's default, the on-screen keys, so
 // the pages can be tried as the board shows them; a screen with a keyboard
 // plugged in starts with that keyboard.
-bool preferHardwareKeys() { return g_device && g_keyboard; }
+bool preferHardwareKeys() { return (g_device && g_keyboard) || onMac(); }
+#if !TARGET_OS_IPHONE
+bool onMac() { return false; }
+void startTextInputOnMain() {}
+void keepTextInput() {}
+#endif
 
 // What is plugged in, as Linux lists it: a device whose handlers include
 // kbd and whose event bits are a keyboard's (EV=120013, or the same with a
@@ -518,6 +523,7 @@ char pollKey() {
     // phone the same call raises the system keyboard, from this thread,
     // which UIKit forbids; the phone types on the drawn keyboard instead.
     if (!TARGET_OS_IPHONE) SDL_StartTextInput();
+    else if (onMac()) startTextInputOnMain();   // a Mac has the keyboard a phone lacks
   }
   std::lock_guard<std::mutex> g(g_keyMx);
   if (g_keys.empty()) return 0;
@@ -528,6 +534,7 @@ char pollKey() {
 
 void injectKey(char c) { pushKey(c); }
 
+bool hasClipboard() { return true; }
 std::string clipboard() {
   if (!SDL_HasClipboardText()) return std::string();
   char* p = SDL_GetClipboardText();
@@ -539,7 +546,7 @@ std::string clipboard() {
 
 // A phone has no keyboard of its own; like the board, it types on the one
 // the program draws.
-bool haveKeyboard() { return !TARGET_OS_IPHONE; }
+bool haveKeyboard() { return !TARGET_OS_IPHONE || onMac(); }
 
 // No radio on the desktop, so the hooks are stored and never used.
 void webSetHooks(const WebHooks&) {}

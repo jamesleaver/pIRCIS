@@ -240,7 +240,9 @@ int pircis_main(int argc, char** argv) {
   int lastW = 0, lastH = 0;
   Uint32 lastCheck = 0;
   Uint32 presentUntil = 0;    // keep presenting until this tick, after a return or a new shape
-  SDL_ShowCursor(SDL_DISABLE);
+  // Glass has nothing to point with. A Mac has a pointer, and SDL hides it
+  // over the window when the cursor is off.
+  if (!plat::onMac()) SDL_ShowCursor(SDL_DISABLE);
   // The system ends the app by calling exit() from one of its own threads
   // while the program thread is still running. Its statics must not be torn
   // down under it: leave at once instead, with nothing left unsaved, since
@@ -323,8 +325,12 @@ int pircis_main(int argc, char** argv) {
       // Back from the background: whatever happened while away -- a turn of
       // the phone, most likely -- the frame and the fit are taken afresh.
       const bool back = wasInactive; wasInactive = false;
-      if (shape || back) presentUntil = SDL_GetTicks() + 1500;
-      if ((shape || due || back || plat::screenChanged()) && !app::resizeBusy()) {
+      // Active again after a system sheet -- the clipboard's permission
+      // ask, a share sheet -- is the same: what was drawn under it may not
+      // have been presented.
+      const bool changed = plat::screenChanged();
+      if (shape || back || changed) presentUntil = SDL_GetTicks() + 1500;
+      if ((shape || due || back || changed) && !app::resizeBusy()) {
         lastW = ow; lastH = oh; lastCheck = SDL_GetTicks();
         plat::ScreenArea a;
         if (plat::screenArea(a)) {
@@ -339,6 +345,7 @@ int pircis_main(int argc, char** argv) {
       }
       gfx.sdl().keepFilled();
       if ((Sint32)(presentUntil - SDL_GetTicks()) > 0) gfx.sdl().present();
+      plat::keepTextInput();    // on a Mac: the typed characters keep coming
     }
 #endif
   }
