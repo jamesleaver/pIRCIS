@@ -32,7 +32,19 @@ namespace ircis {
       return container_.end()[index];
     }
 
-    void push(const Data data) { container_.push_back(data); }
+    // A push that would have to grow the stack first asks the machine's
+    // memory hook, when it has one. Refused, the push is dropped and the
+    // runner dies on its next step: the program has run the device out of
+    // memory, and that is an error of its own rather than an abort.
+    void push(const Data data) {
+      if (container_.size() == container_.capacity() && low_memory_ && low_memory_()) {
+        starved_ = true;
+        return;
+      }
+      container_.push_back(data);
+    }
+    void set_low_memory(bool (*fn)()) { low_memory_ = fn; }
+    bool starved() const { return starved_; }
     const Data& top() const {
       if (container_.empty()) { ++ub_reads_; return fallback_; }
       return container_.back();
@@ -54,6 +66,8 @@ namespace ircis {
     Data& bad_read() { ++ub_reads_; fallback_ = Data(); return fallback_; }
 
     std::vector<Data> container_;
+    bool (*low_memory_)() = nullptr;
+    bool starved_ = false;
     mutable Data fallback_;
     mutable unsigned long ub_reads_ = 0;
   };

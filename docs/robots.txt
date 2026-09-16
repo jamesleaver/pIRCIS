@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://pircis.fisheggs.au/sitemap.xml

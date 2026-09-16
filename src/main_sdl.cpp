@@ -351,6 +351,7 @@ int pircis_main(int argc, char** argv) {
   }
 
   running = false;
+  app::requestQuit();     // a resize parked at this moment would otherwise wait for ever
   SDL_WaitThread(thread, nullptr);
   const int rc = lgfx::Panel_sdl::close();
   // The console reader is a detached thread sitting in a blocking read. Coming

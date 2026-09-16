@@ -14,6 +14,7 @@ namespace app {
   void setup();
   void loop();
   bool quitRequested();
+  void requestQuit();     // the window is closing: the program thread must not wait on it
   // A screen that changed size (the phone turned). The platform asks; the
   // program's loop rebuilds its side at its next turn and says when it is
   // done; the platform finishes its own side and clears the request.

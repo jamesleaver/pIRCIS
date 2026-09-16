@@ -407,6 +407,7 @@ void handleCommand(std::string line) {
 } // namespace
 
 bool quitRequested() { return g_quit; }
+void requestQuit() { g_quit = true; }
 
 bool takeSizeRequest(int& w, int& h) {
   if (!g_sizeAsked) return false;

@@ -80,6 +80,7 @@ namespace {
       else if (c == '>') out += "&gt;";
       else if (c == '&') out += "&amp;";
       else if (c == '"') out += "&quot;";
+      else if (c == '\'') out += "&#39;";      // names sit in single-quoted attributes too
       else out += c;
     }
     return out;

@@ -24,6 +24,12 @@ namespace plat {
   void     delayMs(uint32_t ms);
   uint32_t freeHeap();
   uint32_t maxAllocHeap();   // largest single allocatable block -- fragmentation
+  // Whether the device is close to out of memory: the interpreter asks
+  // before starting another runner or growing a stack, and a program that
+  // gets there loses that runner instead of taking the device down. A
+  // desktop answers no; a phone asks the system how much is left before it
+  // would be killed; the board reads its heap.
+  bool     lowMemory();
 
   // Console. On the device this is the USB serial port; in the emulator it is
   // stdin/stdout, so the same commands work in both.

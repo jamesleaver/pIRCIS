@@ -20,7 +20,7 @@ By the end you will be able to write your own.
 >
 > - **The emulator, on your own computer.** It runs in a window on macOS,
 >   Windows or Linux, and
->   [setting it up](README.md#run-it-on-your-computer-instead) takes a few
+>   [setting it up](README.md#emulator) takes a few
 >   commands. In there, set `SYS > KEYBOARD` to `REAL` and you can type
 >   straight into the grid with your own keyboard, which makes working through
 >   this guide much quicker. Ctrl/Cmd-V pastes a program copied from this

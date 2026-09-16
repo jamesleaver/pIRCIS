@@ -66,17 +66,18 @@ namespace ircis {
 
   std::string base64_encode_int(int value) {
     std::string result;
-    int pos_value;
+    unsigned pos_value;     // unsigned: negating INT_MIN is itself again, and
+                            // the digit shifts must not read before the table
     // NB: in stock IRCIS this reads `(value >> 30) > base64_chars.length()`.
     // length() is unsigned, so a negative shift result converts to a huge
     // unsigned value and the comparison is true -- that is how negative
     // numbers get their '-' sign. Preserved deliberately, cast made explicit.
     if (static_cast<std::size_t>(value >> 30) > kBase64Len) {
       result.push_back('-');
-      pos_value = -value;
+      pos_value = 0u - static_cast<unsigned>(value);
     }
     else {
-      pos_value = value;
+      pos_value = static_cast<unsigned>(value);
     }
     result.push_back(kBase64Chars[pos_value >> 30]);
     result.push_back(kBase64Chars[(pos_value & 1056964608) >> 24]);
@@ -94,6 +95,10 @@ namespace ircis {
   bool Runner::step() {
     trail_.push(position_);
     ++steps_taken_;
+    if (st_.starved()) {
+      set_error("Out of memory for the stack");
+      return false;
+    }
     if (pause_time_) {
       log_line("Pausing. Pause time ", pause_time_);
       return pause_time_--;
@@ -280,11 +285,15 @@ namespace ircis {
   }
 
   bool Runner::process_integer_buffer() {
+    // A quote followed straight away by a blank leaves a buffer of one
+    // character; the original read two past it. What a std::string holds
+    // there is a nul, and that is what these read.
     auto it = integer_mode_buffer_.begin();
     ++it;                       // Skip starting quote char
-    char start_ch = *it;
-    ++it;
-    char second_ch = *it;
+    const std::size_t len = integer_mode_buffer_.size();
+    char start_ch  = len > 1 ? integer_mode_buffer_[1] : '\0';
+    char second_ch = len > 2 ? integer_mode_buffer_[2] : '\0';
+    if (len > 1) ++it;
 
     if (isbase64(start_ch) && is_not_arith(start_ch, second_ch)) {  // Integer processing
       std::string buffer;
@@ -337,7 +346,12 @@ namespace ircis {
                 return false;
               }
               log_line("Arith: ", num1, " / ", num2); num1 = num1 / num2; break;
-            case CH_MOD: log_line("Arith: ", num1, " % ", num2); num1 = num1 % num2; break;
+            case CH_MOD:
+              if (num2.value == 0) {
+                set_error("Modulo by zero error");
+                return false;
+              }
+              log_line("Arith: ", num1, " % ", num2); num1 = num1 % num2; break;
             case CH_POW: log_line("Arith: ", num1, " ^ ", num2); num1 = num1 ^ num2; break;
             case CH_AND: log_line("Arith: ", num1, " & ", num2); num1 = num1 & num2; break;
             case CH_OR:  log_line("Arith: ", num1, " | ", num2); num1 = num1 | num2; break;

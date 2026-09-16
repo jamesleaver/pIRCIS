@@ -110,6 +110,12 @@ int  g_visitCols = 0;
     opt.start_x = g_startCol;
     opt.start_y = g_startRow;
     opt.start_direction = g_startDir;
+    // Memory protection: the device says when it is nearly out, and on a
+    // machine with plenty a ceiling stands in for it -- a split in a loop
+    // reaches a hundred thousand runners in a couple of hundred steps, and
+    // no program that means to be watched has that many.
+    opt.low_memory = plat::lowMemory;
+    opt.max_runners = 100000;
     g_machine.reset(new ircis::Machine(g_grid, &g_sink, opt));
     g_output.clear();
     g_outputTruncated = false;
@@ -118,12 +124,17 @@ int  g_visitCols = 0;
     g_visitCols = 0;
     g_globals.clear();
     g_chunks.clear();
-    ++g_buildVersion;
     g_running = false;
     g_runMs = 0;
-    g_snap = Snapshot();
-    g_snap.loaded = true;
-    setEventLocked("ready");   // buildMachine already holds the mutex
+    // A step back rebuilds only to replay: the screen keeps the snapshot
+    // and the version it has until the replay has caught up, so it never
+    // sees the program at step nought in between.
+    if (!g_replaying) {
+      ++g_buildVersion;
+      g_snap = Snapshot();
+      g_snap.loaded = true;
+      setEventLocked("ready");   // buildMachine already holds the mutex
+    }
   }
 
   void publishLocked();
@@ -285,7 +296,12 @@ int  g_visitCols = 0;
 
   void runSteps(uint32_t n) {
     if (!g_machine) return;
+    // As many as a run to the end would take, and no more; and a breath
+    // every so often, so a long count starves neither the watchdog nor
+    // the page.
+    if (n > 5000000) n = 5000000;
     for (uint32_t i = 0; i < n; ++i) {
+      if (i && (i & 0x3FFF) == 0) plat::taskYield(0);
       if (!g_machine->update()) {
         g_running = false;
         g_runMs += plat::millis() - g_startMs;
@@ -388,11 +404,8 @@ int  g_visitCols = 0;
             // program at step nought and then lay it out again a moment
             // later. Both are put back and only change once, together, when
             // the replay has caught up.
-            Snapshot keep; uint32_t bv;
-            { plat::Guard g(g_mutex); keep = g_snap; bv = g_buildVersion; }
             g_replaying = true;
-            buildMachine(g_loaded);
-            { plat::Guard g(g_mutex); g_snap = keep; g_buildVersion = bv; }
+            buildMachine(g_loaded);          // leaves the snapshot and version alone
             for (uint32_t i = 0; i < target; ++i) {
               if (!g_machine->update()) break;
               // Replaying 150,000 steps must not starve the watchdog.
@@ -469,7 +482,9 @@ int  g_visitCols = 0;
   void setSpeed(Speed s) { g_speed = s; }
   Speed speed() { return g_speed; }
 
-  Snapshot snapshot() { plat::Guard g(g_mutex); return g_snap; }
+  // The build version rides with the snapshot, read under the same lock,
+  // so the two can never be paired from different moments.
+  Snapshot snapshot() { plat::Guard g(g_mutex); Snapshot s = g_snap; s.buildVersion = g_buildVersion; return s; }
 
   std::string output() {
     plat::Guard g(g_mutex);

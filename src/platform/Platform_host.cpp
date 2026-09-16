@@ -14,6 +14,9 @@
 #include <cstdlib>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#include <os/proc.h>
+#endif
 #endif
 #if !defined(TARGET_OS_IPHONE)
 #define TARGET_OS_IPHONE 0
@@ -58,6 +61,15 @@ uint32_t millis() {
 }
 void delayMs(uint32_t ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
 uint32_t freeHeap() { return 300000; }   // the ESP32 figure this design targets
+// A phone says how much it will give before it kills the app; a desktop is
+// not asked, and the machine's runner ceiling is what protects it.
+bool lowMemory() {
+#if TARGET_OS_IPHONE
+  return os_proc_available_memory() < 32u * 1024 * 1024;
+#else
+  return false;
+#endif
+}
 uint32_t maxAllocHeap() { return 300000; }
 
 // The interpreter thread streams output here while the UI thread prints
@@ -178,8 +190,14 @@ namespace {
     return v;
   }
   void save() {
-    std::ofstream f(storePath(), std::ios::trunc);
-    for (const auto& kvp : g_map) f << kvp.first << ' ' << toHex(kvp.second) << '\n';
+    // Written beside the file and renamed over it, so an exit mid-write
+    // leaves the old settings rather than half of the new.
+    const std::string path = storePath(), tmp = path + ".tmp";
+    {
+      std::ofstream f(tmp, std::ios::trunc);
+      for (const auto& kvp : g_map) f << kvp.first << ' ' << toHex(kvp.second) << '\n';
+    }
+    std::rename(tmp.c_str(), path.c_str());
   }
 }
 
@@ -451,6 +469,7 @@ bool progDelete(Where w, const std::string& name) {
 namespace {
   std::mutex        g_keyMx;
   std::vector<char> g_keys;          // small enough that a vector is a queue
+  Uint32            g_dropTextUntil = 0;   // text events are ignored until this tick
 
   void pushKey(char c) {
     std::lock_guard<std::mutex> g(g_keyMx);
@@ -467,12 +486,17 @@ namespace {
       if (k == SDLK_q) { g_quitAsk = true; return 1; }
     }
     if (e->type == SDL_TEXTINPUT) {
+      // On a Mac the hidden field that collects typed characters also
+      // answers Cmd-V with the clipboard, as any field would; that text is
+      // the paste already handled below, not typing.
+      if ((Sint32)(g_dropTextUntil - SDL_GetTicks()) > 0) return 1;
       for (const char* p = e->text.text; *p; ++p)
         if (*p >= 0x20 && *p < 0x7f) pushKey(*p);
     }
     else if (e->type == SDL_KEYDOWN) {
       const SDL_Keymod m = (SDL_Keymod)e->key.keysym.mod;
       const bool chord = (m & (KMOD_CTRL | KMOD_GUI)) != 0;   // ctrl or cmd
+      if (chord && onMac()) g_dropTextUntil = SDL_GetTicks() + 150;
       const bool shift = (m & KMOD_SHIFT) != 0;
       if (chord) {
         // A chord never produces SDL_TEXTINPUT, so these cannot collide with

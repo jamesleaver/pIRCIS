@@ -29,6 +29,12 @@ namespace ircis {
     runner_list_.emplace_back(runner_id_++,
                               DirVec(opt_.start_x, opt_.start_y, opt_.start_direction),
                               grid_, log_, global_var_map_, new_runners_list_, &rng_);
+    runner_list_.back().stack().set_low_memory(opt_.low_memory);
+  }
+
+  void Machine::record_death(Death d) {
+    if (deaths_.size() >= kMaxDeathsKept) deaths_.erase(deaths_.begin());
+    deaths_.push_back(std::move(d));
   }
 
   bool Machine::update() {
@@ -56,9 +62,9 @@ namespace ircis {
       }
       else {
         Logger::log_line("Runner ", r.get_id(), " died.");
-        deaths_.push_back({r.get_id(), step_number_, r.steps_taken(), r.error(),
-                           static_cast<int>(r.position().get_y()),
-                           static_cast<int>(r.position().get_x())});
+        record_death({r.get_id(), step_number_, r.steps_taken(), r.error(),
+                      static_cast<int>(r.position().get_y()),
+                      static_cast<int>(r.position().get_x())});
         dead_runner_steps_ += r.steps_taken();
         stack_ub_reads_ += r.stack().ub_reads();
         runner_list_.erase(runner_list_.begin() + i);
@@ -69,9 +75,20 @@ namespace ircis {
       Logger::log_line("Adding new Runner");
       keep_moving = true;
       RunnerInfo info = new_runners_list_->front();
+      new_runners_list_->pop();
+      // No room for another: the split is recorded as a death, with the id
+      // the runner would have had, and the program goes on without it.
+      const bool full = (opt_.max_runners && runner_list_.size() >= opt_.max_runners)
+                     || (opt_.low_memory && opt_.low_memory());
+      if (full) {
+        record_death({runner_id_++, step_number_, 0, "Out of memory for a new runner",
+                      static_cast<int>(info.position.get_y()),
+                      static_cast<int>(info.position.get_x())});
+        continue;
+      }
       runner_list_.emplace_back(runner_id_++, info.position, grid_, log_, global_var_map_,
                                 new_runners_list_, &rng_, info.st, info.var_map, info.trail);
-      new_runners_list_->pop();
+      runner_list_.back().stack().set_low_memory(opt_.low_memory);
     }
 
     if (!keep_moving) {

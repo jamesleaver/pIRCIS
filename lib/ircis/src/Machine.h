@@ -33,7 +33,21 @@ namespace ircis {
     // direction. 1 byte per cell; lets the editor show reading direction
     // instead of guessing it.
     bool record_visits = false;
+    // Memory protection, added for pIRCIS. A split in a loop doubles the
+    // runners every pass, and a push in a loop grows a stack without end;
+    // the reference build lets the process die of it. low_memory, when set,
+    // is asked before a new runner is started or a stack grown, and answers
+    // for the device it runs on; max_runners, when not 0, is a ceiling on
+    // live runners for a machine with more memory than sense. A refused
+    // runner is recorded as a death with its reason, so the readout says so.
+    bool (*low_memory)() = nullptr;
+    std::size_t max_runners = 0;
   };
+
+  // Deaths kept for the readout and the report. The oldest go once there are
+  // more than this: a loop that sheds a runner every pass would otherwise
+  // keep a record of every one of them for as long as it ran.
+  constexpr std::size_t kMaxDeathsKept = 256;
 
   struct Death {
     int runner_id;
@@ -87,6 +101,7 @@ namespace ircis {
     std::shared_ptr<variable_map_t> global_var_map_;
     std::shared_ptr<std::queue<RunnerInfo> > new_runners_list_;
     std::vector<Runner> runner_list_;
+    void record_death(Death d);
     std::vector<Death> deaths_;
     std::vector<char> visit_map_;
     unsigned long stack_ub_reads_ = 0;

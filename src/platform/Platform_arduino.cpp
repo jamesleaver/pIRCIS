@@ -32,6 +32,9 @@ namespace plat {
 uint32_t millis() { return ::millis(); }
 void delayMs(uint32_t ms) { ::delay(ms); }
 uint32_t freeHeap() { return ESP.getFreeHeap(); }
+// The display and the run task need room to work in; below this a new
+// runner is one allocation from an abort.
+bool lowMemory() { return ESP.getFreeHeap() < 24 * 1024 || ESP.getMaxAllocHeap() < 8 * 1024; }
 uint32_t maxAllocHeap() { return ESP.getMaxAllocHeap(); }
 
 // The interpreter task streams program output to the serial port while the
@@ -164,19 +167,24 @@ namespace {
 
   WebHooks g_hooks;
 
+  // The body of a request, as it came. WebServer would otherwise read the
+  // whole of whatever Content-Length promised into one buffer before any
+  // of this ran, and a body the size of the heap took the board down; and
+  // a browser's form post it parsed into named fields the pages never saw,
+  // so the web editor's button did nothing. Taking the body raw, in pieces,
+  // keeps the first 16 KB -- a 32 x 96 program with newlines is under 4 KB
+  // -- and drops the connection on anything past that.
+  constexpr std::size_t kBodyCap = 16384;
+  std::string g_body;
+
   // HTTP only: what a page contains is the web layer's business, and it
   // builds them where they can be rendered and checked without a radio.
   void serve() {
     if (!g_hooks.page) { g_server.send(503, "text/plain", "no handler"); return; }
     const bool post = g_server.method() == HTTP_POST;
     std::string body;
-    if (post) {
-      // WebServer has already buffered the request; cap what we copy out of
-      // it, and let the page decide whether what is left is usable.
-      String raw = g_server.arg("plain");
-      if (raw.length() > 16384) raw = raw.substring(0, 16384);
-      body = raw.c_str();
-    }
+    if (post) body.swap(g_body);
+    g_body.clear();
     std::string query;
     for (int i = 0; i < g_server.args(); ++i) {
       if (g_server.argName(i) == "plain") continue;
@@ -189,6 +197,23 @@ namespace {
         g_hooks.page(g_server.uri().c_str(), query, body, post);
     g_server.send(200, "text/html", page.c_str());
   }
+
+  struct AllRequests : public RequestHandler {
+    bool canHandle(HTTPMethod, String) override { return true; }
+    bool canRaw(String) override { return true; }
+    void raw(WebServer& server, String, HTTPRaw& r) override {
+      if (r.status == RAW_START) { g_body.clear(); return; }
+      if (r.status != RAW_WRITE) return;
+      if (g_body.size() + r.currentSize > kBodyCap) {
+        g_body.clear();
+        server.client().stop();          // the read that follows fails, and the request is dropped
+        return;
+      }
+      g_body.append(reinterpret_cast<const char*>(r.buf), r.currentSize);
+    }
+    bool handle(WebServer&, HTTPMethod, String) override { serve(); return true; }
+  };
+  AllRequests g_all;
 }
 
 
@@ -201,7 +226,7 @@ bool webBegin(const std::string& ssid, const std::string& pass, std::string& ipO
   while (WiFi.status() != WL_CONNECTED && ::millis() - start < 15000) ::delay(200);
   if (WiFi.status() != WL_CONNECTED) { WiFi.disconnect(true); return false; }
   ipOut = WiFi.localIP().toString().c_str();
-  g_server.onNotFound(serve);
+  g_server.addHandler(&g_all);
   g_server.begin();
   g_webRunning = true;
   return true;
@@ -372,6 +397,9 @@ bool progRead(Where w, const std::string& name, std::string& textOut) {
   return withStore(w, [&](fs::FS& fs, const char* dir) {
     File f = fs.open(progPath(dir, name).c_str(), FILE_READ);
     if (!f) return false;
+    // A 32 x 96 program with newlines is under 4 KB. A file many times that
+    // is not one, and reading it whole would take the heap with it.
+    if (f.size() > 16384) { f.close(); return false; }
     textOut.clear();
     textOut.reserve(f.size());
     while (f.available()) textOut.push_back((char)f.read());

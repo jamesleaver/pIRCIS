@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pIRCIS: IRCIS programs on a pocket touchscreen, a computer or a phone</title>
+<meta name="description" content="pIRCIS runs IRCIS, the two-dimensional esoteric programming language, on a cheap touchscreen, on your computer, and on your phone.">
+<link rel="canonical" href="https://pircis.fisheggs.au/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="pIRCIS">
+<meta property="og:title" content="pIRCIS: IRCIS programs on a pocket touchscreen, a computer or a phone">
+<meta property="og:description" content="pIRCIS runs IRCIS, the two-dimensional esoteric programming language, on a cheap touchscreen, on your computer, and on your phone.">
+<meta property="og:url" content="https://pircis.fisheggs.au/">
+<meta property="og:image" content="https://pircis.fisheggs.au/shots/board.jpg">
+<meta property="og:image:alt" content="pIRCIS running on a 4 inch ESP32 touchscreen">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="pIRCIS: IRCIS programs on a pocket touchscreen, a computer or a phone">
+<meta name="twitter:description" content="pIRCIS runs IRCIS, the two-dimensional esoteric programming language, on a cheap touchscreen, on your computer, and on your phone.">
+<meta name="twitter:image" content="https://pircis.fisheggs.au/shots/board.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script type="application/ld+json">[{"@context":"https://schema.org","@type":"WebSite","name":"pIRCIS","url":"https://pircis.fisheggs.au/"},{"@context":"https://schema.org","@type":"SoftwareApplication","name":"pIRCIS","description":"pIRCIS runs IRCIS, the two-dimensional esoteric programming language, on a cheap touchscreen, on your computer, and on your phone.","url":"https://pircis.fisheggs.au/","applicationCategory":"DeveloperApplication","operatingSystem":"iOS, iPadOS, macOS, Windows, Linux, ESP32","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@type":"Person","name":"James Leaver"},"sameAs":["https://apps.apple.com/app/id6809655892","https://github.com/jamesleaver/pIRCIS"]}]</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="top">
+<header class="bar">
+  <a class="brand" href="index.html"><span class="p">p</span>IRCIS</a>
+  <a class="gh" href="https://github.com/jamesleaver/pIRCIS" aria-label="pIRCIS on GitHub" title="pIRCIS on GitHub"><svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+</header>
+<nav class="tabs" aria-label="Pages"><a class="tab on" href="index.html"><span class="long">HOME</span><span class="short">HOME</span></a><a class="tab" href="get.html"><span class="long">GET IT</span><span class="short">GET IT</span></a><a class="tab" href="use.html"><span class="long">USING IT</span><span class="short">USING IT</span></a><a class="tab" href="learn.html"><span class="long">LEARN IRCIS</span><span class="short">LEARN</span></a><a class="tab" href="programs.html"><span class="long">PROGRAMS</span><span class="short">PROGS</span></a></nav>
+</div>
+<div class="wrap with-side">
+<aside class="side"><nav aria-label="Contents"><p class="k">pIRCIS 1.4.5</p><ul><li><a href="https://apps.apple.com/app/id6809655892">The app on the App Store</a></li><li><a href="https://github.com/jamesleaver/pIRCIS/releases/latest">Firmware for the board</a></li><li><a href="https://github.com/jamesleaver/pIRCIS">Source on GitHub</a></li><li><a href="learn.html">Learn IRCIS</a></li><li><a href="programs.html">The programs</a></li><li><a href="https://github.com/jamesleaver/pIRCIS/issues/new?template=program.yml">Send in a program</a></li></ul></nav></aside>
+<main class="body" data-page="index">
+<h1 class="lede">pIRCIS runs <a href="https://github.com/batman-nair/IRCIS">IRCIS</a> programs and shows
+them running.</h1>
+<p>IRCIS is a small programming language by Arjun Nair (batman-nair); the name
+stands for <em>I Run Chars I See</em>. A program is a grid of characters, and a
+<em>runner</em> walks across the grid doing whatever it steps on. It goes in a
+straight line until a character turns it, and it can split into several
+runners going different ways at once.</p>
+<p>pIRCIS draws the grid, moves the runners a step at a time, and lets you edit
+the program and watch it again.</p><h2 id="learn-ircis">Learn IRCIS</h2>
+<p><strong><a href="learn.html">Learn IRCIS</a></strong> teaches the language from scratch and builds up to
+writing your own programs. Every example in it is a real program you can run.</p>
+<section class="ways"><h2 id="three-ways-to-run-it">Three ways to run it</h2>
+<ul>
+<li><strong>App Store.</strong> The app, for iPhone, iPad and Apple silicon Macs.
+  <a href="get.html#app-store">About the app</a>.</li>
+<li><strong>Board.</strong> A cheap 4" ESP32 touchscreen, flashed over USB, that runs it on
+  its own. The <code>p</code> is for pocket. <a href="get.html#board">Getting it on a board</a>.</li>
+<li><strong>Emulator.</strong> The same firmware in a window on your own macOS, Windows or
+  Linux computer. <a href="get.html#emulator">Set it up</a>.</li>
+</ul></section>
+<p align="center">
+  <img src="shots/board.jpg" alt="pIRCIS running on the board" width="520">
+</p>
+
+<p align="center">
+  <img src="shots/motto.gif" alt="the motto program drawing IRCIS" width="480">
+</p>
+
+<p>That is a real program running. A runner splits off at each letter and walks
+its shape, spelling out <strong>IRCIS</strong> as they go, and each of them prints its own
+word of what that stands for.</p>
+</main>
+</div>
+<footer class="foot">
+  <p>pIRCIS is copyright &copy; 2026 James Leaver, MIT licensed. IRCIS is the work of
+  <a href="https://github.com/batman-nair/IRCIS">Arjun Nair</a>.
+  <a href="https://github.com/jamesleaver/pIRCIS">Source on GitHub</a> &middot;
+  <a href="https://apps.apple.com/app/id6809655892">The app on the App Store</a> &middot;
+  <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/PRIVACY.md">Privacy</a> &middot;
+  <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/SUPPORT.md">Support</a></p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>

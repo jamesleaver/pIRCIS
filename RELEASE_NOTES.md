@@ -1,3 +1,65 @@
+# pIRCIS 1.4.5
+
+A review of the whole program, and what it found put right. No program
+that ran before runs differently: arithmetic still wraps, as IRCIS means it
+to, and the builds now say so to the compiler (`-fwrapv`) so that it is a
+promise rather than a habit.
+
+## The interpreter
+
+A negative exponent used to hang the interpreter, and the readout evaluated
+it a step early, so a five-character program could stop the board or the
+app. It now gives what integer arithmetic gives: 1, plus or minus 1, or 0.
+Modulo by zero ends the runner with a reason, as division by zero already
+did, and INT_MIN divided or reduced by -1 comes out the same on every
+machine instead of trapping on some.
+
+A split whose outlets both loop back doubles the runners every pass, and
+a push in a loop grows a stack without end; either took the board down
+within a second. The interpreter now asks the device whether it is nearly
+out of memory before it starts another runner or grows a stack. Refused, the
+runner is not started, or dies on its next step, and the readout says
+"Out of memory for a new runner" or "Out of memory for the stack". There
+is no other limit on runners: a program may have as many as the device can
+hold. The list of deaths kept for the readout is bounded too.
+
+## The board's web page
+
+A browser's form post was parsed by the web server into fields the pages
+never read, so "Load onto device" always answered that the program was not
+usable; and the server read the whole of any request body into memory
+before the page saw it, so a large enough post took the board down. The
+body is now taken as it arrives, the first 16 KB kept and the connection
+dropped past that, and the form's own encoding is read as it should be.
+Quotes in names are escaped on the pages.
+
+## Loading and editing
+
+A load that would replace a program with unsaved edits -- a listed program,
+a paste, a file, NEW PROGRAM -- now asks first. UNDO is cleared by NEW
+PROGRAM, by inserting or deleting a row or column, and by locking, so it
+can no longer put another program's characters into the grid; the cursor
+is kept inside the grid after a line is deleted. Pasted text has to be
+printable characters, as an opened file already had to be. A program file
+too big to be one is refused before it is read, on the board and in the
+app. SETS repaints when an entry is chosen.
+
+## Smaller things
+
+The view follows the live runner with the lowest number, not a dead one.
+A step back never shows the program at step nought on the way. The
+console's `step` takes at most as many steps as a run to the end. Closing
+the emulator's window at the moment of a resize no longer hangs it. Esc
+leaves the second RESIZE page, the focus ring on RESIZE lists its own
+buttons, and Esc on the unlock splash lets go of the pages that were to
+follow. A saved-as name is made into a file name the way SAVE makes one,
+and the loaded marker in PROG matches the whole path. Settings on a
+computer are written whole or not at all. On a Mac, Cmd-V pastes once.
+A factory reset closes the packed program as locking does. Message
+dialogs on a short screen keep their buttons on it, DIAGNOSTICS puts its
+third button on its own row when the dialog is narrow, and the RUN header
+keeps the step count off the title at 320 pixels.
+
 # pIRCIS 1.4.4
 
 The iPad app runs on a Mac with Apple silicon, and this release makes it

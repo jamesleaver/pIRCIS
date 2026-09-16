@@ -1,28 +1,30 @@
 # pIRCIS
 
-A pocket computer for writing and watching
-**[IRCIS](https://github.com/batman-nair/IRCIS)** programs, running on a
-cheap 4" ESP32 touchscreen. Pick a program, hit play, and watch the runners
-walk across the grid one step at a time. Edit it on the device with a stylus.
-No computer needed once it is flashed.
+pIRCIS runs [IRCIS](https://github.com/batman-nair/IRCIS) programs and shows
+them running.
 
-The `p` is for pocket.
-
-No board? There are two other ways to run the same program, and neither
-needs any hardware:
-
-- **On your own computer**, with the emulator: the real firmware in a window
-  on macOS, Windows or Linux, built from this repository in a few commands.
-  See [Run it on your computer instead](#run-it-on-your-computer-instead).
-- **On an iPhone, iPad or Apple silicon Mac**, with the app
-  **[on the App Store](https://apps.apple.com/app/id6809655892)**.
-  See [Run it on a phone](#run-it-on-a-phone).
-
-IRCIS stands for *"I Run Chars I See"*. It is a two-dimensional esolang by
-[Arjun Nair (batman-nair)](https://github.com/batman-nair/IRCIS). A program is
-a grid of characters, one instruction per cell. A *runner* walks it in a
-straight line until something tells it to turn, and it can split into several
+IRCIS is a small programming language by Arjun Nair (batman-nair); the name
+stands for *I Run Chars I See*. A program is a grid of characters, and a
+*runner* walks across the grid doing whatever it steps on. It goes in a
+straight line until a character turns it, and it can split into several
 runners going different ways at once.
+
+pIRCIS draws the grid, moves the runners a step at a time, and lets you edit
+the program and watch it again.
+
+## Learn IRCIS
+
+**[Learn IRCIS](LEARN.md)** teaches the language from scratch and builds up to
+writing your own programs. Every example in it is a real program you can run.
+
+## Three ways to run it
+
+- **App Store.** The app, for iPhone, iPad and Apple silicon Macs.
+  [About the app](#app-store).
+- **Board.** A cheap 4" ESP32 touchscreen, flashed over USB, that runs it on
+  its own. The `p` is for pocket. [Getting it on a board](#board).
+- **Emulator.** The same firmware in a window on your own macOS, Windows or
+  Linux computer. [Set it up](#emulator).
 
 <p align="center">
   <img src="shots/board.jpg" alt="pIRCIS running on the board" width="520">
@@ -32,39 +34,37 @@ runners going different ways at once.
   <img src="shots/motto.gif" alt="the motto program drawing IRCIS" width="480">
 </p>
 
-That second one is a real program running. A runner splits off at each letter
-and walks its shape, spelling out **IRCIS** as they go, and each of them
-prints its own word of what that stands for. The letters exist only as the
-paths the runners take, and the words are carried as numbers: there is not a
-letter anywhere in the grid.
+That is a real program running. A runner splits off at each letter and walks
+its shape, spelling out **IRCIS** as they go, and each of them prints its own
+word of what that stands for.
 
-### New here?
+## App Store
 
-**[Learn IRCIS](LEARN.md)** teaches the language from scratch and builds up to
-writing your own programs. Every example in it is a real program you can run.
+The app is **[pIRCIS on the App Store](https://apps.apple.com/app/id6809655892)**,
+for iPhone and iPad, and it runs on a Mac with Apple silicon as an iPad app.
+The app carries no WiFi page and no hidden program, shares programs through
+the phone's own sheet, opens `.txt` files from the Files app, and takes a
+program copied in any other app through the PASTE button on PROG > New
+program. Its privacy policy and support page are
+[ios/PRIVACY.md](ios/PRIVACY.md) and [ios/SUPPORT.md](ios/SUPPORT.md).
 
-**[Try it without a board](#run-it-on-your-computer-instead).** The emulator
-runs the whole thing in a window on your computer, so you can have a go before
-buying anything.
+## Board
 
-## What you need
-
-Nothing at all to start with, if you use
-[the emulator](#run-it-on-your-computer-instead). For the real thing:
+You need:
 
 - A 4.0" 320x480 ESP32 touch display. A Freenove FNK0114S, or any of the
   "cheap yellow display" boards of that size. Driven landscape at 480x320.
 - A USB cable.
 - Optionally a microSD card, for saving programs and run logs.
 
-These boards ship with one of two display controllers. Everything here was
-built against an **ST7796**, which is the one I have. There is an `ili9488`
-build too, but **I have never run it on hardware.** If you have one of those
-boards I would love to know whether it works.
+These boards ship with one of two display controllers. Mine is an
+**ST7796**, and everything here runs on it. There is an `ili9488` build too.
+It compiles, but I have not run it, because I do not have a board with that
+controller. If you have one, I would like to know whether it works.
 
-## Getting it on the board
+### Flashing it
 
-The easiest way is to build it yourself:
+The easiest way is to build it yourself. On a Mac:
 
 ```bash
 git clone https://github.com/jamesleaver/pIRCIS.git
@@ -74,7 +74,8 @@ pio run -e st7796 -t upload -t monitor
 ```
 
 SDL2 is only for the emulator. Skip it if you just want to flash a board. On
-Linux, `pip install platformio` and `apt install libsdl2-dev`.
+Linux, the same commands, with `pip install platformio` and
+`apt install libsdl2-dev` in place of the `brew` line.
 
 On Windows, install [Python](https://www.python.org/downloads/windows/) (tick
 *Add python.exe to PATH*) and [Git](https://git-scm.com/download/win), then in
@@ -121,7 +122,7 @@ On Windows, `pip install esptool` on its own is fine. The port is a COM number
 rather than a path, so it is `flash.bat COM5` and Device Manager lists them
 under Ports.
 
-## Run it on your computer instead
+## Emulator
 
 You don't need a board to try any of this. The emulator runs the real firmware
 in a window on your computer. Same interpreter, same screen, same programs. The
@@ -181,22 +182,6 @@ toolchain and takes a few minutes; after that it is seconds. If the build
 cannot find SDL2, point `SDL2_DIR` at the folder holding `include` and `lib`
 -- `/mingw64` for an MSYS2 install.
 
-### Once it is running
-
-This really is the same code that runs on the board. Only a thin layer
-underneath it differs. Every picture on this page came out of the emulator.
-
-**Type with your own keyboard.** Set `SYS > KEYBOARD` to `REAL`. The on-screen
-keys disappear and you type straight into the grid. Arrows move the cursor and
-backspace writes a blank. Your program gets those three rows back, which is
-about seven more lines on screen.
-
-Whatever you type in the terminal goes to the device as if it had come down the
-serial cable, so `help` will list what it can do. Four commands only work here:
-`tap <x> <y>` presses the screen for you, `key <char>` types for you,
-`shot run.ppm` saves a picture of it, and `page /outputs` prints one of the web
-pages.
-
 ### Driving it from the keyboard
 
 Set **SYS > KEYBOARD** to `REAL` and the on-screen keyboards go away, because
@@ -245,40 +230,9 @@ cd host && make
 ./sk_emu --visits
 ```
 
-## Run it on a phone
-
-The same program is **[pIRCIS on the App Store](https://apps.apple.com/app/id6809655892)**,
-for iPhone and iPad, and it runs on a Mac with Apple silicon as an iPad app.
-The app carries no WiFi page and no hidden program, shares programs through
-the phone's own sheet, opens `.txt` files from the Files app, and takes a
-program copied in any other app through the PASTE button on PROG > New
-program. Its privacy policy and support page are
-[ios/PRIVACY.md](ios/PRIVACY.md) and [ios/SUPPORT.md](ios/SUPPORT.md).
-
 ## Using it
 
 Five tabs along the bottom: **RUN**, **OUT**, **EDIT**, **PROG**, **SYS**.
-
-### PROG — pick a program
-
-Sixty-one programs come with it, sorted into folders. Tap a folder to go in,
-**Back** to come out.
-
-| | |
-|---|---|
-| ![the folders](shots/programs.png) | ![inside a folder](shots/folder.png) |
-
-Programs live in two places, the board's own flash and the SD card, and the
-list merges them. A chip mark means it is on the device, a notched card means
-it is on the SD card. Tap one to load it. `X` deletes it.
-
-The two **Save** rows write the current program to either store, into whichever
-folder you are looking at. **New program...** gives you an empty grid at any
-size up to 32 x 96.
-
-Nothing here is precious: edit a built-in program, save over it, rename it,
-delete it. `SYS > RESTORE BUILT-INS` puts the originals back and leaves
-anything you made alone.
 
 ### RUN — watch it go
 
@@ -310,7 +264,7 @@ pages moves nothing. Small arrows on the grid's edges page through a program
 larger than the window, and only appear on the sides where there is more to
 see. Opening EDIT pauses a run.
 
-### Under the grid — see what each runner is doing
+#### Under the grid — see what each runner is doing
 
 <p align="center">
   <img src="shots/runners.png" alt="the runner readout" width="420">
@@ -375,6 +329,34 @@ or column, or deletes one, inside the grid rather than at its edges.
   or right.
 - **PROG** grows a **Discard changes** row whenever there is something to throw
   away.
+
+### PROG — pick a program
+
+Sixty-one programs come with it, sorted into folders. Tap a folder to go in,
+**Back** to come out.
+
+| | |
+|---|---|
+| ![the folders](shots/programs.png) | ![inside a folder](shots/folder.png) |
+
+Programs live in two places, the board's own flash and the SD card, and the
+list merges them. A chip mark means it is on the device, a notched card means
+it is on the SD card. Tap one to load it. `X` deletes it.
+
+The two **Save** rows write the current program to either store, into whichever
+folder you are looking at. **New program...** gives you an empty grid at any
+size up to 32 x 96, and on the app and the emulator the same dialog has a
+**PASTE FROM THE CLIPBOARD** button, which loads whatever program is on the
+clipboard. On the emulator Ctrl/Cmd-V does the same from any page.
+
+The app has one store, the phone's own, so it has one Save row, and two rows
+the board does not have: **Share this program** hands the program to another
+app through the phone's share sheet, and **Open a file** loads a `.txt` file
+from the Files app.
+
+Nothing here is precious: edit a built-in program, save over it, rename it,
+delete it. `SYS > RESTORE BUILT-INS` puts the originals back and leaves
+anything you made alone.
 
 ### SYS — settings
 
@@ -515,7 +497,15 @@ I've written this guide as well: **[Learn IRCIS](LEARN.md)**, which teaches the
 language from scratch and builds up to writing your own programs. Every example
 in it is a real program you can run.
 
-## Over WiFi
+If you write one you are pleased with,
+[send it in](https://github.com/jamesleaver/pIRCIS/issues/new?template=program.yml)
+and it can go on the programs page of the website.
+
+## On the board
+
+Three things the board has that the app does not.
+
+### Over WiFi
 
 `SYS > WIFI` serves the device on your network. Via a browser on a computer
 connected to the same network, you can see the last run, an editable copy
@@ -527,7 +517,9 @@ what is on the card and write a program onto it. That is fine for something on
 your own desk, but it should be your choice. Turn WiFi off on a network you
 share.
 
-## Over serial
+### Over serial
+
+The emulator has this too, through the terminal it was started from.
 
 The serial console (115200) drives the same grid as the screen:
 
@@ -541,6 +533,14 @@ report        the whole run, with statistics
 
 `help` lists the rest. Output is mirrored to serial as it appears, so you can
 watch a long run from a laptop.
+
+### One more program
+
+There is an IRCIS program on this device that the list does not show.
+
+It is encrypted, and two words open it. Enter them correctly and you get an
+easter egg. The iOS app leaves it out: the board and the emulator carry it,
+the phone does not.
 
 ## What's inside
 
@@ -566,14 +566,6 @@ through a fixed set of taps and compares the screens byte for byte.
 Build output goes to `~/.cache/pircis/build`, deliberately outside any
 cloud-synced folder. A file provider can quietly hand a stale object to a
 running build.
-
-## One more program
-
-There is an IRCIS program on this device that the list does not show.
-
-It is encrypted, and two words open it. Enter them correctly and you get an
-easter egg. The iOS app leaves it out: the board and the emulator carry it,
-the phone does not.
 
 ## Copyright
 

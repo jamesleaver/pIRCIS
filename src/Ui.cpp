@@ -1180,7 +1180,9 @@ uint32_t headerSignature(const run::Snapshot& snap) {
 // clear -- six or seven characters' worth instead of the whole readout.
 // Without a ZOOM button (gestures) the readout moves up beside the speed
 // button, and the name gets the room: "step " and six digits, in Font0.
-inline int stepWordX() { return noZoomBtn() ? btnSpeed().x - 8 - 11 * 6 : fromRight(156); }
+// Never left of x 40: on a screen as narrow as 320 with the ZOOM button up
+// it would otherwise sit on, or before, the title.
+inline int stepWordX() { const int x = noZoomBtn() ? btnSpeed().x - 8 - 11 * 6 : fromRight(156); return x < 40 ? 40 : x; }
 #define kStepWordX stepWordX()
 #define kStepNumX  (kStepWordX + 5 * 6)   // just past "step "
 
@@ -2440,6 +2442,11 @@ inline int szY() { return g_sizeIsNew ? 60 : 34; }
 inline bool szPaste() { return g_sizeIsNew && plat::hasClipboard(); }
 inline int szH() { return g_sizeIsNew ? (szPaste() ? 186 : 150) : 222; }
 void pasteProgram();     // the clipboard as the program, defined with the loaders
+// A load that would throw away unsaved edits asks first; `go` is what
+// happens either way. Defined with the message dialogs.
+void unlessEdited(const char* what, std::function<void()> go);
+// After a line is taken out of the grid, the cursor may be past its edge.
+void clampCursor();
 #define kSzY szY()
 #define kSzH szH()
 
@@ -2497,6 +2504,7 @@ void pushShapeOp(uint8_t kind, int at) {
 
 void undoShapeOp() {
   if (g_szUndoCount <= 0) return;
+  clearUndo();                    // the cells move again
   const ShapeOp& op = g_szUndo[--g_szUndoCount];
   switch (op.kind) {
     case 0: g_edit.deleteRow(op.at); break;
@@ -2670,6 +2678,7 @@ void handleSizeTouch(int x, int y) {
         if (n < cap) {
           pushShapeOp(i == 0 ? 0 : 2, at);
           if (i == 0) g_edit.insertRow(at); else g_edit.insertCol(at);
+          clearUndo();            // every cell past the line moved
           markEdited();
         }
         g_szArmed = 0;
@@ -2685,6 +2694,8 @@ void handleSizeTouch(int x, int y) {
           if (i == 0) g_edit.deleteRow(at); else g_edit.deleteCol(at);
           if (at >= (i == 0 ? g_edit.rows() : g_edit.cols()))
             at = (i == 0 ? g_edit.rows() : g_edit.cols()) - 1;
+          clearUndo();
+          clampCursor();          // the cursor may have been on the line
           markEdited();
         }
         g_szArmed = 0;
@@ -2728,7 +2739,25 @@ void handleSizeTouch(int x, int y) {
   if (hit(btnSzCancel(), x, y)) { g_modal = Modal::None; wantAll(); return; }
   if (szPaste() && hit(btnSzPaste(), x, y)) { g_modal = Modal::None; pasteProgram(); return; }
   if (hit(btnSzOk(), x, y)) {
-    if (g_sizeIsNew) { g_edit.newProgram(g_sizeRows, g_sizeCols); g_progFile.clear(); }
+    if (g_sizeIsNew) {
+      // A blank grid at a new size: the history is about the last program's
+      // cells, and a load that would throw away unsaved edits asks first.
+      const int rows = g_sizeRows, cols = g_sizeCols;
+      g_modal = Modal::None;
+      unlessEdited("a new program", [rows, cols] {
+        g_edit.newProgram(rows, cols);
+        g_progFile.clear();
+        clearUndo();
+        run::load(g_edit);
+        markLoaded();
+        g_curRow = g_curCol = 0;
+        g_gridRow = g_gridCol = 0;
+        syncViewToProgram();
+        g_tab = Tab::Edit;
+        g_dirty = true;
+      });
+      return;
+    }
     else {
       // Each edge in turn. Adding at the top or the left shifts the program
       // down or right; adding at the bottom or the right leaves it where it
@@ -2789,6 +2818,7 @@ void relock() {
   theme::setDay(true);
   // The packed program is no longer listed, so do not leave it loaded.
   g_edit.loadProgram(prog::kOpeningExample);
+  clearUndo();
   applyViewTags(g_edit.text());
   g_appliedTag = tagIn(g_edit.text());
   run::load(g_edit);
@@ -2816,6 +2846,14 @@ void noteEdit(int row, int col, char was, char now) {
   g_undoAt = g_undo.size();
 }
 void clearUndo() { g_undo.clear(); g_undoAt = 0; }
+void clampCursor() {
+  if (g_curRow >= g_edit.rows()) g_curRow = g_edit.rows() - 1;
+  if (g_curCol >= g_edit.cols()) g_curCol = g_edit.cols() - 1;
+  if (g_curRow < 0) g_curRow = 0;
+  if (g_curCol < 0) g_curCol = 0;
+  // The RUN page's inspected cell, likewise.
+  if (g_runCellRow >= g_edit.rows() || g_runCellCol >= g_edit.cols()) g_runCellRow = -1;
+}
 
 bool canUndo() { return g_undoAt > 0; }
 bool canRedo() { return g_undoAt < g_undo.size(); }
@@ -3030,6 +3068,7 @@ bool setActive(int kind, int i) {
 }
 
 void applySet(int kind, int i) {
+  g_dirty = true;                 // the highlight moves whether or not a step has run
   const pack::SetGroup& g = pack::setGroup(kind);
   std::vector<std::string> f = setFields(setEntry(kind, i));
   if (g.isCount) {
@@ -3491,9 +3530,13 @@ bool splitProgramText(const std::string& text,
                       std::vector<std::string>& rows, std::size_t& wide) {
   rows.clear();
   std::string cur;
-  for (char c : text) {
+  for (unsigned char c : text) {
     if (c == '\n') { rows.push_back(cur); cur.clear(); }
-    else if (c != '\r') cur.push_back(c);
+    else if (c == '\r') continue;
+    // A program is printable ASCII: a tab, a control byte or a multibyte
+    // character would become cells the interpreter cannot read.
+    else if (c < 0x20 || c > 0x7e) return false;
+    else cur.push_back((char)c);
   }
   if (!cur.empty()) rows.push_back(cur);
   while (!rows.empty() && rows.back().empty()) rows.pop_back();
@@ -3555,6 +3598,7 @@ void afterProgramChange() {
   // new grid.
   g_curRow = g_curCol = 0;
   g_gridRow = g_gridCol = 0;
+  clampCursor();        // the RUN page's inspected cell may be past the new edge
   syncViewToProgram();
   g_histView = -1;      // a new program means the live run, not one looked back at
   // After syncViewToProgram, so a program that asks for a view gets it rather
@@ -3737,12 +3781,14 @@ bool loadProgramText(const std::string& text, const char* name = nullptr) {
 // shape of what arrives, and RUN shows it.
 void pasteProgram() {
   const std::string text = plat::clipboard();
-  if (text.empty()) message("Nothing to paste", "The clipboard is empty.");
-  else if (!loadProgramText(text, "Pasted"))
-    message("Cannot paste that",
-            "It has to be lines of characters, no wider than 96 and no more "
-            "than 32 of them.");
-  else { g_tab = Tab::Run; g_dirty = true; }
+  if (text.empty()) { message("Nothing to paste", "The clipboard is empty."); return; }
+  unlessEdited("the pasted program", [text] {
+    if (!loadProgramText(text, "Pasted"))
+      message("Cannot paste that",
+              "It has to be lines of characters, no wider than 96 and no more "
+              "than 32 of them.");
+    else { g_tab = Tab::Run; g_dirty = true; }
+  });
 }
 
 // The SAME program, edited elsewhere -- the web editor. Writing the cells into
@@ -3987,9 +4033,14 @@ void refreshProgFiles(bool force) {
   // otherwise the list shows nothing as loaded on a device fresh out of the
   // box. Only the pointer moves; the grid is left exactly as it is.
   if (g_progFile.empty() && !g_edit.isScratch() && !g_edit.isPacked()) {
+    // The built-ins live in their own folders, so the whole path is what
+    // must match: a user's copy of the same name in another folder is a
+    // different file.
     const std::string name = fileNameFor(g_edit.programName());
+    const char* folder = prog::programAt(g_edit.programIndex()).folder;
+    const std::string want = (folder && *folder) ? std::string(folder) + "/" + name : name;
     for (const std::string& f : g_devFiles)
-      if (leafOf(f) == name) { g_progFile = f; g_progWhere = plat::Where::Device; break; }
+      if (f == want) { g_progFile = f; g_progWhere = plat::Where::Device; break; }
   }
 
   // The folders are whatever the two stores between them contain, counted so
@@ -4016,7 +4067,8 @@ void refreshProgFiles(bool force) {
 void promptSaveAs(plat::Where w) {
   openPicker(std::string("Save on the ") + whereName(w), "", kKbText,
              fileNameFor(g_edit.programName()), 24,
-             [w](const std::string& v) {
+             [w](const std::string& typed) {
+               const std::string v = fileNameFor(typed.c_str());
                if (v.empty()) return;
                if (!plat::progWrite(w, inProgDir(v), g_edit.text())) {
                  message("Save failed",
@@ -4553,10 +4605,16 @@ void handleProgTouch(int x, int y) {
 
       case ProgRow::Packed:
         if (g_edit.programIndex() != r.index || !g_progFile.empty()) {
-          g_edit.loadProgram(r.index);
-          g_progFile.clear();
-          afterProgramChange();
-          g_follow = true;
+          const int index = r.index;
+          unlessEdited("that program", [index] {
+            g_edit.loadProgram(index);
+            g_progFile.clear();
+            afterProgramChange();
+            g_follow = true;
+            g_tab = Tab::Run;
+            g_dirty = true;
+          });
+          return;
         }
         g_tab = Tab::Run;
         g_dirty = true;
@@ -4564,19 +4622,22 @@ void handleProgTouch(int x, int y) {
 
       default: {
         const std::string name = filesIn(r.where)[r.index];
-        std::string text;
-        if (!plat::progRead(r.where, name, text)) {
-          message("Load failed", "Could not read that file.");
-          return;
-        }
-        // The title bar gets the name; the folder is context, not part of it.
-        if (!loadProgramText(text, leafOf(name).c_str())) {
-          message("Not a program", "That file is empty, or too big for the grid.");
-          return;
-        }
-        g_progFile  = name;
-        g_progWhere = r.where;
-        g_tab = Tab::Run;
+        const plat::Where where = r.where;
+        unlessEdited("that program", [name, where] {
+          std::string text;
+          if (!plat::progRead(where, name, text)) {
+            message("Load failed", "Could not read that file.");
+            return;
+          }
+          // The title bar gets the name; the folder is context, not part of it.
+          if (!loadProgramText(text, leafOf(name).c_str())) {
+            message("Not a program", "That file is empty, or too big for the grid.");
+            return;
+          }
+          g_progFile  = name;
+          g_progWhere = where;
+          g_tab = Tab::Run;
+        });
         return;                 // the rebuild's own repaint covers this
       }
     }
@@ -4925,7 +4986,11 @@ int insTop() {
     const int room = kModalBtnY - 8 - 28;
     if (room > kInsRows * kInsCellH) base = 28 + (room - kInsRows * kInsCellH) / 2;
   }
-  return base + (kInsRows - rows) * kInsCellH / 2;
+  int top = base + (kInsRows - rows) * kInsCellH / 2;
+  // A short screen: the block stops above the buttons, whatever else.
+  const int limit = kModalBtnY - 8 - rows * kInsCellH;
+  if (top > limit) top = limit < 28 ? 28 : limit;
+  return top;
 }
 int insCellX(int c) { return kInsX + c * kInsCellW; }
 int insCellY(int r) { return insTop() + r * kInsCellH; }
@@ -5096,8 +5161,13 @@ Btn btnDlgClose() { return { g_dlg.x + g_dlg.w - 80, dlgBtnY(), 72, dlgBtnH(),
 // DIAGNOSTICS only. Writing the grid and its edits to the console is a thing
 // you do while looking at the console, which is what this dialog is for; as a
 // SYS tile it sat among settings and did nothing visible on the device.
-Btn btnDlgDump()  { return { g_dlg.x + 160, dlgBtnY(), 110, dlgBtnH(),
-                             keyHints() ? "(D)UMP GRID" : "DUMP GRID" }; }
+Btn btnDlgDump()  {
+  // Three buttons need 358 px; a narrower dialog puts this one on the row above.
+  const bool fits = g_dlg.w >= 358;
+  return { fits ? g_dlg.x + 160 : g_dlg.x + g_dlg.w - 118,
+           fits ? dlgBtnY() : dlgBtnY() - dlgBtnH() - 4, 110, dlgBtnH(),
+           keyHints() ? "(D)UMP GRID" : "DUMP GRID" };
+}
 
 void dumpGrid() {
   plat::logf("--- %s ---\n", g_edit.programName());
@@ -6082,6 +6152,15 @@ std::vector<std::string> msgLines() {
     out.push_back(g_msgBody.substr(i, take));
     i += take;
     while (i < g_msgBody.size() && g_msgBody[i] == ' ') ++i;
+    // A body longer than the screen would push the buttons off it: the
+    // rest goes, and the last line says so.
+    const int fixed = 26 + kMsgPad + kContentBigH + 8 + kMsgPad + kMsgBtnH + kMsgPad;
+    const int maxLines = (kScreenH - fixed) / kContentH;
+    if ((int)out.size() >= maxLines && maxLines >= 1 && i < g_msgBody.size()) {
+      std::string& last = out.back();
+      if (last.size() > 3) last.replace(last.size() - 3, 3, "...");
+      break;
+    }
   }
   if (out.empty()) out.push_back("");
   return out;
@@ -6132,6 +6211,13 @@ void drawMessage() {
 
 void message(const std::string& title, const std::string& body) {
   g_msgTitle = title; g_msgBody = body; g_modal = Modal::Message; wantAll();
+}
+
+void unlessEdited(const char* what, std::function<void()> go) {
+  if (g_edit.modifiedCells() == 0) { go(); return; }
+  confirm("Replace the edited program?",
+          std::string("The program has edits that are not saved, and ") + what +
+          " would replace them. Save first, or CONFIRM to let them go.", go);
 }
 
 void confirm(const std::string& title, const std::string& body, std::function<void()> yes) {
@@ -6442,8 +6528,10 @@ void followRunner(const run::Snapshot& snap) {
   if (!Store::followRunners()) return;      // the view stays where it was put
   if (!g_follow || snap.runnerCount == 0) return;
   int col = -1, row = -1, best = 999;
-  for (int i = 0; i < snap.runnerCount; ++i)
-    if (snap.runners[i].id < best) {
+  // Slots are by runner id, and a dead one keeps its last position: only a
+  // live runner is worth following, and there may be gaps before it.
+  for (int i = 0; i < run::kMaxRunners; ++i)
+    if (snap.runners[i].alive && snap.runners[i].id < best) {
       best = snap.runners[i].id;
       col = snap.runners[i].x;
       row = snap.runners[i].y;
@@ -7238,10 +7326,22 @@ int focusList(Btn* out) {
     return n;
   }
   if (g_modal == Modal::Size) {
-    add(btnSzRowsDn()); add(btnSzRowsUp());
-    add(btnSzColsDn()); add(btnSzColsUp());
-    if (szPaste()) add(btnSzPaste());
-    add(btnSzCancel()); add(btnSzOk());
+    if (g_sizeIsNew) {
+      add(btnSzRowsDn()); add(btnSzRowsUp());
+      add(btnSzColsDn()); add(btnSzColsUp());
+      if (szPaste()) add(btnSzPaste());
+      add(btnSzCancel()); add(btnSzOk());
+    }
+    else if (g_szPage == 1) {
+      add(btnSzPage());
+      for (int i = 0; i < 2; ++i) { add(btnSzAtDn(i)); add(btnSzAtUp(i)); add(btnSzIns(i)); add(btnSzDel(i)); }
+      add(btnSzUndo()); add(btnSzDone());
+    }
+    else {
+      add(btnSzPage());
+      for (int i = 0; i < 4; ++i) { add(btnSzEdgeDn(i)); add(btnSzEdgeUp(i)); }
+      add(btnSzCancel()); add(btnSzOk());
+    }
     return n;
   }
   if (g_modal == Modal::Wifi) {
@@ -7415,11 +7515,16 @@ void pollTypedKeys() {
                           || g_modal == Modal::Shortcuts || g_modal == Modal::Learn;
     if (k == plat::kKeyEsc || (k == 'c' && pagedDialog)) {
       g_focus = -1;                        // the ring belongs to what is closing
+      g_msgThenInfo = false;               // whatever was to follow the splash, Esc declined it
       if (pagedDialog)                     { g_modal = Modal::None; g_dialogPage = 0; wantAll(); }
       else if (g_modal == Modal::Picker)   { handlePickerTouch(btnPickCancel().x + 4, btnPickCancel().y + 4); }
       else if (g_modal == Modal::Confirm)  { handleMessageTouch(btnMsgCancel().x + 4, btnMsgCancel().y + 4); }
       else if (g_modal == Modal::Message)  { handleMessageTouch(btnMsgOk().x + 4, btnMsgOk().y + 4); }
-      else if (g_modal == Modal::Size)     { handleSizeTouch(btnSzCancel().x + 4, btnSzCancel().y + 4); }
+      else if (g_modal == Modal::Size) {
+        // Page two has no CANCEL: its way out is DONE.
+        const Btn out = (!g_sizeIsNew && g_szPage == 1) ? btnSzDone() : btnSzCancel();
+        handleSizeTouch(out.x + 4, out.y + 4);
+      }
       else if (g_modal != Modal::None)     { g_modal = Modal::None; g_dialogPage = 0; wantAll(); }
       else if (g_focus >= 0)               { g_focus = -1; g_dirty = true; }
       continue;
@@ -7596,7 +7701,9 @@ void pollTypedKeys() {
           Btn list[kMaxFocus];
           if (g_focus < focusList(list)) {
             const Btn& b = list[g_focus];
-            handleProgTouch(8, b.y + b.h / 2);   // the X sits at the row's left
+            // The action tiles carry a label; the program rows draw their own.
+            if (!b.label || !*b.label)
+              handleProgTouch(8, b.y + b.h / 2);   // the X sits at the row's left
           }
         }
         continue;
@@ -7857,6 +7964,8 @@ void tick() {
       // A program is printable ASCII in lines. Anything else -- a binary,
       // a document in another encoding -- is refused before it reaches
       // the grid.
+      if (text == "\x01") { message("Not a program", "That file is far too big to be a program."); return; }
+      if (text == "\x02") { message("Not a program", "That file could not be read as text."); return; }
       bool plain = !text.empty();
       for (unsigned char ch : text)
         if (ch != '\n' && ch != '\r' && ch != '\t' && (ch < 0x20 || ch > 0x7e)) { plain = false; break; }
@@ -7884,14 +7993,18 @@ void tick() {
       else if (!rectangular) {
         message("Not a program", "The lines are not all the same length. A program is a rectangle of characters.");
       }
-      else if (!loadProgramText(text, name.c_str())) {
-        message("Not a program", "That file is empty, or too big for the grid.");
-      } else {
-        g_progFile.clear();
-        g_progWhere = plat::Where::Device;
-        g_modal = Modal::None;
-        g_tab = Tab::Run;
-        wantAll();
+      else {
+        unlessEdited("the opened file", [text, name] {
+          if (!loadProgramText(text, name.c_str())) {
+            message("Not a program", "That file is empty, or too big for the grid.");
+            return;
+          }
+          g_progFile.clear();
+          g_progWhere = plat::Where::Device;
+          g_modal = Modal::None;
+          g_tab = Tab::Run;
+          wantAll();
+        });
       }
     }
   }
@@ -7998,7 +8111,7 @@ void tick() {
   // OLD machine's runners on it, and the rebuild then paints it again: two
   // frames for one change, the first of them wrong. So the request paths
   // leave g_dirty alone and this is the single paint, whichever page is up.
-  const uint32_t bv = run::buildVersion();
+  const uint32_t bv = snap.buildVersion;   // read with the snapshot, under one lock
   if (bv != lastRunVersion) {
     lastRunVersion = bv;
 #if defined(SK_HOST)

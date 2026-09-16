@@ -1,0 +1,178 @@
+/* pIRCIS site. The palette is the device's own day theme (src/Theme.h),
+   and the chrome borrows its header band and tab bar. */
+:root {
+  --paper: #ffffff;
+  --ink: #0a0a0a;
+  --panel: #e6e3e6;
+  --line: #adaaad;
+  --dim: #6b696b;
+  --blank: #c5c2c5;
+  --accent: #bd2c00;
+  --good: #009200;
+  --blue: #0041ce;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #000000;
+    --ink: #f2f2f2;
+    --panel: #181c18;
+    --line: #4a4c4a;
+    --dim: #9a9a9a;
+    --blank: #3c3c3c;
+    --accent: #ffa600;
+    --good: #35c94a;
+    --blue: #6f9cff;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #000000;
+  --ink: #f2f2f2;
+  --panel: #181c18;
+  --line: #4a4c4a;
+  --dim: #9a9a9a;
+  --blank: #3c3c3c;
+  --accent: #ffa600;
+  --good: #35c94a;
+  --blue: #6f9cff;
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: light dark; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 17px/1.55 var(--sans);
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* The header band and the tab bar stay put while the page scrolls under them. */
+.top { position: sticky; top: 0; z-index: 10; }
+:root { --top: 5.1rem; }
+[id] { scroll-margin-top: calc(var(--top) + 1rem); }
+
+/* The device's header band: title at the left, the small readout at the right. */
+.bar {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  padding: .55rem 1rem;
+  background: radial-gradient(var(--blank) 1px, transparent 1.3px) 0 0 / 14px 14px, var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+}
+.brand { font-size: 1.35rem; font-weight: 600; color: var(--accent); text-decoration: none; letter-spacing: .01em; }
+.brand .p { color: var(--ink); }
+.gh { color: var(--ink); display: inline-flex; align-self: center; }
+.gh:hover { color: var(--accent); }
+
+/* The device's tab bar, laid across the top. */
+.tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); }
+.tab {
+  flex: 1 1 0; text-align: center; padding: .55rem .25rem;
+  font: 500 .78rem/1.2 var(--mono); letter-spacing: .08em; color: var(--ink);
+  text-decoration: none; border-right: 1px solid var(--line); white-space: nowrap;
+}
+.tab .short { display: none; }
+@media (max-width: 640px) {
+  .tab { font-size: .7rem; letter-spacing: .04em; padding: .55rem .1rem; }
+  .tab .long { display: none; }
+  .tab .short { display: inline; }
+}
+.tab:last-child { border-right: 0; }
+.tab:hover { background: var(--paper); }
+.tab.on { background: var(--accent); color: #fff; }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+.with-side { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 2.5rem; }
+/* A page without a contents rail keeps its text where the others put theirs. */
+.wrap:not(.with-side) .body { margin-left: calc(250px + 2.5rem); }
+.body { max-width: 74ch; }
+.lede { font: 400 1.25rem/1.45 var(--sans); margin: .4rem 0 1.4rem; color: var(--ink); text-wrap: pretty; }
+.lede a { font-weight: 600; }
+.side { font: .82rem/1.45 var(--mono); }
+.side .k { color: var(--accent); font-weight: 600; margin: 0 0 .5rem; }
+.side nav { position: sticky; top: calc(var(--top) + 1rem); max-height: calc(100vh - var(--top) - 2rem); overflow: auto; padding-right: .5rem; }
+.side ul { list-style: none; margin: 0; padding: 0; }
+.side ul ul { padding-left: .9rem; border-left: 1px solid var(--line); margin: .15rem 0 .35rem; }
+.side li { margin: .3rem 0; }
+.side a { color: var(--ink); text-decoration: none; }
+.side a:hover, .side a.now { color: var(--accent); }
+
+h1, h2, h3, h4 { font-family: var(--mono); font-weight: 600; line-height: 1.2; text-wrap: balance; }
+h1.title { font-size: 1.9rem; color: var(--accent); margin: 0 0 1.25rem; }
+h2 { font-size: 1.3rem; margin: 2.4rem 0 .8rem; padding-top: .8rem; border-top: 1px solid var(--line); }
+h3 { font-size: 1.05rem; margin: 1.8rem 0 .6rem; }
+/* On Using it and Get it the parts are the device's own pages, and each gets a rule. */
+[data-page="use"] h3, [data-page="get"] h3 { border-top: 1px solid var(--line); padding-top: 1rem; margin-top: 2rem; }
+h4 { font-size: .95rem; margin: 1.4rem 0 .5rem; }
+p, ul, ol { margin: 0 0 1rem; }
+li { margin: .25rem 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+img { max-width: 100%; height: auto; }
+p[align="center"] { text-align: center; margin: 1.4rem 0; }
+p[align="center"] img { border: 1px solid var(--line); }
+strong { font-weight: 600; }
+
+code, pre, kbd {
+  font-family: var(--mono); font-size: .88em;
+}
+code { background: var(--panel); padding: .1em .35em; border-radius: 3px; }
+pre {
+  background: var(--paper); border: 1px solid var(--line); border-radius: 4px;
+  padding: .8rem 1rem; overflow-x: auto; line-height: 1.35; margin: 0 0 1.1rem;
+}
+pre code { background: none; padding: 0; font-size: .85rem; }
+pre .d { color: var(--blank); }
+
+table { border-collapse: collapse; margin: 0 0 1.2rem; max-width: 100%; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: .35rem .6rem; vertical-align: top; text-align: left; }
+th { font: 500 .78rem/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--panel); }
+td img { display: block; }
+
+blockquote {
+  margin: 0 0 1.1rem; padding: .6rem 1rem; background: var(--panel);
+  border-left: 3px solid var(--accent);
+}
+blockquote > :last-child { margin-bottom: 0; }
+
+/* The front page: the readme's three ways, as cards. */
+.ways h2 { border-top: 0; margin-top: 2rem; }
+.ways ul { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; list-style: none; padding: 0; }
+.ways li {
+  margin: 0; padding: 1rem; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--panel); font-size: .95rem;
+}
+.ways li strong { display: block; font-family: var(--mono); font-size: 1rem; margin-bottom: .35rem; }
+
+/* A program listing, with its copy button in the corner of the frame. */
+.frame { position: relative; }
+.frame pre { padding-right: 4.5rem; }
+.copy {
+  position: absolute; top: .45rem; right: .45rem;
+  font: 500 .68rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 3px;
+  padding: .3rem .5rem; cursor: pointer;
+}
+.prog { margin: 0 0 1.6rem; }
+.prog h3 { display: flex; align-items: baseline; gap: .7rem; margin: 1.4rem 0 .5rem; }
+.prog .src { font: 400 .78rem/1 var(--mono); color: var(--dim); }
+.submit { padding: .7rem 1rem; border: 1px solid var(--line); border-radius: 4px; }
+.copy:hover { border-color: var(--accent); color: var(--accent); }
+.copy.done { color: #fff; background: var(--good); border-color: var(--good); }
+
+.foot { border-top: 1px solid var(--line); padding: 1.2rem; color: var(--dim); font-size: .85rem; text-align: center; }
+.foot p { margin: 0; }
+
+@media (max-width: 820px) {
+  body { font-size: 16px; }
+  .with-side { display: block; }
+  .wrap:not(.with-side) .body { margin-left: 0; }
+  .side nav { position: static; max-height: 14rem; border: 1px solid var(--line); padding: .7rem .9rem; margin-bottom: 1.5rem; border-radius: 4px; }
+  .ways ul { grid-template-columns: 1fr; }
+  :root { --top: 5.1rem; }
+  .step { display: none; }
+}
+

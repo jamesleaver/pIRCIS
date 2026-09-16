@@ -151,6 +151,42 @@ int main() {
           "so the slot accessors refuse cleanly");
   }
 
+  // Arithmetic that used to hang or trap, and the memory hooks. Each grid is
+  // a single row read eastward from (0,0).
+  std::printf("arithmetic edges and memory hooks\n");
+  {
+    auto run = [](const char* row, MachineOptions o, long limit, std::string* firstError) {
+      std::vector<std::string> lines;
+      std::string cur;
+      for (const char* p = row; *p; ++p) { if (*p == '\n') { lines.push_back(cur); cur.clear(); } else cur += *p; }
+      if (!cur.empty()) lines.push_back(cur);
+      auto g = std::make_shared<Grid>(lines);
+      StringSink s; Machine m(g, &s, o);
+      long n = 0;
+      while (m.update() && ++n < limit) { }
+      if (firstError) *firstError = m.deaths().empty() ? "" : m.deaths().front().error;
+      return n < limit;
+    };
+    std::string err;
+    check(run("'1.'0.'-.'2.'^.", MachineOptions(), 1000, &err), "a negative exponent ends instead of hanging");
+    check(run("'0.'5.'%.", MachineOptions(), 1000, &err) && err == "Modulo by zero error",
+          "modulo by zero kills the runner with a reason");
+    check(run("'1.'31.'<.'0.'1.'-.'/.", MachineOptions(), 1000, &err) && err == "Runner went outside grid",
+          "INT_MIN divided by -1 wraps and does not trap");
+    check(run("'1.'31.'<.'0.'1.'-.'%.", MachineOptions(), 1000, &err) && err == "Runner went outside grid",
+          "INT_MIN modulo -1 is 0 and does not trap");
+    check(base64_encode_int(-2147483647 - 1).size() == 7 && base64_encode_int(-2147483647 - 1)[0] == '-',
+          "base64 of INT_MIN stays inside its table");
+    check(base64_encode_int(-5) == "-AAAAAF" && base64_encode_int(64) == "BA",
+          "and every other value encodes as before");
+    MachineOptions capped; capped.max_runners = 64;
+    check(run(".>*>v\n.^v.v\n.^v<<\n.^<..", capped, 400, &err) == false && err == "Out of memory for a new runner",
+          "a doubling split stops at the runner ceiling and says why");
+    MachineOptions starved; starved.low_memory = [] { return true; };
+    check(run(">'1.v\n^...<", starved, 100000, &err) && err == "Out of memory for the stack",
+          "a stack that cannot grow ends the runner with a reason");
+  }
+
   std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
               failures, failures == 1 ? "" : "s");
   return failures ? 1 : 0;

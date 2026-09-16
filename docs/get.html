@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get pIRCIS</title>
+<meta name="description" content="Get pIRCIS: the app for iPhone, iPad and Mac, the ESP32 board, or the emulator for macOS, Windows and Linux.">
+<link rel="canonical" href="https://pircis.fisheggs.au/get.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="pIRCIS">
+<meta property="og:title" content="Get pIRCIS">
+<meta property="og:description" content="Get pIRCIS: the app for iPhone, iPad and Mac, the ESP32 board, or the emulator for macOS, Windows and Linux.">
+<meta property="og:url" content="https://pircis.fisheggs.au/get.html">
+<meta property="og:image" content="https://pircis.fisheggs.au/shots/board.jpg">
+<meta property="og:image:alt" content="pIRCIS running on a 4 inch ESP32 touchscreen">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Get pIRCIS">
+<meta name="twitter:description" content="Get pIRCIS: the app for iPhone, iPad and Mac, the ESP32 board, or the emulator for macOS, Windows and Linux.">
+<meta name="twitter:image" content="https://pircis.fisheggs.au/shots/board.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Get pIRCIS","description":"Get pIRCIS: the app for iPhone, iPad and Mac, the ESP32 board, or the emulator for macOS, Windows and Linux.","url":"https://pircis.fisheggs.au/get.html"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="top">
+<header class="bar">
+  <a class="brand" href="index.html"><span class="p">p</span>IRCIS</a>
+  <a class="gh" href="https://github.com/jamesleaver/pIRCIS" aria-label="pIRCIS on GitHub" title="pIRCIS on GitHub"><svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+</header>
+<nav class="tabs" aria-label="Pages"><a class="tab" href="index.html"><span class="long">HOME</span><span class="short">HOME</span></a><a class="tab on" href="get.html"><span class="long">GET IT</span><span class="short">GET IT</span></a><a class="tab" href="use.html"><span class="long">USING IT</span><span class="short">USING IT</span></a><a class="tab" href="learn.html"><span class="long">LEARN IRCIS</span><span class="short">LEARN</span></a><a class="tab" href="programs.html"><span class="long">PROGRAMS</span><span class="short">PROGS</span></a></nav>
+</div>
+<div class="wrap with-side">
+<aside class="side"><nav aria-label="Contents"><ul><li><a href="#app-store">App Store</a></li><li><a href="#board">Board</a><ul><li><a href="#flashing-it">Flashing it</a></li></ul></li><li><a href="#emulator">Emulator</a><ul><li><a href="#macos">macOS</a></li><li><a href="#linux">Linux</a></li><li><a href="#windows">Windows</a></li><li><a href="#driving-it-from-the-keyboard">Driving it from the keyboard</a></li></ul></li></ul></nav></aside>
+<main class="body" data-page="get">
+<h1 class="title">Get pIRCIS</h1><h2 id="app-store">App Store</h2>
+<p>The app is <strong><a href="https://apps.apple.com/app/id6809655892">pIRCIS on the App Store</a></strong>,
+for iPhone and iPad, and it runs on a Mac with Apple silicon as an iPad app.
+The app carries no WiFi page and no hidden program, shares programs through
+the phone's own sheet, opens <code>.txt</code> files from the Files app, and takes a
+program copied in any other app through the PASTE button on PROG &gt; New
+program. Its privacy policy and support page are
+<a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/PRIVACY.md">ios/PRIVACY.md</a> and <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/SUPPORT.md">ios/SUPPORT.md</a>.</p>
+<h2 id="board">Board</h2>
+<p>You need:</p>
+<ul>
+<li>A 4.0" 320x480 ESP32 touch display. A Freenove FNK0114S, or any of the
+  "cheap yellow display" boards of that size. Driven landscape at 480x320.</li>
+<li>A USB cable.</li>
+<li>Optionally a microSD card, for saving programs and run logs.</li>
+</ul>
+<p>These boards ship with one of two display controllers. Mine is an
+<strong>ST7796</strong>, and everything here runs on it. There is an <code>ili9488</code> build too.
+It compiles, but I have not run it, because I do not have a board with that
+controller. If you have one, I would like to know whether it works.</p>
+<h3 id="flashing-it">Flashing it</h3>
+<p>The easiest way is to build it yourself. On a Mac:</p>
+<pre><code class="language-bash">git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+brew install platformio sdl2
+pio run -e st7796 -t upload -t monitor
+</code></pre>
+<p>SDL2 is only for the emulator. Skip it if you just want to flash a board. On
+Linux, the same commands, with <code>pip install platformio</code> and
+<code>apt install libsdl2-dev</code> in place of the <code>brew</code> line.</p>
+<p>On Windows, install <a href="https://www.python.org/downloads/windows/">Python</a> (tick
+<em>Add python.exe to PATH</em>) and <a href="https://git-scm.com/download/win">Git</a>, then in
+PowerShell:</p>
+<pre><code class="language-powershell">pip install platformio
+git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+pio run -e st7796 -t upload -t monitor
+</code></pre>
+<p>If you have already set up MSYS2 for the emulator (below), the same shell and
+the same <code>pio</code> flash the board too. Either way, if <code>pio device list</code> shows no
+port, Windows is missing the board's USB-serial driver -- CH340 or CP210x,
+depending on the board -- and Device Manager will show an unknown device
+until it is installed.</p>
+<p>PlatformIO brings its own compiler and its own upload tool, so the build and
+flash commands are the same on all three systems.</p>
+<p>If the screen stays dark or the colours look wrong, you have the other panel:
+use <code>-e ili9488</code> instead. If <code>upload</code> cannot find the board, check
+<code>pio device list</code>. If the port is not there at all you are missing the
+USB-serial driver, not anything to do with PlatformIO. And if it sits on
+<code>Connecting.....</code> forever, hold the <strong>BOOT</strong> button, tap <strong>EN/RST</strong>, then let go
+of BOOT.</p>
+<p>There are also prebuilt archives on
+<a href="https://github.com/jamesleaver/pIRCIS/releases">Releases</a> if you would rather
+not build. Grab the zip for your panel plus <code>SHA256SUMS</code>, check it, unzip it,
+and run <code>./flash.sh</code>, or <code>flash.bat</code> on Windows. With no arguments either one
+lists the ports it can see. Flashing that way needs
+<a href="https://pypi.org/project/esptool/">esptool</a>, and on recent macOS you will need
+it in a virtual environment:</p>
+<pre><code class="language-bash">python3 -m venv ~/.venvs/esptool
+source ~/.venvs/esptool/bin/activate
+pip install esptool
+</code></pre>
+<p>On Windows, <code>pip install esptool</code> on its own is fine. The port is a COM number
+rather than a path, so it is <code>flash.bat COM5</code> and Device Manager lists them
+under Ports.</p>
+<h2 id="emulator">Emulator</h2>
+<p>You don't need a board to try any of this. The emulator runs the real firmware
+in a window on your computer. Same interpreter, same screen, same programs. The
+mouse works as the touchscreen. The build asks your machine where SDL2 is
+rather than being told, so the last command is the same on all three systems;
+only the setup before it differs.</p>
+<h3 id="macos">macOS</h3>
+<pre><code class="language-bash">brew install platformio sdl2
+git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+pio run -e emulator -t exec
+</code></pre>
+<h3 id="linux">Linux</h3>
+<pre><code class="language-bash">sudo apt install libsdl2-dev python3-pip git
+pip install platformio
+git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+pio run -e emulator -t exec
+</code></pre>
+<p>Those are the Debian and Ubuntu package names; on other distributions install
+SDL2's development package and pip. If <code>pip</code> refuses to install system-wide,
+put PlatformIO in a virtual environment the way the Windows steps below do.</p>
+<h3 id="windows">Windows</h3>
+<p>The emulator is built with MSYS2, which supplies the compiler and SDL2.
+Install it from PowerShell:</p>
+<pre><code class="language-powershell">winget install --id MSYS2.MSYS2 -e
+</code></pre>
+<p>Then open <strong>MSYS2 MINGW64</strong> from the Start menu -- that one, not "MSYS2
+MSYS", which has the wrong compiler -- and run:</p>
+<pre><code class="language-bash">pacman -S --needed git mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-pkg-config mingw-w64-x86_64-python
+python -m venv ~/pio-venv
+source ~/pio-venv/bin/activate 2&gt;/dev/null || source ~/pio-venv/Scripts/activate
+pip install platformio
+git clone https://github.com/jamesleaver/pIRCIS.git
+cd pIRCIS
+pio run -e emulator -t exec
+</code></pre>
+<p>MSYS2's Python will not install packages system-wide, which is what the
+virtual environment is for; run the <code>source</code> line again in each new shell
+before <code>pio</code>, or put it in <code>~/.bashrc</code>. The first build downloads the
+toolchain and takes a few minutes; after that it is seconds. If the build
+cannot find SDL2, point <code>SDL2_DIR</code> at the folder holding <code>include</code> and <code>lib</code>
+-- <code>/mingw64</code> for an MSYS2 install.</p>
+<h3 id="driving-it-from-the-keyboard">Driving it from the keyboard</h3>
+<p>Set <strong>SYS &gt; KEYBOARD</strong> to <code>REAL</code> and the on-screen keyboards go away, because
+you have a real one. The shortcut list comes up when you switch it over, and
+<code>F1</code> brings it back.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tab, Shift-Tab</td>
+<td>the next page, the page before</td>
+</tr>
+<tr>
+<td>Arrows</td>
+<td>move between the controls on the page</td>
+</tr>
+<tr>
+<td>Space, Enter</td>
+<td>press the one the ring is on</td>
+</tr>
+<tr>
+<td>Esc, or <code>c</code></td>
+<td>close what is open</td>
+</tr>
+<tr>
+<td><code>p</code></td>
+<td>play or pause</td>
+</tr>
+<tr>
+<td><code>f</code>, <code>b</code></td>
+<td>forward a step, back a step</td>
+</tr>
+<tr>
+<td><code>r</code></td>
+<td>back to the start</td>
+</tr>
+<tr>
+<td><code>e</code></td>
+<td>run to the end</td>
+</tr>
+<tr>
+<td><code>s</code></td>
+<td>speed</td>
+</tr>
+<tr>
+<td><code>z</code></td>
+<td>ZOOM or WIDE</td>
+</tr>
+<tr>
+<td><code>n</code></td>
+<td>rename the program</td>
+</tr>
+<tr>
+<td><code>x</code></td>
+<td>delete the program the ring is on, in PROG</td>
+</tr>
+<tr>
+<td>Ctrl/Cmd <code>V</code></td>
+<td>paste a program in from the clipboard (also a button on PROG &gt; New program)</td>
+</tr>
+<tr>
+<td>F1</td>
+<td>the shortcut list</td>
+</tr>
+</tbody>
+</table>
+<p>On RUN the arrows scroll the view. If <strong>SYS &gt; GRID TAP</strong> is set to inspect
+cells or to move the start point, they move between cells instead and Space
+does whatever that setting says. Inside the inspector the arrows move the
+cell, and <code>e</code>, <code>r</code>, <code>s</code> and <code>c</code> press its buttons: edit the character,
+revert it, set the start point, close. The character keyboard has no space
+key; DEL then OK writes a space.</p>
+<p>In the editor the letters go into the program, so the commands above do not
+apply there. Ctrl or Cmd with <code>S</code>, <code>Z</code>, <code>Y</code>, <code>N</code> and <code>G</code> save, undo, redo,
+rename and switch the grid view. Ctrl or Cmd with Shift and <code>?</code> brings up the
+shortcut list, <code>?</code> being the symbol on the editor's help button.</p>
+<p>The window itself answers to Alt-<code>R</code> and Alt-<code>L</code> to rotate and Alt-<code>1</code> to
+Alt-<code>6</code> to scale. Those need Alt so that <code>r</code>, <code>l</code> and the digits stay ordinary
+characters in a program.</p>
+<p>There is a version with no window at all, for running a program and looking at
+what it did:</p>
+<pre><code class="language-bash">cd host &amp;&amp; make
+./sk_emu --grid myprogram.txt --stats
+./sk_emu --visits
+</code></pre>
+</main>
+</div>
+<footer class="foot">
+  <p>pIRCIS is copyright &copy; 2026 James Leaver, MIT licensed. IRCIS is the work of
+  <a href="https://github.com/batman-nair/IRCIS">Arjun Nair</a>.
+  <a href="https://github.com/jamesleaver/pIRCIS">Source on GitHub</a> &middot;
+  <a href="https://apps.apple.com/app/id6809655892">The app on the App Store</a> &middot;
+  <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/PRIVACY.md">Privacy</a> &middot;
+  <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/SUPPORT.md">Support</a></p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>

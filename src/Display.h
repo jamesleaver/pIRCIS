@@ -11,6 +11,7 @@
 #define LGFX_USE_V1
 #endif
 #include <LovyanGFX.hpp>
+#include <atomic>
 
 #include "Config.h"
 
@@ -137,7 +138,7 @@ private:
       // Two fingers: SDL reports how far apart they have moved since the
       // last report, as a fraction of the screen, and where their middle is.
       else if (e->type == SDL_MULTIGESTURE && e->mgesture.numFingers >= 2) {
-        p->pinch_ += e->mgesture.dDist;
+        p->pinch_ = p->pinch_ + e->mgesture.dDist;
         p->pinchNx_ = e->mgesture.x; p->pinchNy_ = e->mgesture.y;
       }
       // A wheel: notches, with the pointer where it was at the time. A
@@ -154,10 +155,13 @@ private:
   }
   int frameW_ = 0, frameH_ = 0, innerX_ = 0, innerY_ = 0;
   bool watching_ = false;
-  volatile bool pending_ = false, down_ = false;
-  volatile int pendX_ = 0, pendY_ = 0, posX_ = 0, posY_ = 0;
-  volatile float pinch_ = 0, pinchNx_ = 0, pinchNy_ = 0;
-  volatile int wheelY_ = 0, wheelX_ = 0, wheelPx_ = 0, wheelPy_ = 0;
+  // Written by the event watch on the pumping thread, read by the program
+  // thread: atomics, so a press is never seen with the coordinates of the
+  // one before it.
+  std::atomic<bool> pending_{false}, down_{false};
+  std::atomic<int> pendX_{0}, pendY_{0}, posX_{0}, posY_{0};
+  std::atomic<float> pinch_{0}, pinchNx_{0}, pinchNy_{0};
+  std::atomic<int> wheelY_{0}, wheelX_{0}, wheelPx_{0}, wheelPy_{0};
 public:
   // The output's size in pixels, which changes when the phone is turned.
   bool outputSize(int& w, int& h) {

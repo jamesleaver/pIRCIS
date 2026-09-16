@@ -9,7 +9,7 @@
 #   make        -> build sk_emu and the golden test
 #   make test   -> run the golden test
 CXX      ?= c++
-CXXFLAGS ?= -std=gnu++17 -O2 -Wall -Wextra -Wno-unused-parameter
+CXXFLAGS ?= -std=gnu++17 -fwrapv -O2 -Wall -Wextra -Wno-unused-parameter
 INCLUDES  = -I../lib/ircis/src -I../lib/program/src -I../lib/pack/src
 
 # Some macOS Command Line Tools installs ship libc++ only inside the SDK, where

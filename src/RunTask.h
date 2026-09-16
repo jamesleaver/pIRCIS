@@ -115,6 +115,7 @@ namespace run {
     // Faults in total, which can exceed the notes kept, so the panel can say
     // how many it is not showing rather than how many it had room to store.
     uint16_t  deathNoteTotal = 0;
+    uint32_t  buildVersion = 0;       // the machine this snapshot came from
     DeathNote deathNotes[kMaxDeathNotes] = {};
   };
 

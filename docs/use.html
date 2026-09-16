@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Using pIRCIS</title>
+<meta name="description" content="Using pIRCIS: the RUN, OUT, EDIT, PROG and SYS pages, the programs that come with it, view tags, and writing your own IRCIS programs.">
+<link rel="canonical" href="https://pircis.fisheggs.au/use.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="pIRCIS">
+<meta property="og:title" content="Using pIRCIS">
+<meta property="og:description" content="Using pIRCIS: the RUN, OUT, EDIT, PROG and SYS pages, the programs that come with it, view tags, and writing your own IRCIS programs.">
+<meta property="og:url" content="https://pircis.fisheggs.au/use.html">
+<meta property="og:image" content="https://pircis.fisheggs.au/shots/board.jpg">
+<meta property="og:image:alt" content="pIRCIS running on a 4 inch ESP32 touchscreen">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Using pIRCIS">
+<meta name="twitter:description" content="Using pIRCIS: the RUN, OUT, EDIT, PROG and SYS pages, the programs that come with it, view tags, and writing your own IRCIS programs.">
+<meta name="twitter:image" content="https://pircis.fisheggs.au/shots/board.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Using pIRCIS","description":"Using pIRCIS: the RUN, OUT, EDIT, PROG and SYS pages, the programs that come with it, view tags, and writing your own IRCIS programs.","url":"https://pircis.fisheggs.au/use.html"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="top">
+<header class="bar">
+  <a class="brand" href="index.html"><span class="p">p</span>IRCIS</a>
+  <a class="gh" href="https://github.com/jamesleaver/pIRCIS" aria-label="pIRCIS on GitHub" title="pIRCIS on GitHub"><svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+</header>
+<nav class="tabs" aria-label="Pages"><a class="tab" href="index.html"><span class="long">HOME</span><span class="short">HOME</span></a><a class="tab" href="get.html"><span class="long">GET IT</span><span class="short">GET IT</span></a><a class="tab on" href="use.html"><span class="long">USING IT</span><span class="short">USING IT</span></a><a class="tab" href="learn.html"><span class="long">LEARN IRCIS</span><span class="short">LEARN</span></a><a class="tab" href="programs.html"><span class="long">PROGRAMS</span><span class="short">PROGS</span></a></nav>
+</div>
+<div class="wrap with-side">
+<aside class="side"><nav aria-label="Contents"><ul><li><a href="#using-it">Using it</a><ul><li><a href="#run-watch-it-go">RUN — watch it go</a></li><li><a href="#out-read-what-it-printed">OUT — read what it printed</a></li><li><a href="#edit-change-it-with-your-finger">EDIT — change it with your finger</a></li><li><a href="#prog-pick-a-program">PROG — pick a program</a></li><li><a href="#sys-settings">SYS — settings</a></li></ul></li><li><a href="#the-programs">The programs</a></li><li><a href="#telling-a-program-how-to-show-itself">Telling a program how to show itself</a></li><li><a href="#writing-your-own">Writing your own</a></li><li><a href="#on-the-board">On the board</a><ul><li><a href="#over-wifi">Over WiFi</a></li><li><a href="#over-serial">Over serial</a></li><li><a href="#one-more-program">One more program</a></li></ul></li></ul></nav></aside>
+<main class="body" data-page="use">
+<h1 class="title">Using pIRCIS</h1><h2 id="using-it">Using it</h2>
+<p>Five tabs along the bottom: <strong>RUN</strong>, <strong>OUT</strong>, <strong>EDIT</strong>, <strong>PROG</strong>, <strong>SYS</strong>.</p>
+<h3 id="run-watch-it-go">RUN — watch it go</h3>
+<p>The <strong>RUN</strong> tab is also the play button. While you are on that page it shows
+<code>▶</code>, or <code>⏸</code> once something is going, and tapping it starts or pauses. It is the
+biggest target on the screen, which is deliberate.</p>
+<p align="center">
+  <img src="shots/hello.gif" alt="hello world running" width="420">
+</p>
+
+<p>The rest of the transport sits in the status bar: reset back to the start,
+step, and run-to-the-end. Turn on <strong>SYS &gt; STEP BUTTONS</strong> for two more,
+step back and step forward, so you can walk a program one tick at a time and
+back again. Stepping back rebuilds and replays, so it is instant early in a run
+and slow once you are thousands of steps in.</p>
+<p>Four speeds: <strong>SLOW</strong> (about 3 steps a second), <strong>MED</strong> (25), <strong>QUICK</strong> (2000)
+and <strong>FULL</strong>. At SLOW each runner leaves a short fading tail, which is how you
+follow what it is doing. However fast you set it, a run always starts slowly
+for a second so you can see the runners set off. FULL skips that, on the basis
+that asking for FULL means you want the answer and not the show.</p>
+<p><strong>ZOOM</strong> shows the program at the editor's size, twenty columns and seven
+rows at a time; <strong>WIDE</strong> shows eighty columns and twelve rows. A program that
+fits ZOOM whole is simply shown that way. Whichever you pick, EDIT shows the
+program at the same size and in the same place, so moving between the two
+pages moves nothing. Small arrows on the grid's edges page through a program
+larger than the window, and only appear on the sides where there is more to
+see. Opening EDIT pauses a run.</p>
+<h4 id="under-the-grid-see-what-each-runner-is-doing">Under the grid — see what each runner is doing</h4>
+<p align="center">
+  <img src="shots/runners.png" alt="the runner readout" width="420">
+</p>
+
+<p><strong>SYS &gt; UNDER GRID</strong> decides what the strip under the program shows.
+<strong>OUTPUT</strong> is what the program has printed so far. <strong>RUNNERS</strong> gives every
+runner a line: its row and column and which way it faces, the character it is
+standing on, what that character will do when the runner steps, and the top of
+its stack, newest value last. This is the interpreter's own debug log, and the
+quickest way to see what a program you are writing actually does: put a few
+characters down in <strong>EDIT</strong>, come back to <strong>RUN</strong>, and step through them with
+<strong>STEP BUTTONS</strong> on. A program can ask for a particular strip in its tag: <code>d</code>
+for the runner readout, <code>n</code> for nothing underneath, which gives the program
+the whole screen (see <a href="#telling-a-program-how-to-show-itself">Telling a program how to show itself</a>).</p>
+<h3 id="out-read-what-it-printed">OUT — read what it printed</h3>
+<p align="center">
+  <img src="shots/hello_out.png" alt="the output page" width="420">
+</p>
+
+<p>When a run finishes the <strong>OUT</strong> tab gets a dot and the RUN tab turns into a
+go-again arrow.</p>
+<p>You can watch output being generated live on the <strong>OUT</strong> tab while a program is
+running.</p>
+<p>It also keeps the <strong>last ten runs</strong>. The <code>&lt;</code> and <code>&gt;</code> buttons at the bottom step
+back through them, each with what it printed and how many steps it took.</p>
+<p align="center">
+<img src="shots/history.png" alt="stepping back through previous runs"
+width="420">
+</p>
+
+<p><strong>SAVE SD</strong> writes whichever run you are looking at to the card. It only
+appears when there is a card in the slot.</p>
+<h3 id="edit-change-it-with-your-finger">EDIT — change it with your finger</h3>
+<p>Tap a cell to put the cursor there, then type. <code>.</code> is the blank, so it doubles
+as delete.</p>
+<p>The main keyboard is the thirty-three characters you actually write IRCIS with.
+Tapping <strong>EDIT</strong> while you are already on it cycles the keyboard to CAPITALS and
+then the lower case. The tab tells you which keyboard you are looking at.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="the editor" src="shots/editor.png" /></td>
+<td><img alt="the letters" src="shots/editor_abc.png" /></td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>?</code></strong> in the status bar opens the command list, so it is one tap away while
+you are writing.</p>
+<p>The size button next to the name reshapes the program, and has two pages. The
+first adds or removes rows and columns at the edges. The second inserts a row
+or column, or deletes one, inside the grid rather than at its edges.</p>
+<ul>
+<li><strong>UNDO / REDO</strong> go back through the last 128 cell edits.</li>
+<li>The size button asks which <strong>side</strong> to add to or take from: top, bottom, left
+  or right.</li>
+<li><strong>PROG</strong> grows a <strong>Discard changes</strong> row whenever there is something to throw
+  away.</li>
+</ul>
+<h3 id="prog-pick-a-program">PROG — pick a program</h3>
+<p>Sixty-one programs come with it, sorted into folders. Tap a folder to go in,
+<strong>Back</strong> to come out.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="the folders" src="shots/programs.png" /></td>
+<td><img alt="inside a folder" src="shots/folder.png" /></td>
+</tr>
+</tbody>
+</table>
+<p>Programs live in two places, the board's own flash and the SD card, and the
+list merges them. A chip mark means it is on the device, a notched card means
+it is on the SD card. Tap one to load it. <code>X</code> deletes it.</p>
+<p>The two <strong>Save</strong> rows write the current program to either store, into whichever
+folder you are looking at. <strong>New program...</strong> gives you an empty grid at any
+size up to 32 x 96, and on the app and the emulator the same dialog has a
+<strong>PASTE FROM THE CLIPBOARD</strong> button, which loads whatever program is on the
+clipboard. On the emulator Ctrl/Cmd-V does the same from any page.</p>
+<p>The app has one store, the phone's own, so it has one Save row, and two rows
+the board does not have: <strong>Share this program</strong> hands the program to another
+app through the phone's share sheet, and <strong>Open a file</strong> loads a <code>.txt</code> file
+from the Files app.</p>
+<p>Nothing here is precious: edit a built-in program, save over it, rename it,
+delete it. <code>SYS &gt; RESTORE BUILT-INS</code> puts the originals back and leaves
+anything you made alone.</p>
+<h3 id="sys-settings">SYS — settings</h3>
+<p align="center">
+  <img src="shots/system.png" alt="the settings page" width="420">
+</p>
+
+<p>WiFi, what sits under the grid, what tapping the grid does, SD logging, a
+day/night palette, and restoring the built-ins. <strong>LEARN IRCIS</strong> shows where
+the learning guide is, with a QR code a phone can scan to open it.</p>
+<p><strong>TRAIL</strong> keeps every cell a runner has crossed tinted, so the whole path
+builds up on screen. The same thing <code>t</code> in a program's tag asks for.</p>
+<p><strong>FOLLOW RUNNER</strong> decides whether the view chases the runner through a program
+larger than the window. On for a program too big to see at once; off when you
+want the view to stay where you choose. Scrolling by hand holds the view still
+until the next run either way. A program can ask for it off with <code>h</code> in its tag.</p>
+<p><strong>CHECK TOUCH</strong> asks you to tap three rings and tells you how far out the worst
+one was, then offers to recalibrate. A key is about 43 px wide, so within six
+pixels is fine and much past fourteen is worth redoing.</p>
+<p><strong>DIAGNOSTICS</strong> is live while you watch it: free heap, steps per second, and
+whether the run read anything out of bounds. If a runner died of anything other
+than reaching <code>!</code> or walking off the edge, it is listed there with the cell it
+was standing on and the interpreter's own words for what went wrong, such as
+<code>runner 0 died at row 0, col 7: Variable name 'size2' should contain only
+alphabets</code>. Every death is written to the serial console as well.</p>
+<h2 id="the-programs">The programs</h2>
+<p>Sixty-one of them. The full list is in <a href="programs.html"><code>programs/</code></a>.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="dice" src="shots/gifs/dice.gif" /></td>
+<td><img alt="dumb clock" src="shots/gifs/clock.gif" /></td>
+</tr>
+<tr>
+<td><strong>Dice Roll</strong> — rolls, prints the number, then puts exactly that many runners into a ring, so you can count the answer going round.</td>
+<td><strong>Dumb Clock</strong> — invents a plausible time and reads it out in words.</td>
+</tr>
+<tr>
+<td><img alt="racetrack" src="shots/gifs/racetrack.gif" /></td>
+<td><img alt="spiral" src="shots/spiral.gif" /></td>
+</tr>
+<tr>
+<td><strong>Racetrack</strong> — three runners, five random pit stops each. The finishing order determines the winner.</td>
+<td><strong>Spiral</strong> — one runner winding inward over every cell. Eight programs print nothing at all and are just worth watching.</td>
+</tr>
+</tbody>
+</table>
+<p>A few are hiding what they do until you run them:</p>
+<p align="center">
+  <img src="shots/insult.png" alt="a grid of nothing but numbers" width="420">
+</p>
+
+<p>That is the whole of <strong>Insult Machine</strong>. Every word in it is carried as a
+number, because <code>%</code> prints an integer as base64 characters, so there is not a
+letter to read anywhere in the grid.
+<strong>Dog Name</strong> does the same but picks its numbers with two coin flips, and
+<strong>Warning</strong> does not even write the numbers down: each one is a quotient and a
+remainder, multiplied back out as it runs.</p>
+<p><strong>Morse Decoder</strong> turns morse back into a word. The whole top row is yours: put
+one code per letter after the <code>'0.</code>, left to right. <code>1</code> is a dit and <code>2</code> is a
+dah, so <code>'1111.'1.'1211.'1211.'222.</code> gives HELLO. The row underneath says so on
+the device, with arrows pointing at where to type. It walks a binary tree for
+each letter. Five letters is the ceiling: the answer is built up in a single
+integer, and an int32 holds exactly five base64 characters.</p>
+<p>The rest are counting loops, times tables, one-of-four answer machines, the
+Morse alphabet on two screens, and ten correct digits of π out of Machin's
+formula, in a language with 32-bit integers and no arrays.</p>
+<h2 id="telling-a-program-how-to-show-itself">Telling a program how to show itself</h2>
+<p>A program can say how it wants to be displayed, in one short tag written
+anywhere in the grid. A tilde, then single letters:</p>
+<pre><code>under the grid:  n  nothing    d  runner readout
+speed:           s  slow   m  med   q  quick   f  full
+path:            t  keep every cell a runner has crossed tinted
+hold the view:   h  do not follow the runners while it runs
+start position:  &lt;row&gt;,&lt;col&gt; and one of N E S W
+</code></pre>
+<p>So <code>~nm3,1N</code> means: nothing underneath, medium speed, start at row 3 column 1
+heading north. Order does not matter. Loading a program puts the speed,
+follow and start point back to their defaults and then applies the tag, so
+anything you leave out is the default and most programs need no tag at all.
+The readout and the trail are yours: a tag that names one takes it over only
+while that program is loaded, and the SYS tiles show what is in force. GRID
+TAP, STEP BUTTONS, the theme and the keyboard are the device's own settings
+and stay as you set them.</p>
+<p><code>t</code> is the interesting one. Normally a runner shows a short tail and the cells
+behind it go back to normal. With <code>t</code>, every cell any runner has stood on stays
+tinted, so the whole path builds up and stays on screen. That is what makes the
+<code>h</code> is the other one worth knowing. In a program larger than the window the
+view normally follows the runner, scrolling to keep it on screen. For a program that draws something,
+that moves the picture out from under you; <code>h</code> leaves the view where you put
+it. There is a switch for it on SYS as well, under <strong>FOLLOW RUNNER</strong>.</p>
+<p>Add <code>t</code> to
+<a href="programs.html#spiral">Spiral</a> (Watching) or
+<a href="programs.html#snake">Snake</a> (Watching) and you get the same effect.</p>
+<p>None of the tag characters is an IRCIS command, so a runner that crosses one
+just steps over it. A tag can sit on any blank cell in the middle of a program.
+Type it in on the EDIT page and save the program to keep it.</p>
+<h2 id="writing-your-own">Writing your own</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Character</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><code>&lt; &gt; ^ v</code></td>
+<td>Move the runner</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>+ - * / %</code></td>
+<td>Arithmetic, in <em>integer</em> mode</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>#</code></td>
+<td>Print the top of the stack</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>%</code></td>
+<td>Print the top of the stack as base64 characters</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>$</code></td>
+<td>Newline</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>!</code></td>
+<td>This runner stops</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>.</code> and space</td>
+<td>Blank — the runner walks over it</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>"</code></td>
+<td>Toggle <em>stack</em> mode: characters get pushed as they are</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'</code></td>
+<td>Start a number; a blank ends it</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>?</code></td>
+<td>If the top of the stack is non-zero carry on, otherwise turn</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>*</code></td>
+<td>Split into more runners</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>@n</code> / <code>&amp;n</code></td>
+<td>Push the n'th item / pop n items</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>@name</code> / <code>&amp;name</code></td>
+<td>Push a variable / set one</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>r</code> / <code>R</code></td>
+<td>Random 0 or 1 / random up to a limit</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>p</code></td>
+<td>Pause this runner for n ticks</td>
+</tr>
+</tbody>
+</table>
+<p>Four things are easy to get wrong:</p>
+<ul>
+<li><strong>Arithmetic takes the top of the stack as the left operand.</strong> Push 10 then 3
+  and <code>'-.</code> gives -7, not 7.</li>
+<li><strong><code>?</code> does not pop.</strong> It looks at the top and leaves it there, so a branch has
+  to clear up after itself.</li>
+<li><strong>Text is pushed, so it comes out backwards.</strong> Write it reversed in the grid.</li>
+<li><strong>A cell holds one instruction.</strong> A path that crosses one of its own turns
+  will take that turn again and loop for ever.</li>
+</ul>
+<p>The full command list and the language rules are in
+<a href="https://github.com/batman-nair/IRCIS">Arjun Nair's README</a>.</p>
+<p>I've written this guide as well: <strong><a href="learn.html">Learn IRCIS</a></strong>, which teaches the
+language from scratch and builds up to writing your own programs. Every example
+in it is a real program you can run.</p>
+<p>If you write one you are pleased with,
+<a href="https://github.com/jamesleaver/pIRCIS/issues/new?template=program.yml">send it in</a>
+and it can go on the programs page of the website.</p>
+<h2 id="on-the-board">On the board</h2>
+<p>Three things the board has that the app does not.</p>
+<h3 id="over-wifi">Over WiFi</h3>
+<p><code>SYS &gt; WIFI</code> serves the device on your network. Via a browser on a computer
+connected to the same network, you can see the last run, an editable copy
+of the loaded program, both program stores, and the saved outputs. You can
+paste a program in from a browser and it runs on the device.</p>
+<p><strong>There is no password on any of it.</strong> Anyone who can reach the board can read
+what is on the card and write a program onto it. That is fine for something on
+your own desk, but it should be your choice. Turn WiFi off on a network you
+share.</p>
+<h3 id="over-serial">Over serial</h3>
+<p>The emulator has this too, through the terminal it was started from.</p>
+<p>The serial console (115200) drives the same grid as the screen:</p>
+<pre><code>grid          print the loaded program
+cell 3 12 v   set one cell
+run
+out           print what it produced
+report        the whole run, with statistics
+</code></pre>
+<p><code>help</code> lists the rest. Output is mirrored to serial as it appears, so you can
+watch a long run from a laptop.</p>
+<h3 id="one-more-program">One more program</h3>
+<p>There is an IRCIS program on this device that the list does not show.</p>
+<p>It is encrypted, and two words open it. Enter them correctly and you get an
+easter egg. The iOS app leaves it out: the board and the emulator carry it,
+the phone does not.</p>
+</main>
+</div>
+<footer class="foot">
+  <p>pIRCIS is copyright &copy; 2026 James Leaver, MIT licensed. IRCIS is the work of
+  <a href="https://github.com/batman-nair/IRCIS">Arjun Nair</a>.
+  <a href="https://github.com/jamesleaver/pIRCIS">Source on GitHub</a> &middot;
+  <a href="https://apps.apple.com/app/id6809655892">The app on the App Store</a> &middot;
+  <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/PRIVACY.md">Privacy</a> &middot;
+  <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/SUPPORT.md">Support</a></p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>

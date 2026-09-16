@@ -153,7 +153,7 @@ int runSpeed() { int v = plat::kv::getInt("speed", 1); return (v < 0 || v > 3) ?
 void setRunSpeed(int speed) { plat::kv::putInt("speed", speed); }
 bool outputColour() { return plat::kv::getBool("outcol", true); }
 void setOutputColour(bool on) { plat::kv::putBool("outcol", on); }
-void factoryReset() { plat::kv::clearAll(); }
+void factoryReset() { pack::close(); plat::kv::clearAll(); }   // nothing of the pack stays in RAM either
 
 // NVS key stays "adv" so the setting survives the rename.
 // The output by default: a program you have just run is a program whose

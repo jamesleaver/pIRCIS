@@ -126,9 +126,17 @@ namespace prog {
     for (int r = 0; r < kMaxRows; ++r) std::memcpy(cells_[r], base_[r], kMaxCols);
   }
 
+  // A slot is three bytes from the pack; the grid they point into is
+  // checked before any of them is read or written.
+  static bool slotFits(const Slot& s, int rows, int cols) {
+    return s.row < rows && s.row < kMaxRows &&
+           (int)s.col + (int)s.len <= cols && (int)s.col + (int)s.len <= kMaxCols;
+  }
+
   void Program::revertSlot(int slot) {
     if (slot < 0 || slot >= prog::slotCount()) return;
     const Slot& s = prog::slot(slot);
+    if (!slotFits(s, rows_, cols_)) return;
     const std::string orig = slotOriginal(slot);
     if ((int)orig.size() != s.len) return;
     for (int i = 0; i < s.len; ++i)
@@ -167,6 +175,7 @@ namespace prog {
   std::string Program::slotValue(int slot) const {
     if (slot < 0 || slot >= prog::slotCount()) return std::string();
     const Slot& s = prog::slot(slot);
+    if (!slotFits(s, rows_, cols_)) return std::string();
     std::string v(&cells_[s.row][s.col], s.len);
     // A runner reading east-to-west meets these characters in the opposite
     // order to the way they sit in the grid, so that is the order the value
@@ -184,6 +193,7 @@ namespace prog {
   bool Program::setSlotValue(int slot, const std::string& value) {
     if (slot < 0 || slot >= prog::slotCount()) return false;
     const Slot& s = prog::slot(slot);
+    if (!slotFits(s, rows_, cols_)) return false;
     if (static_cast<int>(value.size()) > s.len) return false;
 
     std::string padded;

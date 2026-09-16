@@ -1,0 +1,1528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learn IRCIS: the language from nothing to your own programs</title>
+<meta name="description" content="A guide to IRCIS from nothing: the runner, the stack, loops, numbers, variables, splitting, and a worked example.">
+<link rel="canonical" href="https://pircis.fisheggs.au/learn.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="pIRCIS">
+<meta property="og:title" content="Learn IRCIS: the language from nothing to your own programs">
+<meta property="og:description" content="A guide to IRCIS from nothing: the runner, the stack, loops, numbers, variables, splitting, and a worked example.">
+<meta property="og:url" content="https://pircis.fisheggs.au/learn.html">
+<meta property="og:image" content="https://pircis.fisheggs.au/shots/board.jpg">
+<meta property="og:image:alt" content="pIRCIS running on a 4 inch ESP32 touchscreen">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Learn IRCIS: the language from nothing to your own programs">
+<meta name="twitter:description" content="A guide to IRCIS from nothing: the runner, the stack, loops, numbers, variables, splitting, and a worked example.">
+<meta name="twitter:image" content="https://pircis.fisheggs.au/shots/board.jpg">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Learn IRCIS","description":"A guide to IRCIS from nothing: the runner, the stack, loops, numbers, variables, splitting, and a worked example.","url":"https://pircis.fisheggs.au/learn.html","author":{"@type":"Person","name":"James Leaver"},"about":"IRCIS, the two-dimensional esoteric programming language"}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="top">
+<header class="bar">
+  <a class="brand" href="index.html"><span class="p">p</span>IRCIS</a>
+  <a class="gh" href="https://github.com/jamesleaver/pIRCIS" aria-label="pIRCIS on GitHub" title="pIRCIS on GitHub"><svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+</header>
+<nav class="tabs" aria-label="Pages"><a class="tab" href="index.html"><span class="long">HOME</span><span class="short">HOME</span></a><a class="tab" href="get.html"><span class="long">GET IT</span><span class="short">GET IT</span></a><a class="tab" href="use.html"><span class="long">USING IT</span><span class="short">USING IT</span></a><a class="tab on" href="learn.html"><span class="long">LEARN IRCIS</span><span class="short">LEARN</span></a><a class="tab" href="programs.html"><span class="long">PROGRAMS</span><span class="short">PROGS</span></a></nav>
+</div>
+<div class="wrap with-side">
+<aside class="side"><nav aria-label="Contents"><ul><li><a href="#1-the-runner-the-grid">1. The runner (the grid)</a></li><li><a href="#2-saying-something-the-stack">2. Saying something (the stack)</a></li><li><a href="#3-the-print-loop-loops">3. The print loop (loops)</a></li><li><a href="#4-numbers-integer-mode">4. Numbers (integer mode)</a></li><li><a href="#5-arithmetic-and-the-rule-that-is-easy-to-get-wrong-operators">5. Arithmetic, and the rule that is easy to get wrong (operators)</a></li><li><a href="#6-remembering-things-variables">6. Remembering things (variables)</a></li><li><a href="#7-asking-questions-conditions">7. Asking questions (conditions)</a></li><li><a href="#8-throwing-things-away-clearing-the-stack">8. Throwing things away (clearing the stack)</a></li><li><a href="#9-using-a-value-twice-copying-on-the-stack">9. Using a value twice (copying on the stack)</a></li><li><a href="#10-counting-loops-counters">10. Counting loops (counters)</a></li><li><a href="#11-chance-random-numbers">11. Chance (random numbers)</a></li><li><a href="#12-making-choices-branching">12. Making choices (branching)</a></li><li><a href="#13-waiting-pauses">13. Waiting (pauses)</a></li><li><a href="#14-more-than-one-runner-splitting">14. More than one runner (splitting)</a></li><li><a href="#15-letters-out-of-numbers-base64">15. Letters out of numbers (base64)</a></li><li><a href="#16-the-rest-of-the-arithmetic-powers-and-bit-operations">16. The rest of the arithmetic (powers and bit operations)</a></li><li><a href="#17-two-jobs-for-one-character-modes">17. Two jobs for one character (modes)</a></li><li><a href="#18-quirks-worth-knowing-comments-and-hidden-programs">18. Quirks worth knowing (comments and hidden programs)</a></li><li><a href="#19-reading-a-whole-program-a-worked-example">19. Reading a whole program (a worked example)</a></li><li><a href="#20-build-something-exercises">20. Build something (exercises)</a></li><li><a href="#cheat-sheet">Cheat sheet</a></li></ul></nav></aside>
+<main class="body" data-page="learn">
+<h1 class="title">Learn IRCIS</h1><p><a href="https://github.com/batman-nair/IRCIS">IRCIS</a> is a programming language where
+the program is a <strong>grid of characters</strong>, and a <strong>runner</strong> walks around it doing
+what it steps on.</p>
+<p>This guide starts from nothing and builds up. Every example is a real program.
+You can type any of them into <a href="https://github.com/jamesleaver/pIRCIS">pIRCIS</a>
+and press play, on the board, on a phone, or on a computer.
+By the end you will be able to write your own.</p>
+<blockquote>
+<p><strong>Finding a program.</strong> Programs are named here as the device names them, and
+the folder in brackets is the one they sit in under <strong>PROG</strong>. The link goes
+to the same file in this repository, which is laid out the same way:
+<a href="programs.html#dice-roll">Dice Roll</a> (Watching) is
+<code>programs/Watching/Dice-Roll.txt</code>.</p>
+<p><strong>You do not need the hardware.</strong> There are two other ways to run pIRCIS,
+and both are the same interpreter, the same screen and the same programs:</p>
+<ul>
+<li><strong>The emulator, on your own computer.</strong> It runs in a window on macOS,
+  Windows or Linux, and
+  <a href="get.html#emulator">setting it up</a> takes a few
+  commands. In there, set <code>SYS &gt; KEYBOARD</code> to <code>REAL</code> and you can type
+  straight into the grid with your own keyboard, which makes working through
+  this guide much quicker. Ctrl/Cmd-V pastes a program copied from this
+  guide straight in.</li>
+<li><strong>The app, on an iPhone, iPad or Apple silicon Mac</strong>, from
+  <a href="https://apps.apple.com/app/id6809655892">the App Store</a>. A program copied
+  from this guide lands in the grid through the PASTE button under
+  <strong>PROG &gt; New program</strong>.</li>
+</ul>
+</blockquote>
+<p><strong>Contents</strong></p>
+<ol>
+<li><a href="#1-the-runner-the-grid">The runner (the grid)</a></li>
+<li><a href="#2-saying-something-the-stack">Saying something (the stack)</a></li>
+<li><a href="#3-the-print-loop-loops">The print loop (loops)</a></li>
+<li><a href="#4-numbers-integer-mode">Numbers (integermode)</a></li>
+<li><a href="#5-arithmetic-and-the-rule-that-is-easy-to-get-wrong-operators">Arithmetic, and the rule that is easy to get wrong (operators)</a></li>
+<li><a href="#6-remembering-things-variables">Remembering things (variables)</a></li>
+<li><a href="#7-asking-questions-conditions">Asking questions (conditions)</a></li>
+<li><a href="#8-throwing-things-away-clearing-the-stack">Throwing things away (clearing the stack)</a></li>
+<li><a href="#9-using-a-value-twice-copying-on-the-stack">Using a value twice (copying on the stack)</a></li>
+<li><a href="#10-counting-loops-counters">Counting loops (counters)</a></li>
+<li><a href="#11-chance-random-numbers">Chance (random numbers)</a></li>
+<li><a href="#12-making-choices-branching">Making choices (branching)</a></li>
+<li><a href="#13-waiting-pauses">Waiting (pauses)</a></li>
+<li><a href="#14-more-than-one-runner-splitting">More than one runner (splitting)</a></li>
+<li><a href="#15-letters-out-of-numbers-base64">Letters out of numbers (base64)</a></li>
+<li><a href="#16-the-rest-of-the-arithmetic-powers-and-bit-operations">The rest of the arithmetic (powers and bit operations)</a></li>
+<li><a href="#17-two-jobs-for-one-character-modes">Two jobs for one character (modes)</a></li>
+<li><a href="#18-quirks-worth-knowing-comments-and-hidden-programs">Quirks worth knowing (comments and hidden programs)</a></li>
+<li><a href="#19-reading-a-whole-program-a-worked-example">Reading a whole program (a worked example)</a></li>
+<li><a href="#20-build-something-exercises">Build something (exercises)</a></li>
+<li><a href="#cheat-sheet">Cheat sheet</a></li>
+</ol>
+<h2 id="1-the-runner-the-grid">1. The runner (the grid)</h2>
+<p>A program is a rectangle of characters. The runner starts in the <strong>top-left
+corner</strong>, facing <strong>east</strong>, and takes one step at a time.</p>
+<p>Four characters steer it:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&gt;</code></td>
+<td>go east</td>
+</tr>
+<tr>
+<td><code>v</code></td>
+<td>go south</td>
+</tr>
+<tr>
+<td><code>&lt;</code></td>
+<td>go west</td>
+</tr>
+<tr>
+<td><code>^</code></td>
+<td>go north</td>
+</tr>
+</tbody>
+</table>
+<p>A full stop <code>.</code> is a <strong>blank</strong>, and so is a space. The two are interchangeable
+everywhere: anything said in this guide about one is true of the other. The
+runner walks straight over a blank and keeps going the way it was already
+going. Blanks are how you leave space.</p>
+<p>Almost every program here uses <code>.</code> rather than spaces, because on a screen full
+of grid you can count dots along a row and you cannot count spaces.</p>
+<p><code>!</code> stops the runner.</p>
+<p>Here is a runner that goes east, turns south, turns west, and stops:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;<span class="d">.</span><span class="d">.</span>v
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+!<span class="d">.</span><span class="d">.</span>&lt;
+</code></pre></div>
+<p>Nothing is printed, but it is a real program.</p>
+<p>There is only one <code>v</code>, not two. Once the runner is heading south it keeps going
+south across the blanks on its own. <strong>You only need an arrow where you want the
+direction to change.</strong></p>
+<p>Strictly, the <code>&gt;</code> in the top left corner is not doing anything either, because
+the runner already starts facing east. I write it anyway, because it shows where
+things begin.</p>
+<p><strong>A runner that leaves the grid dies.</strong> Plenty of programs end that way on
+purpose.</p>
+<p>If you want to see what each of the characters is doing when you're writing a
+program of your own, set <code>SYS &gt; UNDER GRID</code> to <code>RUNNERS</code> and the speed to <code>SLOW</code>.
+You can watch a runner walk its path and see what each character it steps on tells
+the runner to do as your program is running. If you turn on the step buttons
+(<code>SYS &gt; STEP BUTTONS</code> on) you can step through your program at your own pace.</p>
+<h2 id="2-saying-something-the-stack">2. Saying something (the stack)</h2>
+<p>To print, you need two things: something on the <strong>stack</strong>, and a <code>#</code> to print
+it.</p>
+<p>The stack is a pile. You put things on top and you take them off the top. Last
+in, first out, like a stack of plates.</p>
+<p>There are only two things you can do to it, and they have names worth learning
+now because everything later is built out of them.</p>
+<ul>
+<li><strong>Push</strong> puts something on top.</li>
+<li><strong>Pop</strong> takes the top one off. Whatever was underneath is on top now.</li>
+</ul>
+<p>A double quote <code>"</code> turns <strong>stack mode</strong> on, and the next <code>"</code> turns it off.
+Everything between them is pushed onto the stack, one character at a time.</p>
+<p><code>#</code> pops one thing and prints it. Printing and removing are the same action
+here, so a value you print is gone afterwards.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;&quot;iH&quot;##!
+</code></pre></div>
+<p>prints <code>Hi</code></p>
+<p>Read that carefully, because it explains something unexpected. Here is what
+each character does to the stack. The top of the pile is shown on the right.</p>
+<table>
+<thead>
+<tr>
+<th>reads</th>
+<th>does</th>
+<th>stack afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"</code></td>
+<td>turn stack mode on</td>
+<td>empty</td>
+</tr>
+<tr>
+<td><code>i</code></td>
+<td>push <code>i</code></td>
+<td><code>i</code></td>
+</tr>
+<tr>
+<td><code>H</code></td>
+<td>push <code>H</code></td>
+<td><code>i H</code></td>
+</tr>
+<tr>
+<td><code>"</code></td>
+<td>turn stack mode off</td>
+<td><code>i H</code></td>
+</tr>
+<tr>
+<td><code>#</code></td>
+<td>pop <code>H</code> and print it</td>
+<td><code>i</code></td>
+</tr>
+<tr>
+<td><code>#</code></td>
+<td>pop <code>i</code> and print it</td>
+<td>empty</td>
+</tr>
+</tbody>
+</table>
+<p><code>H</code> went on last, so it came off first.</p>
+<p><strong>This is why text in IRCIS programs is written backwards.</strong> The stack hands it
+back to you in reverse, so you write it in reverse to start with.</p>
+<p>Set <code>SYS &gt; UNDER GRID</code> to <code>RUNNERS</code> to see the character the runner is standing
+on and what it does (<code>stack mode on</code>, <code>"i</code> and <code>"iH</code> as the letters are
+read, <code>push "iH"</code> on the closing quote, <code>print H</code> etc). You can also see the
+top of the runner's stack on the right, in the same order as these tables.
+Turn on <code>SYS &gt; STEP BUTTONS</code> and step through a program one character at a
+time, and you can see the logic of a program you are writing as you write it:
+every push and pop, and the state of the stack after each.</p>
+<p>Try it with a longer word:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;&quot;olleh&quot;#####!
+</code></pre></div>
+<p>prints <code>hello</code></p>
+<p>Five characters, five <code>#</code>. That is fine for five and unpleasant for fifty,
+which is what the next section is for.</p>
+<h2 id="3-the-print-loop-loops">3. The print loop (loops)</h2>
+<p>Instead of one <code>#</code> per character, send the runner round in a circle so it hits
+the same <code>#</code> over and over.</p>
+<p>This is <a href="programs.html#hello-world">Hello World</a> (Talking), the smallest
+useful program on the device:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;&quot;!dlroW olleH&quot;&gt;#v
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>^<span class="d">.</span>&lt;
+</code></pre></div>
+<p>prints <code>Hello World!</code></p>
+<p>Follow the runner:</p>
+<ol>
+<li><code>&gt;</code> sends it east.</li>
+<li><code>"</code> starts stack mode; everything up to the next <code>"</code> goes on the stack.</li>
+<li><code>&gt;</code> east again, then <code>#</code> prints one character, then <code>v</code> sends it south.</li>
+<li>On the bottom row <code>&lt;</code> sends it west, then <code>^</code> sends it north.</li>
+<li>It lands back on the <code>&gt;</code> and does <code>#</code> again.</li>
+</ol>
+<p>Round and round, one character per lap. When the stack is empty the <code>#</code> has
+nothing to print, and the runner stops. <strong>Running out of stack is how this
+program ends</strong>, and it is meant to.</p>
+<p>The loop is only four cells: <code>&gt;</code> <code>#</code> <code>v</code> on the top row, and <code>^</code> <code>&lt;</code> below. The
+<code>^</code> sits under the <code>&gt;</code>, and the <code>&lt;</code> sits under the <code>v</code>.</p>
+<p>That <code>&gt;</code> after the closing quote looks pointless, since the runner is already
+heading east when it gets there. On the first pass it is. But look at where the
+loop comes back: the <code>^</code> pushes the runner up onto that exact cell, travelling
+north. Without a <code>&gt;</code> to turn it east again it would carry on off the top of the
+grid, and you would get <code>H</code> and nothing else.</p>
+<p><strong>An arrow is only spare if the runner never arrives at that cell from some
+other direction.</strong> In a loop, it usually does.</p>
+<blockquote>
+<p><strong>Try it:</strong> change the text to your own name. Remember to write it backwards,
+and keep the four loop cells lined up underneath.</p>
+</blockquote>
+<h3 id="the-string-does-not-have-to-be-a-straight-line">The string does not have to be a straight line</h3>
+<p>Stack mode pushes whatever the runner walks over, so the runner can turn while
+it is reading, as long as the quote is closed first: <code>"</code> turns stack mode off,
+the arrow turns the runner, and the next <code>"</code> turns stack mode back on. Each
+straight run between quotes is a slice of the message, still written
+backwards, and they arrive on the stack in the order the runner reads them.</p>
+<p><a href="programs.html#two-dimensions">Two Dimensions</a> (Talking) reads its
+string boustrophedon -- one row east, the next row west:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;&quot;<span class="d">.</span>eno naht re&quot;v<span class="d">.</span>
+v&quot;ons are bett&quot;&lt;<span class="d">.</span>
+&gt;&quot;isnemid owT&quot;&gt;#v
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>^<span class="d">.</span>&lt;
+</code></pre></div>
+<p>prints <code>Two dimensions are better than one.</code></p>
+<p>Read the middle row from right to left, because that is the way the runner
+walks it. Turning round costs two arrows: <code>v</code> at the end of a row and <code>&lt;</code> under
+it, then the quote reopens.</p>
+<p><a href="programs.html#greeting">Greeting</a> (Talking) reads its string along a
+square wave, three characters across and two down or up at a time:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;&quot;<span class="d">.</span>di&quot;v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&gt;&quot; mo&quot;v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&gt;&quot;H&quot;&gt;#v
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span>^<span class="d">.</span>&lt;
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>r<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>a<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>r<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>e<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>g<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span> <span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>f<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>l<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&gt;&quot; D2&quot;^<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&gt;&quot; ol&quot;^<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+</code></pre></div>
+<p>prints <code>Hello from a 2D grid.</code></p>
+<p><a href="programs.html#advice">Advice</a> (Talking) reads its string along a spiral,
+and the print loop sits in the middle where the spiral runs out:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;&quot;<span class="d">.</span>niaga no &quot;v
+<span class="d">.</span>&gt;&quot;T&quot;&gt;#v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;
+<span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span>^<span class="d">.</span>&lt;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>d
+<span class="d">.</span>u<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>n
+<span class="d">.</span>r<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>a
+<span class="d">.</span>&quot;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&quot;
+<span class="d">.</span>^&quot;n it off &quot;&lt;
+</code></pre></div>
+<p>prints <code>Turn it off and on again.</code></p>
+<p>None of the three prints anything different from the plain version. The shape
+is the point: the runner reads the program, and the program can be laid out
+however you like.</p>
+<h2 id="4-numbers-integer-mode">4. Numbers (integer mode)</h2>
+<p>A single quote <code>'</code> starts a <strong>number</strong>, and a blank ends it.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'42<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>42</code></p>
+<p><code>'42.</code> pushes the number forty-two. The <code>.</code> on the end is the blank that says
+the number stops there, rather than a decimal point.</p>
+<p>Then <code>#</code> prints the number.</p>
+<p>Between the <code>'</code> and that blank the runner is in <strong>integer mode</strong>, in the same
+way that <code>"</code> puts it in stack mode. It is worth knowing the name, because
+several characters mean one thing in integer mode and something else outside
+it. <a href="#17-two-jobs-for-one-character-modes">Section 17</a> sets them all out.</p>
+<p>Numbers and characters are different things on the stack. <code>#</code> prints a character
+as a character and a number as a number.</p>
+<p>You can push several:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'7<span class="d">.</span>'8<span class="d">.</span>'9<span class="d">.</span>###!
+</code></pre></div>
+<p>prints <code>987</code></p>
+<p>Nine came off first, because it went on last.</p>
+<p>Those three digits run together because nothing separates them. <code>$</code> starts a
+new line. It takes nothing off the stack and prints nothing of its own, it just
+moves the output on:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'7<span class="d">.</span>#$'8<span class="d">.</span>#$'9<span class="d">.</span>#!
+</code></pre></div>
+<p>prints:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>7
+8
+9
+</code></pre></div>
+<p>Most of the examples here print one short thing and then stop, so they have no
+call for it.</p>
+<h2 id="5-arithmetic-and-the-rule-that-is-easy-to-get-wrong-operators">5. Arithmetic, and the rule that is easy to get wrong (operators)</h2>
+<p>Arithmetic happens in <strong>integer mode</strong>, which <a href="#4-numbers-integer-mode">section
+4</a> named: between a <code>'</code> and the blank that ends it. So
+<code>'+.</code> means go into integer mode, add, come out again. It takes the top two
+things off the stack and puts the answer back.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'2<span class="d">.</span>'3<span class="d">.</span>'+<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>5</code></p>
+<p>Here is the rule that is easiest to get wrong. I have made this mistake more
+than once:</p>
+<blockquote>
+<p><strong>The operation is <code>top</code> first, then the one underneath.</strong>
+Push 10, then push 3, and <code>'-.</code> gives you <strong>3 − 10 = −7</strong>. Not 7.</p>
+</blockquote>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'10<span class="d">.</span>'3<span class="d">.</span>'-<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>-7</code></p>
+<table>
+<thead>
+<tr>
+<th>reads</th>
+<th>does</th>
+<th>stack afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'10.</code></td>
+<td>push 10</td>
+<td><code>10</code></td>
+</tr>
+<tr>
+<td><code>'3.</code></td>
+<td>push 3</td>
+<td><code>10 3</code></td>
+</tr>
+<tr>
+<td><code>'-.</code></td>
+<td>pop 3, pop 10, subtract 10 from 3, push −7</td>
+<td><code>-7</code></td>
+</tr>
+<tr>
+<td><code>#</code></td>
+<td>pop −7 and print it</td>
+<td>empty</td>
+</tr>
+</tbody>
+</table>
+<p>Addition and multiplication do not care, because 3+10 and 10+3 are the same. But
+subtraction, division and remainder do. If you want 10 − 3, push them the other
+way round:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'3<span class="d">.</span>'10<span class="d">.</span>'-<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>7</code></p>
+<p>The operators are <code>+</code> <code>-</code> <code>*</code> <code>/</code> and <code>%</code>. Division throws away the fraction:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'2<span class="d">.</span>'7<span class="d">.</span>'/<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>3</code></p>
+<p><code>%</code> is the remainder, which is the part division threw away:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'2<span class="d">.</span>'7<span class="d">.</span>'%<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>1</code></p>
+<p>Seven divided by two is three, with one left over. <code>/</code> gives you the three and
+<code>%</code> gives you the one. Both follow the same top-first rule as subtraction.</p>
+<p>Remainder is how you test whether a number divides evenly. Push 2, push the
+number, and <code>'%.</code> leaves 0 if it is even and 1 if it is odd. That is exactly
+the sort of answer <code>?</code> can act on.</p>
+<p>Those five are not the whole set. There are six more, including powers and a
+group that works on the bits of a number rather than its value. They are in
+<a href="#15-letters-out-of-numbers-base64">section 15</a>, once numbers have been properly
+covered.</p>
+<h2 id="6-remembering-things-variables">6. Remembering things (variables)</h2>
+<p>The stack is fine for one or two values. Keeping track of more than that on the
+stack is hard, and variables are easier.</p>
+<ul>
+<li><code>&amp;N</code> <strong>saves</strong> the top of the stack into a variable called <code>N</code>.</li>
+<li><code>@N</code> <strong>pushes</strong> what is in <code>N</code> back onto the stack.</li>
+</ul>
+<p>As with a number, a blank ends the name.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'8<span class="d">.</span>&amp;N<span class="d">.</span>@N<span class="d">.</span>@N<span class="d">.</span>'*<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>64</code></p>
+<p>That is eight squared. Step by step, with the stack after each piece. The top of
+the stack is on the right.</p>
+<table>
+<thead>
+<tr>
+<th>reads</th>
+<th>does</th>
+<th>stack afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'8.</code></td>
+<td>push 8</td>
+<td><code>8</code></td>
+</tr>
+<tr>
+<td><code>&amp;N.</code></td>
+<td>save 8 into <code>N</code>, leaving it where it is</td>
+<td><code>8</code></td>
+</tr>
+<tr>
+<td><code>@N.</code></td>
+<td>push what is in <code>N</code></td>
+<td><code>8 8</code></td>
+</tr>
+<tr>
+<td><code>@N.</code></td>
+<td>push it again</td>
+<td><code>8 8 8</code></td>
+</tr>
+<tr>
+<td><code>'*.</code></td>
+<td>multiply: pop the top two, push 64</td>
+<td><code>8 64</code></td>
+</tr>
+<tr>
+<td><code>#</code></td>
+<td>pop 64 and print it</td>
+<td><code>8</code></td>
+</tr>
+<tr>
+<td><code>!</code></td>
+<td>stop</td>
+<td><code>8</code></td>
+</tr>
+</tbody>
+</table>
+<p>Look at the 8 still sitting there at the end. That is <code>&amp;N.</code> doing exactly what
+it says: it copied the value into <code>N</code> and left the original alone. Nothing here
+needs it again and a leftover does no harm, but in a loop it would pile up one
+per lap. <a href="#8-throwing-things-away-clearing-the-stack">Section 8</a> is about
+clearing those away.</p>
+<p>This example does not really need a variable. The stack could hold the 8 by
+itself. Variables are useful when you need a value again later, after other
+things have been pushed on top of it.</p>
+<p>Almost every program here uses a single letter, because every character costs a
+cell and grids are small. Longer names work if you want them, so long as they
+are all letters. <code>&amp;size.</code> is fine; <code>&amp;size2.</code> is not, and the runner stops dead
+when it reaches it. Nothing on the grid says why, but <code>SYS &gt; DIAGNOSTICS</code> will
+tell you: <em>runner 0 died at row 0, col 7: Variable name 'size2' should contain
+only alphabets</em>. It gives the cell as well as the reason, so you know where to
+look. That panel is the first place to go whenever a program stops for no
+visible reason.</p>
+<p><strong>Capital letters mean something.</strong> A variable with a lowercase name belongs to
+one runner. A variable with a CAPITAL name is <strong>global</strong>, and every runner
+shares it. That matters once you have more than one runner, in <a href="#14-more-than-one-runner-splitting">section
+14</a>. The counting programs all use <code>&amp;N</code> for
+exactly this reason.</p>
+<h2 id="7-asking-questions-conditions">7. Asking questions (conditions)</h2>
+<p><code>?</code> looks at the top of the stack and asks: is it zero?</p>
+<ul>
+<li><strong>Not zero</strong> — carry straight on.</li>
+<li><strong>Zero</strong> — turn. It looks left first, and goes that way if there is something
+  there; otherwise it turns right.</li>
+</ul>
+<p>"Left" and "right" are from the runner's point of view. Heading east, left is
+north and right is south.</p>
+<p><code>?</code> <strong>only looks at the top of the stack and leaves it there.</strong> That is easy to
+forget. Whatever <code>?</code> looked at is still on the stack afterwards, so something
+further on usually has to remove it.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'0<span class="d">.</span>?<span class="d">.</span>&quot;on&quot;##!
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>v
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&gt;&quot;sey&quot;###!
+</code></pre></div>
+<p>prints <code>yes</code></p>
+<p>The <code>?</code> saw zero, so it turned. North was blank, so it went south, found the
+<code>&gt;</code>, and printed <code>yes</code>. Change <code>'0.</code> to <code>'1.</code> and it carries straight on and
+prints <code>no</code> instead.</p>
+<h2 id="8-throwing-things-away-clearing-the-stack">8. Throwing things away (clearing the stack)</h2>
+<p>Values pile up on the stack. Every <code>?</code> leaves behind the thing it looked at.
+Every <code>&amp;N.</code> leaves behind the value it copied. Any sum whose answer you never
+print stays there too.</p>
+<p>In a short program that does no harm. In a loop it does, because whatever one
+lap leaves behind is still sitting there on the next one, and the pile grows
+every time round.</p>
+<p><code>&amp;</code> followed by a number removes that many values from the top of the stack.</p>
+<ul>
+<li><code>&amp;1.</code> removes one.</li>
+<li><code>&amp;2.</code> removes two.</li>
+</ul>
+<p>This is the pop from <a href="#2-saying-something-the-stack">section 2</a>, with nothing
+printed.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'1<span class="d">.</span>'2<span class="d">.</span>'3<span class="d">.</span>&amp;2<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>1</code></p>
+<table>
+<thead>
+<tr>
+<th>reads</th>
+<th>does</th>
+<th>stack afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'1.</code></td>
+<td>push 1</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>'2.</code></td>
+<td>push 2</td>
+<td><code>1 2</code></td>
+</tr>
+<tr>
+<td><code>'3.</code></td>
+<td>push 3</td>
+<td><code>1 2 3</code></td>
+</tr>
+<tr>
+<td><code>&amp;2.</code></td>
+<td>remove the top two</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>#</code></td>
+<td>pop 1 and print it</td>
+<td>empty</td>
+</tr>
+</tbody>
+</table>
+<p><code>&amp;N.&amp;1.</code> is the pair you will see all through the bundled programs. The <code>&amp;N.</code>
+saves the value, and the <code>&amp;1.</code> removes the copy that the save left behind.</p>
+<h2 id="9-using-a-value-twice-copying-on-the-stack">9. Using a value twice (copying on the stack)</h2>
+<p><code>@</code> followed by a number does the opposite of <code>&amp;</code> followed by a number. Where
+<code>&amp;</code> throws values away, <code>@</code> copies one back to the top. <code>@0.</code> copies the top,
+<code>@1.</code> copies the one below it, and so on. The original stays where it was.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'7<span class="d">.</span>'8<span class="d">.</span>'9<span class="d">.</span>@1<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>8</code></p>
+<table>
+<thead>
+<tr>
+<th>reads</th>
+<th>does</th>
+<th>stack afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'7.</code></td>
+<td>push 7</td>
+<td><code>7</code></td>
+</tr>
+<tr>
+<td><code>'8.</code></td>
+<td>push 8</td>
+<td><code>7 8</code></td>
+</tr>
+<tr>
+<td><code>'9.</code></td>
+<td>push 9</td>
+<td><code>7 8 9</code></td>
+</tr>
+<tr>
+<td><code>@1.</code></td>
+<td>copy the item one below the top</td>
+<td><code>7 8 9 8</code></td>
+</tr>
+<tr>
+<td><code>#</code></td>
+<td>pop 8 and print it</td>
+<td><code>7 8 9</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>@0.</code> is the one worth remembering, because it duplicates the top. That is how
+you use a value twice when the first use is going to remove it:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'8<span class="d">.</span>@0<span class="d">.</span>'*<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>64</code></p>
+<p>Eight squared, the same answer as the variable in <a href="#6-remembering-things-variables">section
+6</a>, without needing a variable. Push 8, copy
+it, and multiply the two copies together.</p>
+<p><strong><code>&amp;</code> and <code>@</code> each do two jobs, and what comes after them decides which.</strong>
+Letters mean a variable: <code>&amp;total.</code> and <code>@total.</code> save and fetch something
+called <code>total</code>. Digits mean the stack itself: <code>&amp;1.</code> removes one item and <code>@1.</code>
+copies one back. That is worth being careful about, because a name like <code>n</code>
+looks as though it ought to mean a number and does not. It is a variable
+called <code>n</code>.</p>
+<h2 id="10-counting-loops-counters">10. Counting loops (counters)</h2>
+<p>Now put <code>?</code> together with a variable and you have a loop.</p>
+<p>This is <a href="programs.html#countdown">Countdown</a> (Counting):</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'10<span class="d">.</span>&amp;N<span class="d">.</span>v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&lt;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+&gt;&amp;1<span class="d">.</span>@N<span class="d">.</span>#&quot; &quot;#<span class="d">.</span><span class="d">.</span>v
+^?<span class="d">.</span>N&amp;<span class="d">.</span>-'<span class="d">.</span>N@<span class="d">.</span>1'&lt;
+<span class="d">.</span>&gt;&quot;OG&quot;##!<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+</code></pre></div>
+<p>prints <code>10 9 8 7 6 5 4 3 2 1 GO</code></p>
+<p>It looks alarming. It is four simple pieces:</p>
+<ol>
+<li><strong>Row 0</strong> sets <code>N</code> to 10, then drops down.</li>
+<li><strong>Row 1</strong> carries the runner back to the left edge.</li>
+<li><strong>Row 2</strong> is the body: <code>&amp;1.</code> cleans up, <code>@N.</code> pushes the counter, <code>#</code> prints
+   it, <code>" "#</code> prints a space.</li>
+<li><strong>Row 3 counts down.</strong> The runner travels <em>west</em> along it, so it reads right
+   to left. It works out <code>N − 1</code> and saves it, and <code>?</code> decides whether to go
+   round again or drop to row 4, which prints <code>GO</code>.</li>
+</ol>
+<p>Here is the first lap, in the order the runner meets things.</p>
+<table>
+<thead>
+<tr>
+<th>row</th>
+<th>reads</th>
+<th>does</th>
+<th>stack afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>'10.</code></td>
+<td>push 10</td>
+<td><code>10</code></td>
+</tr>
+<tr>
+<td>0</td>
+<td><code>&amp;N.</code></td>
+<td>save 10 into <code>N</code>, leaving it where it is</td>
+<td><code>10</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>&amp;1.</code></td>
+<td>remove it</td>
+<td>empty</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>@N.</code></td>
+<td>push what is in <code>N</code></td>
+<td><code>10</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>#</code></td>
+<td>pop 10 and print it</td>
+<td>empty</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>" "#</code></td>
+<td>push a space, then pop and print it</td>
+<td>empty</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>'1.</code></td>
+<td>push 1</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>@N.</code></td>
+<td>push what is in <code>N</code></td>
+<td><code>1 10</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>'-.</code></td>
+<td>pop 10, pop 1, take 1 from 10, push 9</td>
+<td><code>9</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>&amp;N.</code></td>
+<td>save 9 into <code>N</code>, leaving it where it is</td>
+<td><code>9</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>?</code></td>
+<td>look at 9: not zero, so carry on west</td>
+<td><code>9</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>^</code> at the end of row 3 sends the runner back up into row 2, and the lap
+starts again. The 9 that <code>?</code> left behind is still there, which is what the
+<code>&amp;1.</code> at the start of row 2 is for. Without it the stack would grow by one
+value every lap.</p>
+<p><strong>A row the runner travels west along is written back to front.</strong> There is
+nothing special about <code>^?.N&amp;.-'.N@.1'&lt;</code>. It is ordinary instructions in the
+order the runner meets them, which happens to be right to left.</p>
+<blockquote>
+<p><strong>Try it:</strong> change <code>'10.</code> to <code>'5.</code> and it counts down from five. Change
+<code>"OG"##</code> to something else. Remember that text goes onto the stack in
+reverse, which is a separate thing from the row running west.</p>
+</blockquote>
+<h2 id="11-chance-random-numbers">11. Chance (random numbers)</h2>
+<p>Two characters give you a random number.</p>
+<ul>
+<li><code>r</code> pushes a random 0 or 1.</li>
+<li><code>R</code> takes a limit off the stack and pushes a random number from 0 up to it.</li>
+</ul>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'5<span class="d">.</span>R#!
+</code></pre></div>
+<p>prints a number from 0 to 5</p>
+<p><code>r</code> is the one to reach for when a program has to choose between two things,
+and <code>R</code> when it has to choose between many. Both leave an ordinary number on
+the stack, so everything already covered works on it: <code>?</code> can test it,
+arithmetic can change it, and a variable can hold it.</p>
+<h2 id="12-making-choices-branching">12. Making choices (branching)</h2>
+<p>A <strong>branch</strong> is a point where the runner can go two ways. The two routes out of
+it are its <strong>arms</strong>. <a href="programs.html#true-or-false">True Or False</a>
+(Deciding) is a branch whose two arms <strong>meet up again</strong>:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;r?&quot;eurt&quot;####<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span>&gt;&quot;eslaf&quot;#####v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&gt;<span class="d">.</span>&gt;&quot;<span class="d">.</span>&quot;#!<span class="d">.</span>
+</code></pre></div>
+<p>prints <code>true.</code> or <code>false.</code></p>
+<p><code>r</code> pushes a random 0 or 1. <code>?</code> carries on east for 1 and turns south for 0.
+Each arm prints a <strong>counted</strong> number of characters, four <code>#</code> for <code>true</code> and
+five for <code>false</code>, rather than looping until the stack runs dry.</p>
+<p>That is the important bit. A print loop ends when the stack runs out, and the
+runner dies with it. Here each arm still has to reach the shared ending on
+row 2, so it has to be alive when it gets there. Counting the <code>#</code> keeps it
+alive.</p>
+<p>The true arm drops down column 17. On the way it passes through row 1, which
+belongs to the false arm, but column 17 of that row is blank so nothing
+happens. <strong>A runner does whatever it passes over, including on a row that is
+meant for some other part of the program.</strong> Had the true arm dropped through
+one of the false arm's <code>#</code> characters instead, it would have printed an extra
+character on the way past. That is a hard mistake to find, because the grid
+still looks right.</p>
+<h2 id="13-waiting-pauses">13. Waiting (pauses)</h2>
+<p><code>p</code> takes a number off the stack and makes that runner wait that many steps
+before carrying on.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'20<span class="d">.</span>p&quot;iH&quot;##!
+</code></pre></div>
+<p>prints <code>Hi</code></p>
+<p>The output is no different. The difference is on screen: at a slow speed you
+can watch the runner sit on the <code>p</code> for twenty steps and then move off. A pause
+inside a loop slows the program to a pace you can follow, which is how the
+programs that draw things stay watchable.</p>
+<p>A step here means one turn of the whole program, not one step of this runner.
+(Arjun Nair's README calls these ticks. They are the same thing.) So a runner
+that pauses for twenty steps stands still while everything else takes twenty.
+That is what makes <code>p</code> useful once a program has several runners in it, which is
+the next section: <a href="programs.html#racetrack">Racetrack</a> (Watching)
+gives each lane a different pause, and that is the only reason the lanes finish
+at different times.</p>
+<p><code>p</code> needs a <strong>number</strong>, and a number is not the same thing as a character that
+looks like one. <a href="#4-numbers-integer-mode">Section 4</a> mentioned this in passing:
+<code>'3.</code> pushes the number three, and <code>"3"</code> pushes the character <code>3</code>. Written down
+they look identical. On the stack they are two different things, and <code>p</code> will
+only take the first.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;&quot;3&quot;p&quot;iH&quot;##!
+</code></pre></div>
+<p>prints nothing</p>
+<p>The runner gets to the <code>p</code>, finds a character where it needed a number, and
+stops there, so the <code>"iH"##</code> after it never runs at all. <code>SYS &gt; DIAGNOSTICS</code>
+gives the reason: <em>Pause time must be an integer greater than or equal to 0</em>.
+Changing <code>"3"</code> to <code>'3.</code> is the whole fix.</p>
+<h2 id="14-more-than-one-runner-splitting">14. More than one runner (splitting)</h2>
+<p><code>*</code> splits the runner. It looks at the four neighbouring cells, and for each one
+holding <strong>that direction's own arrow</strong>, it sends a runner that way.</p>
+<p>So a <code>*</code> with a <code>&gt;</code> to its east and a <code>v</code> below it becomes two runners.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;<span class="d">.</span>*&gt;&quot;A&quot;#!
+<span class="d">.</span><span class="d">.</span>v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span>&gt;&quot;B&quot;#!<span class="d">.</span>
+</code></pre></div>
+<p>prints <code>AB</code></p>
+<p>The neighbour has to be the <em>matching</em> arrow. A <code>*</code> next to another <code>*</code> does not
+split towards it, which is a real trap when you are lining several up in a row.</p>
+<p>This is what <a href="programs.html#dice-roll">Dice Roll</a> (Watching) uses:
+it prints the number it rolled, then splits that many runners into a ring, so
+you can count the answer going round the screen. <a href="#19-reading-a-whole-program-a-worked-example">Section
+19</a> goes through the whole of it.</p>
+<p><a href="#6-remembering-things-variables">Section 6</a> said a lowercase name belongs to
+one runner and a CAPITAL name is shared. With one runner that makes no
+difference. Here it does.</p>
+<p>When <code>*</code> splits a runner, the new one starts with a <strong>copy</strong> of the lowercase
+variables belonging to the runner it came from. The two copies are separate
+from then on: if one runner saves a new value into <code>k</code>, the other still sees
+the old one. A CAPITAL <code>N</code> is
+a single value that both runners read and write, so a change made by one is
+seen by the other.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'5<span class="d">.</span>&amp;N<span class="d">.</span>&amp;1<span class="d">.</span>*&gt;'1<span class="d">.</span>@N<span class="d">.</span>'-<span class="d">.</span>&amp;N<span class="d">.</span>#!<span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&gt;'9<span class="d">.</span>p'1<span class="d">.</span>@N<span class="d">.</span>'-<span class="d">.</span>&amp;N<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>43</code></p>
+<p>Both runners take 1 off the counter and print the result. The <code>'9.p</code> holds the
+second runner back until the first has finished. The first prints 4. The second
+then reads the 4 that the first one saved, takes 1 off, and prints 3.</p>
+<p>Change every <code>N</code> in that program to a lowercase letter, <code>k</code> say, and it prints
+<code>44</code> instead, because each runner then has its own counter and both start from
+the 5 they inherited.</p>
+<p>The wait matters. Without it the two runners move a step at a time in turn, so
+both read the counter before either saves, and a shared <code>N</code> gives the same <code>44</code>
+as a private <code>k</code>. Sharing only shows when one runner gets there after the
+other.</p>
+<h2 id="15-letters-out-of-numbers-base64">15. Letters out of numbers (base64)</h2>
+<p><code>%</code> prints a number as <strong>base64 characters</strong>.</p>
+<p>Base64 counts the way ordinary numbers do, except there are sixty-four digits
+instead of ten. The digits are the capitals, then the lowercase letters, then
+the numerals, then two punctuation marks:</p>
+<table>
+<thead>
+<tr>
+<th>digit</th>
+<th>value in base 10</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>A</code> to <code>Z</code></td>
+<td>0 to 25</td>
+</tr>
+<tr>
+<td><code>a</code> to <code>z</code></td>
+<td>26 to 51</td>
+</tr>
+<tr>
+<td><code>0</code> to <code>9</code></td>
+<td>52 to 61</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td>62</td>
+</tr>
+<tr>
+<td><code>/</code></td>
+<td>63</td>
+</tr>
+</tbody>
+</table>
+<p>So <strong><code>A</code> is zero</strong>, <code>B</code> is 1, <code>Z</code> is 25, <code>a</code> is 26, <code>z</code> is 51, the character
+<code>0</code> is 52, and <code>/</code> is 63.</p>
+<p>Each place is worth 64 times the place to its right, in the same way each place
+in an ordinary number is worth 10 times the one to its right. <code>BA</code> is
+1 × 64 + 0, which is 64. <code>BB</code> is 65.</p>
+<p>That is enough to hide a whole word inside one number:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'118489298<span class="d">.</span>%!
+</code></pre></div>
+<p>prints <code>HEADS</code></p>
+<p>Worked out by hand: <code>H</code> is 7, <code>E</code> is 4, <code>A</code> is 0, <code>D</code> is 3, <code>S</code> is 18.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>7 x 64x64x64x64  = 117440512
+4 x 64x64x64     =   1048576
+0 x 64x64        =         0
+3 x 64           =       192
+18               =        18
+                   ---------
+                   118489298
+</code></pre></div>
+<p>One number, five letters.</p>
+<p>You do not have to work that out by hand, though. <strong>A number with letters in it
+is read as base64 when you write it</strong>, so you can type the word straight in:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'HEADS<span class="d">.</span>%!
+</code></pre></div>
+<p>prints <code>HEADS</code></p>
+<p><code>'HEADS.</code> pushes 118489298, the same number as before. Print it with <code>#</code>
+instead of <code>%</code> and <code>118489298</code> is what comes back.</p>
+<p>The rule is: a number written with digits only is an ordinary base 10 number,
+and if a letter, <code>+</code> or <code>/</code> appears anywhere in it, the whole number is base64.</p>
+<p>That second half is easy to miss. <code>'0A.</code> is not a zero followed by an <code>A</code>. The
+<code>A</code> puts the whole number into base64, where the character <code>0</code> means 52, so
+<code>'0A.</code> is 52 x 64, which is 3328.</p>
+<p>That is how <a href="programs.html#coin-flip">Coin Flip</a> (Deciding) works. It
+has no branch in it at all:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'200311296<span class="d">.</span>r'*<span class="d">.</span>'118489298<span class="d">.</span>'+<span class="d">.</span>%!
+</code></pre></div>
+<p>prints <code>HEADS</code> or <code>TAILS</code></p>
+<p><code>HEADS</code> is 118489298 and <code>TAILS</code> is 318800594. The distance between them is
+200311296, and <code>r</code> gives either 0 or 1, so multiplying that distance by <code>r</code>
+either adds nothing or adds the whole way:</p>
+<table>
+<thead>
+<tr>
+<th>reads</th>
+<th>does</th>
+<th>if <code>r</code> gave 0</th>
+<th>if <code>r</code> gave 1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'200311296.</code></td>
+<td>push the distance between the two words</td>
+<td><code>200311296</code></td>
+<td><code>200311296</code></td>
+</tr>
+<tr>
+<td><code>r</code></td>
+<td>push 0 or 1</td>
+<td><code>200311296 0</code></td>
+<td><code>200311296 1</code></td>
+</tr>
+<tr>
+<td><code>'*.</code></td>
+<td>multiply the top two</td>
+<td><code>0</code></td>
+<td><code>200311296</code></td>
+</tr>
+<tr>
+<td><code>'118489298.</code></td>
+<td>push <code>HEADS</code></td>
+<td><code>0 118489298</code></td>
+<td><code>200311296 118489298</code></td>
+</tr>
+<tr>
+<td><code>'+.</code></td>
+<td>add the top two</td>
+<td><code>118489298</code></td>
+<td><code>318800594</code></td>
+</tr>
+<tr>
+<td><code>%</code></td>
+<td>print it as base64</td>
+<td><code>HEADS</code></td>
+<td><code>TAILS</code></td>
+</tr>
+</tbody>
+</table>
+<p>Arithmetic did the choosing, and <code>%</code> turned the answer back into a word.</p>
+<p>It is also how the sneakiest programs on the device work. <a href="programs.html#insult-machine">Insult
+Machine</a> (Decoding) contains no
+letters at all. Every word is a number, so you cannot read the punchline off the
+grid. Have a look at it before you run it.</p>
+<p><strong>Doing it the long way.</strong> <a href="programs.html#base-64">Base 64</a>
+(Decoding) works the same sum out by hand, so you can watch the place values
+pile up:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'7<span class="d">.</span>'64<span class="d">.</span>'*<span class="d">.</span>'4<span class="d">.</span>'+<span class="d">.</span>'64<span class="d">.</span>'*<span class="d">.</span>'0<span class="d">.</span>'+<span class="d">.</span>'64<span class="d">.</span>'*<span class="d">.</span>'3<span class="d">.</span>'+<span class="d">.</span>'64<span class="d">.</span>'*<span class="d">.</span>'18<span class="d">.</span>'+<span class="d">.</span>&amp;N<span class="d">.</span>%&quot; = &quot;###@N<span class="d">.</span>#$v
+v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&lt;
+&gt;'HEADS<span class="d">.</span>&amp;N<span class="d">.</span>%&quot; = &quot;###@N<span class="d">.</span>#!
+</code></pre></div>
+<p>prints:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>HEADS = 118489298
+HEADS = 118489298
+</code></pre></div>
+<p>Row 0 never mentions base64. It pushes 7, multiplies by 64, adds 4, multiplies
+by 64, adds 0, and carries on through the five digit values. That is the same
+sum set out above. Row 2 reaches the same number by writing <code>'HEADS.</code> and
+letting the language do the work. Both rows then print their number twice,
+once with <code>%</code> and once with <code>#</code>. The two lines come out identical because the
+two routes arrive at the same number.</p>
+<p><strong>How big a number can get.</strong> Numbers are 32-bit signed integers, so they run
+from −2147483648 to 2147483647. One past the top and the number wraps round to
+the bottom:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'2147483647<span class="d">.</span>'1<span class="d">.</span>'+<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>-2147483648</code></p>
+<p>That ceiling applies to base64 as well. Six base64 digits could reach far
+higher than an integer will hold, so the first digit has only two bits left to
+use: <code>A</code> and <code>B</code> are the only leading digits that fit in six. <code>B/////</code> is
+2147483647, the largest number there is, and <code>C/////</code> runs past the end and
+comes back negative.</p>
+<blockquote>
+<p><strong>Careful:</strong> an <code>A</code> at the start of a number is a leading zero, and leading
+zeros are not kept. <code>HEAD</code>, <code>AHEAD</code> and <code>AAHEAD</code> are all 1851395, and <code>%</code>
+prints <code>HEAD</code> for all three. An <code>A</code> anywhere else is safe, so <code>HEADS</code> comes
+back whole.</p>
+</blockquote>
+<h2 id="16-the-rest-of-the-arithmetic-powers-and-bit-operations">16. The rest of the arithmetic (powers and bit operations)</h2>
+<p>Six more operators work exactly like the five in <a href="#5-arithmetic-and-the-rule-that-is-easy-to-get-wrong-operators">section
+5</a>. All of them
+are written in integer mode, and all take the top two values off the stack, top
+first.</p>
+<p><strong><code>^</code> raises to a power.</strong></p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'2<span class="d">.</span>'10<span class="d">.</span>'^<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>100</code></p>
+<p>Ten squared. The top of the stack is the number, and the one underneath is the
+power to raise it to.</p>
+<p>The other five work on a number's <strong>bits</strong>. Every whole number is stored as a
+row of bits, which is what writing it in base 2 means: 10 is <code>1010</code> and 12 is
+<code>1100</code>. These operators line the two rows up and compare them a bit at a time.</p>
+<p><code>&amp;</code> keeps a bit only where <strong>both</strong> numbers have one:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'12<span class="d">.</span>'10<span class="d">.</span>'&amp;<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>8</code></p>
+<p><code>1010</code> and <code>1100</code> have a bit in common only in the eights column, so 8 is what
+is left.</p>
+<p><code>|</code> keeps a bit where <strong>either</strong> has one:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'12<span class="d">.</span>'10<span class="d">.</span>'|<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>14</code></p>
+<p><code>V</code> is exclusive or: a bit where <strong>exactly one</strong> of the two has one, so the
+places where they agree cancel out:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'12<span class="d">.</span>'10<span class="d">.</span>'V<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>6</code></p>
+<p><code>&lt;</code> and <code>&gt;</code> slide the bits along. Left by one doubles the number, right by one
+halves it and drops anything that falls off the end:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'1<span class="d">.</span>'8<span class="d">.</span>'&lt;<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>16</code></p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'1<span class="d">.</span>'8<span class="d">.</span>'&gt;<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>4</code></p>
+<p>The top is the number being moved, and the one underneath is how far.</p>
+<p><strong>These characters are doing two jobs.</strong> <code>^</code>, <code>&lt;</code> and <code>&gt;</code> are also the arrows,
+<code>&amp;</code> is also how you save a variable and how you drop values, and <code>V</code> is an
+ordinary letter. They only mean arithmetic between a <code>'</code> and the blank that
+ends the number. Anywhere else <code>&lt;</code> is still west.</p>
+<p>There is a further catch, and it follows from <a href="#15-letters-out-of-numbers-base64">section
+15</a>. <code>+</code>, <code>/</code> and <code>V</code> are base64 digits as
+well as operators. If the character straight after one of them could also be
+part of a number, the whole thing is read as a number instead:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'VA<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>1344</code></p>
+<p>That is the base64 number <code>VA</code>, not an exclusive or. <code>'V.</code> is the operator,
+because a blank cannot be part of a number.</p>
+<h2 id="17-two-jobs-for-one-character-modes">17. Two jobs for one character (modes)</h2>
+<p>The runner is always in one of three modes, and a character means different
+things in each.</p>
+<ul>
+<li><strong>Normal.</strong> The runner is walking. A character IRCIS knows is carried out as
+  an instruction, and every other character is walked over and ignored.</li>
+<li><strong>Stack mode</strong>, between a pair of <code>"</code>. Every character is pushed. Nothing is
+  an instruction, not even an arrow.</li>
+<li><strong>Integer mode</strong>, between a <code>'</code> and the blank that ends it. The characters
+  are read as one number, or as an operator.</li>
+</ul>
+<p>Almost every character that looks like it does two jobs is really one job in
+normal mode and another in integer mode:</p>
+<table>
+<thead>
+<tr>
+<th>character</th>
+<th>in normal mode</th>
+<th>in integer mode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>*</code></td>
+<td>split into more runners</td>
+<td>multiply</td>
+</tr>
+<tr>
+<td><code>%</code></td>
+<td>print the top as base64</td>
+<td>remainder</td>
+</tr>
+<tr>
+<td><code>&amp;</code></td>
+<td>save a variable, or drop values</td>
+<td>bitwise and</td>
+</tr>
+<tr>
+<td><code>^</code></td>
+<td>go north</td>
+<td>raise to a power</td>
+</tr>
+<tr>
+<td><code>&lt;</code></td>
+<td>go west</td>
+<td>shift the bits left</td>
+</tr>
+<tr>
+<td><code>&gt;</code></td>
+<td>go east</td>
+<td>shift the bits right</td>
+</tr>
+<tr>
+<td><code>+</code> <code>-</code> <code>/</code></td>
+<td>nothing, walked over</td>
+<td>add, subtract, divide</td>
+</tr>
+<tr>
+<td><code>V</code> <code>\|</code></td>
+<td>nothing, walked over</td>
+<td>exclusive or, or</td>
+</tr>
+</tbody>
+</table>
+<p><code>*</code> is the clearest case. On its own it splits the runner:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;<span class="d">.</span>*&gt;&quot;A&quot;#!
+<span class="d">.</span><span class="d">.</span>v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span>&gt;&quot;B&quot;#!<span class="d">.</span>
+</code></pre></div>
+<p>prints <code>AB</code></p>
+<p>Put the same character in integer mode and it multiplies:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'6<span class="d">.</span>'7<span class="d">.</span>'*<span class="d">.</span>#!
+</code></pre></div>
+<p>prints <code>42</code></p>
+<p>Same character, two entirely different jobs, and the only thing that decides it
+is whether a <code>'</code> opened a number first.</p>
+<p><code>%</code> is the other one worth watching, because both of its jobs turn up in the
+same programs. In normal mode it prints the top of the stack as base64. In
+integer mode it is the remainder:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'2<span class="d">.</span>'7<span class="d">.</span>'%<span class="d">.</span>%!
+</code></pre></div>
+<p>prints <code>B</code></p>
+<p>The first <code>%</code> is in integer mode, so it takes the remainder of 7 and 2, which
+is 1. The second is in normal mode, so it prints that 1 as base64, and 1 in
+base64 is <code>B</code>.</p>
+<h2 id="18-quirks-worth-knowing-comments-and-hidden-programs">18. Quirks worth knowing (comments and hidden programs)</h2>
+<p><strong>In normal mode, most characters do nothing.</strong> The runner only acts on
+these:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&lt; &gt; ^ v   + - * / %   &amp; | V   ? ! $ #   &quot; '   @   p r R
+</code></pre></div>
+<p>Everything else is walked straight over and ignored: every other letter, every
+digit outside a number, commas, brackets, all of it.</p>
+<p>That holds while the runner is between instructions, which is most of the time.
+It does not hold while the runner is part-way through reading something:</p>
+<ul>
+<li>Between a pair of <code>"</code> quotes <strong>every</strong> character is pushed, spaces and commas
+  included. That is what stack mode is for.</li>
+<li>After <code>'</code>, characters are read as part of the number until a blank ends it. A
+  character that cannot be part of a number stops the runner: <code>'1,2.</code> dies with
+  <em>Non integer character in integer processing</em>.</li>
+<li>After <code>&amp;</code> or <code>@</code>, characters are read as a variable name until a blank ends
+  it. Anything that is not a letter stops the runner: <code>&amp;N,.</code> dies with
+  <em>Variable name 'N,' should contain only alphabets</em>.</li>
+</ul>
+<p>A blank ends a number and it ends a variable name, so once you have written
+<code>'42.</code> or <code>&amp;N.</code> the runner is between instructions again and anything may
+follow.</p>
+<p>That means <strong>you can write notes to yourself, and to whoever runs your program,
+right inside the grid</strong>:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;&quot;iH&quot;## this text is walked over and ignored !
+</code></pre></div>
+<p>prints <code>Hi</code></p>
+<p>The runner steps on <code>t</code>, <code>h</code>, <code>i</code>, <code>s</code> and so on, shrugs, and carries on.</p>
+<p>Two things to watch:</p>
+<ul>
+<li><strong><code>p</code>, <code>r</code>, <code>R</code> and <code>V</code> are letters that <em>do</em> something.</strong> <code>p</code> pauses, <code>r</code> and
+  <code>R</code> push random numbers, <code>V</code> is exclusive-or. A note containing the word
+  "program" has a <code>p</code> and an <code>r</code> in it, and both will fire.</li>
+<li>The safe way is to put your text <strong>where no runner ever goes</strong>. Cells nothing
+  steps on are never read at all, so anything goes there: any letter, any
+  punctuation.</li>
+</ul>
+<p><a href="programs.html#morse-decoder">Morse Decoder</a> (Decoding) uses
+exactly that. Its second, third and fourth rows are plain English instructions,
+and the runner never reads them: it comes down the right-hand end of the first
+row and falls straight past them.</p>
+<p><a href="programs.html#racetrack">Racetrack</a> (Watching) does the same with
+its title and its footer.</p>
+<p>Taken to its limit, the whole program can be hidden inside something that reads
+as ordinary writing. <a href="programs.html#nothing-to-see">Nothing To See</a>
+(Watching) is a paragraph of plain English:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>It looks like nothing much, even
+when you read it twice<span class="d">.</span> There's nothing here<span class="d">.</span>
+Every word of it is ordinary if you check<span class="d">.</span>
+It is a note about nothing, arranged plainly<span class="d">.</span>
+These lines are the sort you could skim past<span class="d">.</span>
+Nobody would give it a quick inspection<span class="d">.</span>
+It says nothing much, and does nothing<span class="d">.</span>
+There is no trick here at all<span class="d">.</span> Nothing<span class="d">.</span>
+Not a word of it, not even 15% of it<span class="d">.</span>
+There is nothing here, at all! Nothing<span class="d">.</span>
+</code></pre></div>
+<p>prints <code>ircis</code></p>
+<p>Nothing is out of place and there is no tag on it. The runner sets off east
+along the first line, walks over <code>It looks like nothing much, e</code> because none
+of those characters is an instruction, and reaches the <code>v</code> in <strong>even</strong>. That
+sends it south, and from there it only ever reads column 29. Down that one
+column the lines read <code>'</code>, <code>i</code>, <code>r</code>, <code>c</code>, <code>i</code>, <code>s</code>, <code>.</code>, <code>%</code>, <code>!</code>. Those are
+the apostrophe in <strong>There's</strong>, letters from the middle of five ordinary words, a
+full stop, the percent sign in <strong>15%</strong>, and the exclamation mark at the end.
+That spells <code>'ircis.%!</code>: push the base64 number <code>ircis</code>, print it, stop.</p>
+<p>Writing one is a fitting exercise. Pick a column, decide what the program has
+to say down it, and then write sentences that happen to carry the right
+character at that position.</p>
+<p><strong>And because the path is the program, the path can be a picture.</strong>
+<a href="programs.html#motto">Motto</a> (Watching) spells out <strong>IRCIS</strong> on the screen
+by splitting a runner off at each letter to walk its shape. The letters only
+exist as the routes the runners take, and nothing in the grid draws them. Turn on the
+<code>~t</code> view tag and the path stays on screen instead of fading.</p>
+<p><strong>View tags.</strong> These are a pIRCIS addition, not part of IRCIS. Arjun Nair's
+interpreter knows nothing about them, and a program carrying one still runs
+there, because the tag is only a run of ordinary characters that the runner
+walks over. On this device a program can use one to ask to be shown a
+particular way.</p>
+<p><strong>A tag is a tilde <code>~</code> followed by letters</strong>, written on any blank cell. The
+tilde is what marks it as a tag, and the letters after it come from this list,
+in any order:</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>under the grid:  n  nothing    d  runner readout
+speed:           s  slow   m  med   q  quick   f  full
+path:            t  keep the runners' path on screen
+hold the view:   h  do not follow the runners while it runs
+start position:  &lt;row&gt;,&lt;col&gt; and one of N E S W
+</code></pre></div>
+<p>So <code>~nst</code> means: nothing underneath, slow, keep the path. <code>h</code> is worth knowing
+for a program that draws: without it the view follows the runner and the
+picture moves out from under you. None of the tag
+characters is an instruction, so a runner that crosses one steps over it.</p>
+<h2 id="19-reading-a-whole-program-a-worked-example">19. Reading a whole program (a worked example)</h2>
+<p>Everything so far has been shown a few cells at a time. This section takes one
+of the bundled programs and goes through all of it, which is the last thing
+worth practising: the programs on the device are not longer than this one, only
+wider.</p>
+<p><a href="programs.html#dice-roll">Dice Roll</a> (Watching) rolls a die, says
+what it rolled, and then puts that many runners into a ring going round the
+screen, so the number it printed is the number of markers you can count.</p>
+<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button><pre><code>&gt;'5<span class="d">.</span>R'1<span class="d">.</span>'+<span class="d">.</span>&amp;D<span class="d">.</span>&amp;K<span class="d">.</span>v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&lt;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&lt;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+&gt;&amp;2<span class="d">.</span>@K<span class="d">.</span>?*&gt;'1<span class="d">.</span>@K<span class="d">.</span>'-<span class="d">.</span>&amp;K<span class="d">.</span>^<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>vv<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&gt;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>^<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&lt;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+v<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>&lt;<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>
+&gt;&amp;1<span class="d">.</span>@D<span class="d">.</span>&quot; dellor evah uoY&quot;&gt;#v
+<span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span><span class="d">.</span>^<span class="d">.</span>&lt;
+</code></pre></div>
+<p>prints <code>You have rolled 4</code>, or whatever it rolled</p>
+<p><strong>Row 0 makes the roll and remembers it twice.</strong></p>
+<table>
+<thead>
+<tr>
+<th>reads</th>
+<th>does</th>
+<th>stack afterwards</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'5.</code></td>
+<td>push 5, the largest number wanted</td>
+<td><code>5</code></td>
+</tr>
+<tr>
+<td><code>R</code></td>
+<td>take that 5 off and push a random number from 0 to 5</td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td><code>'1.</code></td>
+<td>push 1</td>
+<td><code>3 1</code></td>
+</tr>
+<tr>
+<td><code>'+.</code></td>
+<td>add, so the range becomes 1 to 6</td>
+<td><code>4</code></td>
+</tr>
+<tr>
+<td><code>&amp;D.</code></td>
+<td>save the roll into <code>D</code>, leaving it where it is</td>
+<td><code>4</code></td>
+</tr>
+<tr>
+<td><code>&amp;K.</code></td>
+<td>save the roll into <code>K</code> as well</td>
+<td><code>4</code></td>
+</tr>
+<tr>
+<td><code>v</code></td>
+<td>go south</td>
+<td><code>4</code></td>
+</tr>
+</tbody>
+</table>
+<p>Two copies because they are used for two different jobs. <code>D</code> is the number to
+print at the end. <code>K</code> is a counter that is about to be counted down to nothing,
+and counting it down would destroy the answer if there were only one copy.</p>
+<p><strong>Row 1 carries the runner back to the left edge</strong>, the same as in
+<a href="programs.html#countdown">Countdown</a> (Counting).</p>
+<p><strong>Row 2 is a loop that makes one new runner per lap.</strong></p>
+<p><code>&amp;2.</code> clears the stack. On the first lap there is only one value on it, and
+asking to remove two when there is one is not an error. It empties the stack
+and carries on. On later laps there are two things to clear, which is why it
+says two.</p>
+<p><code>@K.</code> pushes the counter and <code>?</code> looks at it.</p>
+<ul>
+<li><strong>Not zero.</strong> The runner carries straight on east onto the <code>*</code>. Below the <code>*</code>
+  is a <code>v</code> and to its east is a <code>&gt;</code>, so it splits: one runner carries on east,
+  and a new one heads south into the ring. The rest of the row works out
+  <code>K − 1</code>, saves it, and the <code>^</code> sends the runner back up to row 1 and round
+  again.</li>
+<li><strong>Zero.</strong> Every runner has been made. <code>?</code> turns, and since north is blank it
+  goes south instead, down to row 6 and along to row 7.</li>
+</ul>
+<p><strong>Rows 3 to 5 are the ring.</strong> A new runner drops in at the <code>&gt;</code> on row 4 and
+then goes round four cells forever: east along row 4 to the <code>v</code>, south to
+row 5, west to the <code>^</code>, north back to where it started. Nothing is printed. The
+runners are the output, and you count them.</p>
+<p><strong>Row 7 prints the answer.</strong></p>
+<p><code>&amp;1.</code> removes the zero that <code>?</code> left behind. <code>@D.</code> pushes the roll, which has
+been sitting safely in <code>D</code> the whole time. Then <code>" dellor evah uoY"</code> pushes the
+message backwards, so that it comes off the right way round.</p>
+<p>The last four cells are the same print loop as <a href="programs.html#hello-world">Hello
+World</a> (Talking): <code>&gt;</code> and <code>#</code> on row 7, <code>^</code>
+and <code>&lt;</code> on row 8. It goes round printing one character per lap: <code>Y</code>, <code>o</code>, <code>u</code>,
+and so on, and when the message runs out the roll is the last thing left, so
+<code>You have rolled</code> is followed by the number. Then the stack is empty, the <code>#</code>
+has nothing to print, and that runner stops. The ones in the ring keep going.</p>
+<p><strong>What to take from it.</strong> Every piece of that program is something from an
+earlier section. A random number, an arithmetic step, two variables, a counting
+loop, a <code>?</code> deciding when to stop, a split, and a print loop. The bundled
+programs that look hardest, such as <a href="programs.html#morse-decoder">Morse
+Decoder</a> (Decoding),
+<a href="programs.html#pi">Pi</a> (Counting) and
+<a href="programs.html#racetrack">Racetrack</a> (Watching) are built the same
+way out of the same parts. When one of them
+looks impossible, find the loop first, then find what ends it, and read the rest
+afterwards.</p>
+<h2 id="20-build-something-exercises">20. Build something (exercises)</h2>
+<p>You now know everything the bundled programs use. Here are three projects, in
+order of difficulty.</p>
+<p><strong>A times table.</strong> Print the seven times table. Start from
+<a href="programs.html#countdown">Countdown</a> (Counting) and change the body:
+push the counter, push 7, multiply, print. Look at <a href="programs.html#seven-times">Seven
+Times</a> (Counting) if you get stuck, but try
+it first.</p>
+<p><strong>A yes/no machine.</strong> Ask a question in the grid as a comment, then use <code>r</code> and
+<code>?</code> to print one of two answers. <a href="programs.html#true-or-false">True Or
+False</a> (Deciding) is the model. Then make
+it four answers instead of two, by testing twice. <a href="programs.html#magic-eight-ball">Magic Eight
+Ball</a> (Deciding) shows one way.</p>
+<p><strong>A picture.</strong> Send a runner on a path that draws a shape, with <code>~nst</code> so the
+path stays on screen. <a href="programs.html#spiral">Spiral</a> (Watching) and
+<a href="programs.html#bounce">Bounce</a> (Watching) are the simple ones, and
+<a href="programs.html#motto">Motto</a> (Watching) is a much harder one.</p>
+<p>The <code>?</code> button in the editor's status bar opens the command list, so you do not
+have to come back here for it.</p>
+<p>When something does not work, the two questions that solve most problems are:</p>
+<ol>
+<li><strong>Is the runner doing what I think it is?</strong> Set <code>UNDER GRID</code> to <code>RUNNERS</code>, put it
+   on <code>SLOW</code>, and watch. Turn on <code>SYS &gt; STEP BUTTONS</code> and walk it one step at a
+   time.</li>
+<li><strong>Is the stack what I think it is?</strong> Remember that <code>?</code> and <code>&amp;name</code> both leave
+   the value where it was.</li>
+</ol>
+<h2 id="cheat-sheet">Cheat sheet</h2>
+<p>The commands and their names follow
+<a href="https://github.com/batman-nair/IRCIS">Arjun Nair's own table</a>, so that this
+guide and his README agree. Each row shows what you actually write.</p>
+<p><strong>Anywhere in the grid</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">What you write</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><code>&gt;</code> <code>&lt;</code> <code>^</code> <code>v</code></td>
+<td>move east, west, north, south</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>.</code> or a space</td>
+<td>blank, walked over</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>!</code></td>
+<td>stop this runner</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>"..."</code></td>
+<td><strong>stack mode</strong>: every character between the quotes is pushed</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'...</code></td>
+<td><strong>integer mode</strong>: a number or an operator, ended by a blank</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>#</code></td>
+<td>pop the top and print it</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>%</code></td>
+<td>pop the top and print it as base64 characters</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>$</code></td>
+<td>print a new line</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>?</code></td>
+<td>look at the top without removing it. Zero turns, anything else carries on</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>*</code></td>
+<td>split into more runners</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>r</code></td>
+<td>push a random 0 or 1</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>R</code></td>
+<td>push a random number from 0 up to the limit on top of the stack</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>p</code></td>
+<td>pause this runner for the number of steps on top of the stack</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>@name.</code></td>
+<td>push the value of the variable called <code>name</code></td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>&amp;name.</code></td>
+<td>copy the top of the stack into the variable <code>name</code>, leaving it there</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>@2.</code></td>
+<td>copy the item 2 places below the top onto the top. <code>@0.</code> copies the top itself</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>&amp;2.</code></td>
+<td>remove 2 items from the top of the stack</td>
+</tr>
+</tbody>
+</table>
+<p><code>@</code> and <code>&amp;</code> both read whatever follows them, and what you write decides which
+job you get. <strong>Letters</strong> mean a variable, and the name may be as long as you
+like. <strong>Digits</strong> mean the stack itself: a position for <code>@</code>, and a count
+for <code>&amp;</code>.</p>
+<p><strong>In integer mode only</strong></p>
+<p>Each of these is three characters: the <code>'</code> that opens integer mode, the
+operator, and the blank that closes it. Several of them appear in the table
+above as well, doing something completely different outside integer mode.
+<a href="#17-two-jobs-for-one-character-modes">Section 17</a> sets out which.</p>
+<p>All of them take the top two values off the stack, <strong>top first, then the one
+underneath</strong>.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">What you write</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><code>'+.</code></td>
+<td>add</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'-.</code></td>
+<td>subtract</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'*.</code></td>
+<td>multiply</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'/.</code></td>
+<td>divide, throwing away the fraction</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'%.</code></td>
+<td>remainder</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'^.</code></td>
+<td>raise to a power</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'&amp;.</code></td>
+<td>bitwise and</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'\|.</code></td>
+<td>bitwise or</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'V.</code></td>
+<td>exclusive or</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'&lt;.</code></td>
+<td>shift the bits left</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>'&gt;.</code></td>
+<td>shift the bits right</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Six mistakes that are easy to make</strong></p>
+<ol>
+<li>Text comes back off the stack backwards, so write it backwards.</li>
+<li>Arithmetic is top-first: push 10 then 3 and <code>'-.</code> is −7.</li>
+<li><code>?</code> and <code>&amp;N.</code> look at the top without removing it.</li>
+<li>A cell holds one instruction. If a path crosses one of its own turns, it will
+   take that turn again.</li>
+<li>One letter makes a whole number base64, so <code>'0A.</code> is 3328, not zero.</li>
+<li>Numbers and arithmetic need a <code>'</code> before them and a blank after them. A bare
+   <code>*</code> splits the runner instead of multiplying.</li>
+</ol>
+<hr />
+<p>The full command list and the language's own rules are in
+<a href="https://github.com/batman-nair/IRCIS">Arjun Nair's IRCIS</a>, which is where all
+of this comes from. Every program mentioned here is in
+<a href="programs.html"><code>programs/</code></a>, with a table of what each one does.</p>
+</main>
+</div>
+<footer class="foot">
+  <p>pIRCIS is copyright &copy; 2026 James Leaver, MIT licensed. IRCIS is the work of
+  <a href="https://github.com/batman-nair/IRCIS">Arjun Nair</a>.
+  <a href="https://github.com/jamesleaver/pIRCIS">Source on GitHub</a> &middot;
+  <a href="https://apps.apple.com/app/id6809655892">The app on the App Store</a> &middot;
+  <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/PRIVACY.md">Privacy</a> &middot;
+  <a href="https://github.com/jamesleaver/pIRCIS/blob/main/ios/SUPPORT.md">Support</a></p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>
