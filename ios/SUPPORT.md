@@ -22,10 +22,10 @@ the Files app.
   through with **STEP BUTTONS** on and the line before the stop is the one to
   look at.
 - **Learning the language:** the guide is at
-  https://github.com/jamesleaver/pIRCIS/blob/main/LEARN.md, one tap away
+  https://pircis.fisheggs.au/learn.html, one tap away
   from **SYS > LEARN IRCIS**.
 
 ## Privacy
 
-The app collects nothing. The privacy policy is
-[PRIVACY.md](PRIVACY.md) beside this file.
+The app collects nothing. The privacy policy is at
+https://pircis.fisheggs.au/privacy.html.

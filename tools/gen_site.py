@@ -88,6 +88,9 @@ def fix_links(html, anchors, page):
     GitHub for files the site does not carry."""
     def href(m):
         url = m.group(1)
+        if url.rstrip("/") + "/" == SITE or url.startswith(SITE):   # the site's own pages, relative
+            rest = url[len(SITE):] if url.startswith(SITE) else ""
+            return 'href="%s"' % (rest or "index.html")
         if url.startswith(("http://", "https://", "mailto:")):
             return m.group(0)
         if url.startswith("#"):
@@ -112,6 +115,10 @@ def fix_links(html, anchors, page):
             return 'href="programs.html#%s"' % slugify(Path(path).stem)
         if path.startswith("shots/"):
             return m.group(0)
+        if path in ("ios/PRIVACY.md", "PRIVACY.md"):
+            return 'href="privacy.html"'
+        if path in ("ios/SUPPORT.md", "SUPPORT.md"):
+            return 'href="support.html"'
         return 'href="%s%s%s"' % (BLOB, path, frag)
     return re.sub(r'href="([^"]+)"', href, html)
 
@@ -155,7 +162,10 @@ def page(title, body, active, sidebar=None, description=""):
         % (" on" if href == active else "", href, label, short)
         for href, label, short in NAV)
     side = ('<aside class="side"><nav aria-label="Contents">%s</nav></aside>' % sidebar) if sidebar else ""
-    icon = '<a class="gh" href="%s" aria-label="pIRCIS on GitHub" title="pIRCIS on GitHub">%s</a>' % (REPO, GITHUB_ICON)
+    icon = ('<a class="totop" href="#" hidden aria-label="Back to the top" title="Back to the top">'
+            '<svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" '
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 14V3M3.5 7.5 8 3l4.5 4.5"/></svg></a>'
+            '<a class="gh" href="%s" aria-label="pIRCIS on GitHub" title="pIRCIS on GitHub">%s</a>' % (REPO, GITHUB_ICON))
     return """<!doctype html>
 <html lang="en">
 <head>
@@ -200,8 +210,8 @@ def page(title, body, active, sidebar=None, description=""):
   <a href="https://github.com/batman-nair/IRCIS">Arjun Nair</a>.
   <a href="%(repo)s">Source on GitHub</a> &middot;
   <a href="%(store)s">The app on the App Store</a> &middot;
-  <a href="%(blob)sios/PRIVACY.md">Privacy</a> &middot;
-  <a href="%(blob)sios/SUPPORT.md">Support</a></p>
+  <a href="privacy.html">Privacy</a> &middot;
+  <a href="support.html">Support</a></p>
 </footer>
 <script src="site.js"></script>
 </body>
@@ -295,6 +305,9 @@ def build():
     intro_html, _ = render(intro_md)
     intro_html = fix_links(intro_html, anchors, "index.html")
     intro_html = re.sub(r"<p>(.*?)</p>", r'<h1 class="lede">\1</h1>', intro_html, count=1, flags=re.S)
+    # The readme points at the website; the website need not point at itself.
+    intro_html = re.sub(r'<p>The website, <strong><a href="index.html">.*?</p>\s*', "", intro_html, count=1, flags=re.S)
+    assert "The website," not in intro_html, "the readme's website line changed shape"
     # The three ways are the readme's own list, drawn as cards; what follows
     # them on the readme (the pictures, the guide) follows them here.
     rest_md = ""
@@ -375,10 +388,20 @@ def build():
         "IRCIS programs to copy and run", html, "programs.html", sidebar=toc_html(toc),
         description="Every IRCIS program bundled with pIRCIS, ready to copy and paste into the emulator or the app."))
 
+    # --- the app's privacy policy and support page, from ios/
+    for src, href, title, desc in [
+        ("PRIVACY.md", "privacy.html", "pIRCIS privacy policy", "pIRCIS collects no data. The app's privacy policy."),
+        ("SUPPORT.md", "support.html", "pIRCIS support", "How to get help with the pIRCIS app, and what to include.")]:
+        md_text = re.sub(r"^# .*\n", "", (ROOT / "ios" / src).read_text(), count=1)
+        html, _ = render(md_text)
+        html = fix_links(html, anchors, href)
+        heading = "Privacy" if src.startswith("PRIVACY") else "Support"
+        (DOCS / href).write_text(page(title, '<h1 class="title">%s</h1>' % heading + html, href, description=desc))
+
     (DOCS / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
         + "".join("  <url><loc>%s%s</loc></url>\n" % (SITE, "" if p == "index.html" else p)
-                  for p in ["index.html", "get.html", "use.html", "learn.html", "programs.html"])
+                  for p in ["index.html", "get.html", "use.html", "learn.html", "programs.html", "privacy.html", "support.html"])
         + "</urlset>\n")
     (DOCS / "robots.txt").write_text("User-agent: *\nAllow: /\nSitemap: %ssitemap.xml\n" % SITE)
     (DOCS / "CNAME").write_text(DOMAIN + "\n")

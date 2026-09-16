@@ -21,3 +21,16 @@ if (links.length && 'IntersectionObserver' in window) {
   }, { rootMargin: '0px 0px -75% 0px' });
   Object.keys(byId).forEach(function (id) { var el = document.getElementById(id); if (el) seen.observe(el); });
 }
+
+// On a phone the contents box scrolls away with the page; once it has,
+// the title bar offers a way back to the top.
+var totop = document.querySelector('.totop'), box = document.querySelector('.side nav');
+if (totop && box) {
+  var check = function () {
+    totop.hidden = window.innerWidth > 820 || box.getBoundingClientRect().bottom > 0;
+  };
+  window.addEventListener('scroll', check, { passive: true });
+  window.addEventListener('resize', check);
+  check();
+  totop.addEventListener('click', function (ev) { ev.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+}

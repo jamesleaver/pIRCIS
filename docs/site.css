@@ -65,7 +65,11 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--blue); outline-
 }
 .brand { font-size: 1.35rem; font-weight: 600; color: var(--accent); text-decoration: none; letter-spacing: .01em; }
 .brand .p { color: var(--ink); }
+.bar .right { display: inline-flex; align-items: center; gap: .9rem; }
 .gh { color: var(--ink); display: inline-flex; align-self: center; }
+.totop { color: var(--accent); display: inline-flex; align-self: center; margin-right: .9rem; }
+.totop[hidden] { display: none; }
+@media (min-width: 821px) { .totop { display: none; } }
 .gh:hover { color: var(--accent); }
 
 /* The device's tab bar, laid across the top. */

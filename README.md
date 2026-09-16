@@ -3,6 +3,9 @@
 pIRCIS runs [IRCIS](https://github.com/batman-nair/IRCIS) programs and shows
 them running.
 
+The website, **[pircis.fisheggs.au](https://pircis.fisheggs.au)**, has all of
+this, the guide, and every program ready to copy.
+
 IRCIS is a small programming language by Arjun Nair (batman-nair); the name
 stands for *I Run Chars I See*. A program is a grid of characters, and a
 *runner* walks across the grid doing whatever it steps on. It goes in a
@@ -42,11 +45,8 @@ word of what that stands for.
 
 The app is **[pIRCIS on the App Store](https://apps.apple.com/app/id6809655892)**,
 for iPhone and iPad, and it runs on a Mac with Apple silicon as an iPad app.
-The app carries no WiFi page and no hidden program, shares programs through
-the phone's own sheet, opens `.txt` files from the Files app, and takes a
-program copied in any other app through the PASTE button on PROG > New
-program. Its privacy policy and support page are
-[ios/PRIVACY.md](ios/PRIVACY.md) and [ios/SUPPORT.md](ios/SUPPORT.md).
+The app's [privacy policy](https://pircis.fisheggs.au/privacy.html) and
+[support page](https://pircis.fisheggs.au/support.html) are on the website.
 
 ## Board
 
