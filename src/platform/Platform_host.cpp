@@ -11,6 +11,9 @@
 #include "Display.h"
 
 #include <SDL.h>
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 #include <cstdlib>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -142,6 +145,9 @@ namespace {
 
 bool readLine(std::string& line) {
   static bool started = false;
+#if defined(__EMSCRIPTEN__)
+  started = true;        // a page has no terminal; pircis_console() below is the way in
+#endif
   if (!started) { started = true; std::thread(stdinReader).detach(); }
   std::lock_guard<std::mutex> g(g_lineMx);
   if (g_lines.empty()) return false;
@@ -246,7 +252,13 @@ void putBool(const char* key, bool value) { putInt(key, value ? 1 : 0); }
 void clearAll() { g_map.clear(); save(); }
 }
 
-bool sdPresent() { return !TARGET_OS_IPHONE; }   // the emulator writes to ./sdcard/; a phone has no card
+// A page in a browser has no card either: what it keeps is the browser's.
+#if defined(__EMSCRIPTEN__)
+#define SK_NO_CARD 1
+#else
+#define SK_NO_CARD TARGET_OS_IPHONE
+#endif
+bool sdPresent() { return !SK_NO_CARD; }   // the emulator writes to ./sdcard/; a phone has no card
 
 bool writeRunFile(const std::string& text, std::string& pathOut) {
   std::error_code ec;
@@ -274,10 +286,19 @@ bool webAvailable() { return false; }
 // A screen of its own has no radio this program drives and a touch panel
 // the system calibrates, not us; the card is a directory and stays.
 bool hasWifi()       { return !TARGET_OS_IPHONE && !deviceMode(); }
-bool hasSdSlot()     { return !TARGET_OS_IPHONE; }
+bool hasSdSlot()     { return !SK_NO_CARD; }
 bool hasTouchCheck() { return !TARGET_OS_IPHONE && !deviceMode(); }
 bool canOpenUrl()    { return true; }
+#if defined(__EMSCRIPTEN__)
+// The page opens it: a browser only lets a page open another from its own
+// thread, and may still refuse, in which case the page shows the link.
+bool openUrl(const char* url) {
+  MAIN_THREAD_EM_ASM({ if (window.pircisOpen) window.pircisOpen(UTF8ToString($0)); }, url);
+  return true;
+}
+#else
 bool openUrl(const char* url) { return SDL_OpenURL(url) == 0; }
+#endif
 
 // A phone's glass, or a screen this program is the whole of: a mouse is
 // one finger that drags but cannot pinch.
@@ -301,11 +322,15 @@ bool takeWheel(int& dy, int& dx, int& x, int& y) { return gfx.sdl().takeWheel(dy
 // The desktop emulator keeps the board's default, the on-screen keys, so
 // the pages can be tried as the board shows them; a screen with a keyboard
 // plugged in starts with that keyboard.
-bool preferHardwareKeys() { return (g_device && g_keyboard) || onMac(); }
+bool preferHardwareKeys() { return (g_device && g_keyboard) || (TARGET_OS_IPHONE && hardwareKeyboard()); }
 #if !TARGET_OS_IPHONE
 bool onMac() { return false; }
 void startTextInputOnMain() {}
 void keepTextInput() {}
+bool hardwareKeyboard() { return true; }
+bool takeKeyboardChange() { return false; }
+std::string keyboardNote() { return std::string(); }
+void alignLayerScale() {}
 #endif
 
 // What is plugged in, as Linux lists it: a device whose handlers include
@@ -476,6 +501,61 @@ namespace {
     if (g_keys.size() < 64) g_keys.push_back(c);
   }
 
+  // On a phone or a Mac the keys come by two roads. A press reaches SDL at
+  // once through the keyboard framework, and the character it types comes
+  // a moment later through the text field, so Return pressed straight
+  // after a word could arrive before the word. The keys that act -- Return,
+  // Backspace, Tab, the arrows, the chords -- therefore wait behind any
+  // character still on its way: a printable press counts one due, its
+  // text pays it off, and while any is due the acting keys are held. A
+  // press whose text never comes -- a dead key -- is let go after a while.
+  int               g_textDue   = 0;
+  Uint32            g_textDueAt = 0;
+  std::vector<char> g_held;
+
+  // A key held down. A desktop's system repeats it and says so (the press
+  // comes again marked as a repeat); a phone's keyboard framework and a
+  // Mac's, on the app, send one press and one release and nothing between.
+  // So the app repeats the key itself while it is down, unless the system
+  // has been seen to: f and b step, the arrows move, Backspace deletes, and
+  // holding any of them keeps it going.
+  SDL_Keycode g_heldSym   = 0;
+  char        g_heldKey   = 0;
+  Uint32      g_heldSince = 0, g_heldLast = 0;
+  bool        g_sysRepeats = false;
+  constexpr Uint32 kRepeatAfter = 350, kRepeatEvery = 90;
+  bool repeating() { return g_heldSym && !g_sysRepeats && SDL_GetTicks() - g_heldSince > kRepeatAfter; }
+  void flushHeldLocked() {
+    for (char c : g_held) if (g_keys.size() < 64) g_keys.push_back(c);
+    g_held.clear();
+  }
+  void pushActing(char c) {
+    std::lock_guard<std::mutex> g(g_keyMx);
+    if (TARGET_OS_IPHONE && g_textDue > 0) g_held.push_back(c);
+    else if (g_keys.size() < 64) g_keys.push_back(c);
+  }
+  void textArrived() {
+    std::lock_guard<std::mutex> g(g_keyMx);
+    if (g_textDue > 0) --g_textDue;
+    if (g_textDue == 0) flushHeldLocked();
+  }
+  void pressDue() {
+    std::lock_guard<std::mutex> g(g_keyMx);
+    if (g_textDue++ == 0) g_textDueAt = SDL_GetTicks();
+  }
+
+  // The arrows by where they are on the keyboard, not by what the system
+  // calls them: Safari reports a Mac's arrow keys as the number pad's, and
+  // SDL then names them keypad 2, 4, 6 and 8.
+  SDL_Keycode symOf(const SDL_Event* e) {
+    switch (e->key.keysym.scancode) {
+      case SDL_SCANCODE_UP:    return SDLK_UP;
+      case SDL_SCANCODE_DOWN:  return SDLK_DOWN;
+      case SDL_SCANCODE_LEFT:  return SDLK_LEFT;
+      case SDL_SCANCODE_RIGHT: return SDLK_RIGHT;
+      default:                 return e->key.keysym.sym;
+    }
+  }
   int keyWatch(void*, SDL_Event* e) {
     // On a screen of its own, Alt with a digit picks the picture scale and
     // Alt-Q leaves; the panel's own resize keys are switched off there,
@@ -490,48 +570,70 @@ namespace {
       // answers Cmd-V with the clipboard, as any field would; that text is
       // the paste already handled below, not typing.
       if ((Sint32)(g_dropTextUntil - SDL_GetTicks()) > 0) return 1;
-      for (const char* p = e->text.text; *p; ++p)
+      for (const char* p = e->text.text; *p; ++p) {
+        // While the app is repeating a held key itself, the text the
+        // system may also repeat for it is not typed a second time.
+        if (repeating() && *p == g_heldKey) continue;
         if (*p >= 0x20 && *p < 0x7f) pushKey(*p);
+      }
+      textArrived();
+    }
+    else if (e->type == SDL_KEYUP) {
+      if (symOf(e) == g_heldSym) g_heldSym = 0;
     }
     else if (e->type == SDL_KEYDOWN) {
       const SDL_Keymod m = (SDL_Keymod)e->key.keysym.mod;
       const bool chord = (m & (KMOD_CTRL | KMOD_GUI)) != 0;   // ctrl or cmd
-      if (chord && onMac()) g_dropTextUntil = SDL_GetTicks() + 150;
+      if (chord && TARGET_OS_IPHONE) g_dropTextUntil = SDL_GetTicks() + 150;   // the hidden field answers the chord too
       const bool shift = (m & KMOD_SHIFT) != 0;
       if (chord) {
         // A chord never produces SDL_TEXTINPUT, so these cannot collide with
         // a character being typed into the grid.
         switch (e->key.keysym.sym) {
-          case SDLK_s: pushKey(kKeySave); break;
-          case SDLK_z: pushKey(shift ? kKeyRedo : kKeyUndo); break;
-          case SDLK_y: pushKey(kKeyRedo); break;
-          case SDLK_r: pushKey(kKeyRun);  break;
-          case SDLK_n: pushKey(kKeyName); break;
-          case SDLK_g: pushKey(kKeyZoom); break;
-          case SDLK_v: pushKey(kKeyPaste); break;
+          case SDLK_s: pushActing(kKeySave); break;
+          case SDLK_z: pushActing(shift ? kKeyRedo : kKeyUndo); break;
+          case SDLK_y: pushActing(kKeyRedo); break;
+          case SDLK_r: pushActing(kKeyRun);  break;
+          case SDLK_n: pushActing(kKeyName); break;
+          case SDLK_g: pushActing(kKeyZoom); break;
+#if !defined(__EMSCRIPTEN__)
+          case SDLK_v: pushActing(kKeyPaste); break;   // in a browser the page's paste event does this
+#endif
           // Cmd-Shift-? is the question mark, which is the same symbol as the
           // editor's help button. Reaches the shortcut list from the one page
           // where a bare key cannot, because there they go into the program.
           case SDLK_SLASH:
-          case SDLK_QUESTION: if (shift) pushKey(kKeyHelp); break;
+          case SDLK_QUESTION: if (shift) pushActing(kKeyHelp); break;
           default: break;
         }
         return 1;
       }
-      switch (e->key.keysym.sym) {
-        case SDLK_BACKSPACE: pushKey('\b'); break;
-        case SDLK_RETURN:    pushKey('\r'); break;
-        case SDLK_UP:        pushKey(kKeyUp); break;
-        case SDLK_DOWN:      pushKey(kKeyDown); break;
-        case SDLK_LEFT:      pushKey(kKeyLeft); break;
-        case SDLK_RIGHT:     pushKey(kKeyRight); break;
-        case SDLK_TAB:       pushKey(shift ? kKeyBack : kKeyTab); break;
-        case SDLK_ESCAPE:    pushKey(kKeyEsc); break;
-        case SDLK_F1:        pushKey(kKeyHelp); break;
+      const SDL_Keycode sym = symOf(e);
+      if (e->key.repeat) g_sysRepeats = true;      // the system repeats: the app need not
+      else if (sym == SDLK_f || sym == SDLK_b || sym == SDLK_BACKSPACE ||
+               sym == SDLK_UP || sym == SDLK_DOWN || sym == SDLK_LEFT || sym == SDLK_RIGHT) {
+        g_heldSym = sym; g_heldSince = SDL_GetTicks(); g_heldLast = g_heldSince; g_sysRepeats = false;
+        g_heldKey = sym == SDLK_f ? 'f' : sym == SDLK_b ? 'b' : sym == SDLK_BACKSPACE ? '\b'
+                  : sym == SDLK_UP ? kKeyUp : sym == SDLK_DOWN ? kKeyDown : sym == SDLK_LEFT ? kKeyLeft : kKeyRight;
+      }
+      switch (sym) {
+        case SDLK_BACKSPACE: pushActing('\b'); break;
+        case SDLK_RETURN:    pushActing('\r'); break;
+        case SDLK_UP:        pushActing(kKeyUp); break;
+        case SDLK_DOWN:      pushActing(kKeyDown); break;
+        case SDLK_LEFT:      pushActing(kKeyLeft); break;
+        case SDLK_RIGHT:     pushActing(kKeyRight); break;
+        case SDLK_TAB:       pushActing(shift ? kKeyBack : kKeyTab); break;
+        case SDLK_ESCAPE:    pushActing(kKeyEsc); break;
+        case SDLK_F1:        pushActing(kKeyHelp); break;
         // Space is left to SDL_TEXTINPUT, which delivers it as an ordinary
         // 0x20. Pushing it here as well would insert it twice. The UI decides
         // what a space means: a blank in the grid, a press anywhere else.
-        default: break;
+        default:
+          // A printable press: its character is on its way through the
+          // text field, and the keys that act wait for it.
+          if (TARGET_OS_IPHONE && !e->key.repeat && sym >= 0x20 && sym < 0x7f) pressDue();
+          break;
       }
     }
     return 1;                        // 1 keeps the event in the queue
@@ -540,6 +642,12 @@ namespace {
 
 char pollKey() {
   static bool armed = false;
+  {
+    // A press whose text never came: after a moment the held keys go
+    // through anyway, in the order they were pressed.
+    std::lock_guard<std::mutex> g(g_keyMx);
+    if (g_textDue > 0 && SDL_GetTicks() - g_textDueAt > 120) { g_textDue = 0; flushHeldLocked(); }
+  }
   if (!armed) {
     armed = true;
     SDL_AddEventWatch(keyWatch, nullptr);
@@ -550,14 +658,38 @@ char pollKey() {
     else if (onMac()) startTextInputOnMain();   // a Mac has the keyboard a phone lacks
   }
   std::lock_guard<std::mutex> g(g_keyMx);
-  if (g_keys.empty()) return 0;
-  const char c = g_keys.front();
-  g_keys.erase(g_keys.begin());
-  return c;
+  if (!g_keys.empty()) {
+    const char c = g_keys.front();
+    g_keys.erase(g_keys.begin());
+    return c;
+  }
+  // Nothing typed: a key still held repeats, so long as it really is still
+  // down -- a release lost to a change of focus must not repeat for ever.
+  if (g_heldSym) {
+    const Uint8* down = SDL_GetKeyboardState(nullptr);
+    if (!down[SDL_GetScancodeFromKey(g_heldSym)]) g_heldSym = 0;
+  }
+  if (repeating() && SDL_GetTicks() - g_heldLast >= kRepeatEvery) {
+    g_heldLast = SDL_GetTicks();
+    return g_heldKey;
+  }
+  return 0;
 }
 
 void injectKey(char c) { pushKey(c); }
 
+#if defined(__EMSCRIPTEN__)
+// A page may not read the clipboard when it likes, only be handed what was
+// pasted into it. The page passes that on here, and it is the clipboard.
+namespace { std::mutex g_clipMx; std::string g_webClip; }
+bool hasClipboard() { std::lock_guard<std::mutex> g(g_clipMx); return !g_webClip.empty(); }
+std::string clipboard() { std::lock_guard<std::mutex> g(g_clipMx); return g_webClip; }
+extern "C" EMSCRIPTEN_KEEPALIVE void pircis_paste(const char* text) {
+  { std::lock_guard<std::mutex> g(g_clipMx); g_webClip = text ? text : ""; }
+  pushKey(kKeyPaste);
+}
+extern "C" EMSCRIPTEN_KEEPALIVE void pircis_console(const char* line) { pushLine(line ? line : ""); }
+#else
 bool hasClipboard() { return true; }
 std::string clipboard() {
   if (!SDL_HasClipboardText()) return std::string();
@@ -567,10 +699,11 @@ std::string clipboard() {
   SDL_free(p);
   return s;
 }
+#endif
 
-// A phone has no keyboard of its own; like the board, it types on the one
-// the program draws.
-bool haveKeyboard() { return !TARGET_OS_IPHONE || onMac(); }
+// A phone has no keyboard of its own and, like the board, types on the one
+// the program draws; a tablet with a keyboard attached, or a Mac, has one.
+bool haveKeyboard() { return !TARGET_OS_IPHONE || hardwareKeyboard(); }
 
 // No radio on the desktop, so the hooks are stored and never used.
 void webSetHooks(const WebHooks&) {}

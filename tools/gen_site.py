@@ -33,8 +33,11 @@ STORE = "https://apps.apple.com/app/id6809655892"
 DOMAIN = "pircis.fisheggs.au"
 SITE = "https://" + DOMAIN + "/"
 
-NAV = [("index.html", "HOME", "HOME"), ("get.html", "GET IT", "GET IT"), ("use.html", "USING IT", "USING IT"),
+NAV = [("index.html", "HOME", "HOME"), ("play/", "TRY IT", "TRY"), ("get.html", "GET IT", "GET IT"), ("use.html", "USING IT", "USING IT"),
        ("learn.html", "LEARN IRCIS", "LEARN"), ("programs.html", "PROGRAMS", "PROGS")]
+# Beside each listing's copy button once the browser build is there to run it.
+RUN_BUTTON = ('<a class="copy run" href="play/" title="Run it in your browser">run</a>'
+              if (DOCS / "play" / "pircis.wasm").exists() else "")
 SUBMIT = REPO + "/issues/new?template=program.yml"
 GITHUB_ICON = ('<svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="currentColor" '
                'd="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49'
@@ -140,7 +143,7 @@ def grey_blanks(html, every_untagged=False):
             return m.group(0)
         body = body.replace(".", '<span class="d">.</span>')
         return ('<div class="frame"><button class="copy" type="button" title="Copy the program">copy</button>'
-                + m.group(1) + body + m.group(3) + '</div>')
+                + RUN_BUTTON + m.group(1) + body + m.group(3) + '</div>')
     return re.sub(r'(<pre><code[^>]*>)(.*?)(</code></pre>)', block, html, flags=re.S)
 
 
@@ -185,7 +188,9 @@ def page(title, body, active, sidebar=None, description=""):
 <meta name="twitter:title" content="%(title)s">
 <meta name="twitter:description" content="%(description)s">
 <meta name="twitter:image" content="%(site)sshots/board.jpg">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png" sizes="64x64">
+<link rel="icon" href="icon-256.png" type="image/png" sizes="256x256">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <script type="application/ld+json">%(ldjson)s</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap">
@@ -218,7 +223,7 @@ def page(title, body, active, sidebar=None, description=""):
 </html>
 """ % {"title": title, "description": description, "tabs": tabs, "side": side,
        "cls": " with-side" if sidebar else "", "body": body, "repo": REPO, "icon": icon,
-       "slug": active.replace(".html", ""), "site": SITE,
+       "slug": active.replace(".html", "").strip("/"), "site": SITE,
        "page": "" if active == "index.html" else active, "ldjson": ldjson(active, title, description),
        "store": STORE, "blob": BLOB}
 
@@ -308,6 +313,10 @@ def build():
     # The readme points at the website; the website need not point at itself.
     intro_html = re.sub(r'<p>The website, <strong><a href="index.html">.*?</p>\s*', "", intro_html, count=1, flags=re.S)
     assert "The website," not in intro_html, "the readme's website line changed shape"
+    # The way into the browser build is a button here, not a sentence.
+    intro_html = re.sub(r'<p>You can <strong><a href="play/">try it in your browser</a></strong>.*?</p>',
+                        '<p class="try"><a class="btn go" href="play/">Try it in your browser</a> <span>Nothing to install.</span></p>'
+                        if (DOCS / "play" / "pircis.wasm").exists() else "", intro_html, count=1, flags=re.S)
     # The three ways are the readme's own list, drawn as cards; what follows
     # them on the readme (the pictures, the guide) follows them here.
     rest_md = ""
@@ -315,9 +324,25 @@ def build():
         rest_md += "%s %s\n%s\n" % ("#" * (level + 1), title, sec_body)
     rest_html, _ = render(rest_md)
     rest_html = fix_links(rest_html, anchors, "index.html")
-    rest_html = re.sub(r'(<h2 id="three-ways-to-run-it">.*?</h2>\s*<ul>)', r'<section class="ways">\1', rest_html, count=1, flags=re.S)
+    rest_html = re.sub(r'(<h2 id="three-ways-to-run-it">.*?</h2>.*?<ul>)', r'<section class="ways">\1', rest_html, count=1, flags=re.S)
     rest_html = rest_html.replace("</ul>", "</ul></section>", 1)
-    body = intro_html + rest_html
+    # A few of the programs, moving, each going to its listing.
+    show = [("Dice Roll", "shots/gifs/dice.gif", "Rolls a dice, then sends that many runners round a ring so you can count them."),
+            ("Dumb Clock", "shots/gifs/clock.gif", "Makes up a plausible time and reads it out in words."),
+            ("Racetrack", "shots/gifs/racetrack.gif", "Three runners, five random pit stops each, and a winner."),
+            ("Spiral", "shots/spiral.gif", "Prints nothing. One runner winds inward over every cell."),
+            ("Race", "shots/gifs/race.gif", "Four runners drop down the grid, each after a random wait."),
+            ("Insult Machine", "shots/insult.png", "Not a letter anywhere in the grid. Every word is stored as a number.")]
+    cards = ""
+    for name, img, line in show:
+        assert (ROOT / img).exists(), img
+        cards += ('<li><a href="programs.html#%s"><img src="%s" alt="%s running" width="480" height="320" loading="lazy">'
+                  '<strong>%s</strong></a>%s</li>' % (slugify(name), img, name, name, line))
+    n = sum(1 for d in (ROOT / "programs").iterdir() if d.is_dir() for _ in d.glob("*.txt"))
+    showcase = ('<section class="show"><h2 id="some-of-the-programs">Some of the programs</h2>'
+                '<p>pIRCIS comes with %d programs to run, pull apart and change. '
+                '<a href="programs.html">All of them are here</a>, ready to copy.</p><ul>%s</ul></section>' % (n, cards))
+    body = intro_html + rest_html + showcase
     version = re.search(r'PIRCIS_VERSION "([^"]+)"', (ROOT / "src" / "Version.h").read_text()).group(1)
     column = ('<p class="k">pIRCIS %s</p><ul>'
               '<li><a href="%s">The app on the App Store</a></li>'
@@ -388,6 +413,39 @@ def build():
         "IRCIS programs to copy and run", html, "programs.html", sidebar=toc_html(toc),
         description="Every IRCIS program bundled with pIRCIS, ready to copy and paste into the emulator or the app."))
 
+    # --- play: pIRCIS itself, built for the browser with Emscripten. The page
+    # sits in its own folder because the worker that lets it run (sw.js) can
+    # only act on the folder it is served from.
+    if (DOCS / "play" / "pircis.wasm").exists():
+        body = ('<h1 class="title">Try pIRCIS</h1>'
+                '<div id="screen"><canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas></div>'
+                '<p id="play-note" class="play-note"></p>'
+                '<p id="play-link" class="play-note" hidden></p>'
+                '<p class="play-tools"><button id="play-paste" class="btn">Paste a program</button> '
+                '<button id="play-full" class="btn">Full screen</button></p>'
+                '<div id="play-manual" hidden><p>Paste the program here, then press Load.</p>'
+                '<textarea id="play-box" rows="8" spellcheck="false" aria-label="A program to load"></textarea>'
+                '<p><button id="play-box-go" class="btn">Load</button></p></div>'
+                '<p>This is pIRCIS itself, running in your browser. Press <strong>RUN</strong> to start the program '
+                'that is loaded, <strong>PROG</strong> to pick another, and <strong>EDIT</strong> to change it.</p>'
+                '<p>Copy any program from <a href="programs.html">the programs</a> or from '
+                '<a href="learn.html">Learn IRCIS</a> and paste it in with the button above, or with Ctrl/Cmd-V '
+                'after clicking on the screen. Programs you save are kept in this browser. '
+                'The <a href="%s">app</a> is the same thing on a phone, without needing a connection.</p>'
+                '<script>window.pircisBuild="%s"</script><script src="play/play.js?v=%s"></script>')
+        # The build's own stamp goes on every address it is fetched by, so a
+        # browser never pairs a new page with a program it kept from before.
+        import hashlib
+        stamp = hashlib.md5((DOCS / "play" / "pircis.wasm").read_bytes() + (DOCS / "play" / "pircis.js").read_bytes()
+                            + (DOCS / "play" / "play.js").read_bytes()).hexdigest()[:10]
+        body = body % (STORE, stamp, stamp)
+        html = page("Try pIRCIS in your browser", body, "play/",
+                    description="pIRCIS running in the browser: run, watch and edit IRCIS programs without installing anything.")
+        html = html.replace('<meta charset="utf-8">', '<meta charset="utf-8">\n<base href="../">', 1)
+        # The isolated page may only load what is offered to any origin.
+        html = html.replace('<link rel="stylesheet" href="https://fonts', '<link rel="stylesheet" crossorigin="anonymous" href="https://fonts', 1)
+        (DOCS / "play" / "index.html").write_text(html)
+
     # --- the app's privacy policy and support page, from ios/
     for src, href, title, desc in [
         ("PRIVACY.md", "privacy.html", "pIRCIS privacy policy", "pIRCIS collects no data. The app's privacy policy."),
@@ -401,7 +459,7 @@ def build():
     (DOCS / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
         + "".join("  <url><loc>%s%s</loc></url>\n" % (SITE, "" if p == "index.html" else p)
-                  for p in ["index.html", "get.html", "use.html", "learn.html", "programs.html", "privacy.html", "support.html"])
+                  for p in ["index.html", "play/", "get.html", "use.html", "learn.html", "programs.html", "privacy.html", "support.html"])
         + "</urlset>\n")
     (DOCS / "robots.txt").write_text("User-agent: *\nAllow: /\nSitemap: %ssitemap.xml\n" % SITE)
     (DOCS / "CNAME").write_text(DOMAIN + "\n")

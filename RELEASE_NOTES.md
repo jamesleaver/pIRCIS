@@ -1,3 +1,30 @@
+# pIRCIS 1.4.6
+
+pIRCIS has a website, pircis.fisheggs.au, with the guide, every bundled
+program ready to copy, and the app's privacy and support pages. The
+device points there now: LEARN IRCIS opens pircis.fisheggs.au/learn.html,
+which is also what the board's code reads, and the ABOUT pages give the
+website's address in place of GitHub's.
+
+An iPad with a keyboard attached, a Magic Keyboard or a Bluetooth one,
+types into the grid and into every field, as a Mac does; the drawn
+keyboard goes away while a real one is attached and comes back when it is
+taken off, and SYS > KEYBOARD offers the choice. The keys that act, such
+as Return, Backspace and the arrows, now wait behind any character still
+on its way from the keyboard, so a word and the Return after it always
+arrive in the order they were typed, on the iPad and on the Mac. Held
+down, f and b keep stepping, the arrows keep moving and Backspace keeps
+deleting, and a finger or the mouse held on the step buttons keeps
+stepping too.
+
+The app no longer insists on the whole screen: the picture is refitted
+to whatever bounds it is given, so it can share the screen or sit in a
+window. ABOUT THIS DEVICE gives the screen and the panel as the app sees
+them.
+
+The Motto program has a new shape, and every picture and animation is
+made again from it.
+
 # pIRCIS 1.4.5
 
 A review of the whole program, and what it found put right. No program

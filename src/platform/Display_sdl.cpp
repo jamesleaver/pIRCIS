@@ -24,7 +24,11 @@ CydDisplay::CydDisplay() {
   panel_.config(cfg);
   // 2x so the 6x8 program text is comfortable on a retina display.
   panel_.setScaling(2, 2);
+#if defined(__EMSCRIPTEN__)
+  panel_.setWindowTitle("Try pIRCIS in your browser");   // in a browser the window's title is the page's
+#else
   panel_.setWindowTitle("pIRCIS");
+#endif
   setPanel(&panel_);
 }
 

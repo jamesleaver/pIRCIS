@@ -466,6 +466,10 @@ bool preferHardwareKeys() { return false; }
 bool onMac() { return false; }
 void startTextInputOnMain() {}
 void keepTextInput() {}
+bool hardwareKeyboard() { return false; }
+bool takeKeyboardChange() { return false; }
+std::string keyboardNote() { return std::string(); }
+void alignLayerScale() {}
 bool deviceMode() { return false; }
 bool hasNativeKeys() { return false; }
 bool screenArea(ScreenArea&) { return false; }

@@ -1,5 +1,14 @@
 // Copy buttons on the programs page, and the contents list following the page.
-document.querySelectorAll('.copy').forEach(function (b) {
+document.querySelectorAll('a.run').forEach(function (a) {
+  // The listing goes along in the address, and the page it opens loads it.
+  // Worked out now rather than at the click: Safari has settled where a
+  // link goes before a click handler gets to change it.
+  var text = a.closest('.frame').querySelector('pre').textContent.replace(/\n?$/, '\n');
+  var b64 = btoa(unescape(encodeURIComponent(text))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  var prog = a.closest('.prog'), name = prog ? prog.id.replace(/[^A-Za-z0-9_-]/g, '').replace(/(^|-)([a-z])/g, function (m, d, c) { return d + c.toUpperCase(); }) : '';
+  a.href = 'play/#p=' + b64 + (name ? '&n=' + name : '');
+});
+document.querySelectorAll('button.copy').forEach(function (b) {
   b.addEventListener('click', function () {
     var pre = b.closest('.frame').querySelector('pre');
     var text = pre.textContent.replace(/\n?$/, '\n');

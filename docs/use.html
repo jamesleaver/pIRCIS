@@ -17,7 +17,9 @@
 <meta name="twitter:title" content="Using pIRCIS">
 <meta name="twitter:description" content="Using pIRCIS: the RUN, OUT, EDIT, PROG and SYS pages, the programs that come with it, view tags, and writing your own IRCIS programs.">
 <meta name="twitter:image" content="https://pircis.fisheggs.au/shots/board.jpg">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png" sizes="64x64">
+<link rel="icon" href="icon-256.png" type="image/png" sizes="256x256">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Using pIRCIS","description":"Using pIRCIS: the RUN, OUT, EDIT, PROG and SYS pages, the programs that come with it, view tags, and writing your own IRCIS programs.","url":"https://pircis.fisheggs.au/use.html"}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&display=swap">
@@ -29,13 +31,18 @@
   <a class="brand" href="index.html"><span class="p">p</span>IRCIS</a>
   <a class="totop" href="#" hidden aria-label="Back to the top" title="Back to the top"><svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 14V3M3.5 7.5 8 3l4.5 4.5"/></svg></a><a class="gh" href="https://github.com/jamesleaver/pIRCIS" aria-label="pIRCIS on GitHub" title="pIRCIS on GitHub"><svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
 </header>
-<nav class="tabs" aria-label="Pages"><a class="tab" href="index.html"><span class="long">HOME</span><span class="short">HOME</span></a><a class="tab" href="get.html"><span class="long">GET IT</span><span class="short">GET IT</span></a><a class="tab on" href="use.html"><span class="long">USING IT</span><span class="short">USING IT</span></a><a class="tab" href="learn.html"><span class="long">LEARN IRCIS</span><span class="short">LEARN</span></a><a class="tab" href="programs.html"><span class="long">PROGRAMS</span><span class="short">PROGS</span></a></nav>
+<nav class="tabs" aria-label="Pages"><a class="tab" href="index.html"><span class="long">HOME</span><span class="short">HOME</span></a><a class="tab" href="play/"><span class="long">TRY IT</span><span class="short">TRY</span></a><a class="tab" href="get.html"><span class="long">GET IT</span><span class="short">GET IT</span></a><a class="tab on" href="use.html"><span class="long">USING IT</span><span class="short">USING IT</span></a><a class="tab" href="learn.html"><span class="long">LEARN IRCIS</span><span class="short">LEARN</span></a><a class="tab" href="programs.html"><span class="long">PROGRAMS</span><span class="short">PROGS</span></a></nav>
 </div>
 <div class="wrap with-side">
 <aside class="side"><nav aria-label="Contents"><ul><li><a href="#using-it">Using it</a><ul><li><a href="#run-watch-it-go">RUN — watch it go</a></li><li><a href="#out-read-what-it-printed">OUT — read what it printed</a></li><li><a href="#edit-change-it-with-your-finger">EDIT — change it with your finger</a></li><li><a href="#prog-pick-a-program">PROG — pick a program</a></li><li><a href="#sys-settings">SYS — settings</a></li></ul></li><li><a href="#the-programs">The programs</a></li><li><a href="#telling-a-program-how-to-show-itself">Telling a program how to show itself</a></li><li><a href="#writing-your-own">Writing your own</a></li><li><a href="#on-the-board">On the board</a><ul><li><a href="#over-wifi">Over WiFi</a></li><li><a href="#over-serial">Over serial</a></li><li><a href="#one-more-program">One more program</a></li></ul></li></ul></nav></aside>
 <main class="body" data-page="use">
 <h1 class="title">Using pIRCIS</h1><h2 id="using-it">Using it</h2>
 <p>Five tabs along the bottom: <strong>RUN</strong>, <strong>OUT</strong>, <strong>EDIT</strong>, <strong>PROG</strong>, <strong>SYS</strong>.</p>
+<p>To get going you only need three of them. pIRCIS starts with a program already
+loaded, so tap <strong>RUN</strong> and watch it. Tap <strong>PROG</strong> to pick a different program
+from the ones that come with it. Tap <strong>EDIT</strong>, change a character, and run it
+again to see what that did. The rest of this page is there for when you want
+it.</p>
 <h3 id="run-watch-it-go">RUN — watch it go</h3>
 <p>The <strong>RUN</strong> tab is also the play button. While you are on that page it shows
 <code>▶</code>, or <code>⏸</code> once something is going, and tapping it starts or pauses. It is the
@@ -196,16 +203,16 @@ alphabets</code>. Every death is written to the serial console as well.</p>
 <td><img alt="dumb clock" src="shots/gifs/clock.gif" /></td>
 </tr>
 <tr>
-<td><strong>Dice Roll</strong> — rolls, prints the number, then puts exactly that many runners into a ring, so you can count the answer going round.</td>
-<td><strong>Dumb Clock</strong> — invents a plausible time and reads it out in words.</td>
+<td><strong>Dice Roll.</strong> It rolls, prints the number, then puts exactly that many runners into a ring, so you can count the answer going round.</td>
+<td><strong>Dumb Clock.</strong> It invents a plausible time and reads it out in words.</td>
 </tr>
 <tr>
 <td><img alt="racetrack" src="shots/gifs/racetrack.gif" /></td>
 <td><img alt="spiral" src="shots/spiral.gif" /></td>
 </tr>
 <tr>
-<td><strong>Racetrack</strong> — three runners, five random pit stops each. The finishing order determines the winner.</td>
-<td><strong>Spiral</strong> — one runner winding inward over every cell. Eight programs print nothing at all and are just worth watching.</td>
+<td><strong>Racetrack.</strong> Three runners, five random pit stops each. The finishing order determines the winner.</td>
+<td><strong>Spiral.</strong> One runner winding inward over every cell. Eight programs print nothing at all and are just worth watching.</td>
 </tr>
 </tbody>
 </table>
@@ -355,10 +362,12 @@ and it can go on the programs page of the website.</p>
 connected to the same network, you can see the last run, an editable copy
 of the loaded program, both program stores, and the saved outputs. You can
 paste a program in from a browser and it runs on the device.</p>
-<p><strong>There is no password on any of it.</strong> Anyone who can reach the board can read
-what is on the card and write a program onto it. That is fine for something on
-your own desk, but it should be your choice. Turn WiFi off on a network you
-share.</p>
+<blockquote>
+<p><strong>There is no password on any of it.</strong> Anyone who can reach the board can
+read what is on the card and write a program onto it. That is fine for
+something on your own desk, but it should be your choice. Turn WiFi off on a
+network you share.</p>
+</blockquote>
 <h3 id="over-serial">Over serial</h3>
 <p>The emulator has this too, through the terminal it was started from.</p>
 <p>The serial console (115200) drives the same grid as the screen:</p>

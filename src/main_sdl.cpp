@@ -17,6 +17,7 @@
 #if defined(SDL_h_)
 
 #include "App.h"
+#include "Ui.h"
 #include "Platform.h"
 #include "Config.h"
 #include "Display.h"
@@ -27,11 +28,14 @@
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
-#if TARGET_OS_IPHONE
 #include <string>
+#if TARGET_OS_IPHONE
 // On a phone the real main is SDL's: it starts the UIKit application and
 // calls this once that is up. Naming it here does not depend on the header
 // rename, which the panel header defeats by including SDL first.
@@ -102,8 +106,78 @@ static int g_displayW = 0, g_displayH = 0;   // --display WxH: a window standing
 static int g_fixedK = 0;                     // a picture scale chosen by hand, or 0 for the fit
 #endif
 
+#if defined(__EMSCRIPTEN__)
+// In a browser the page is the screen, and it says what size that is: at
+// the start as --display, and through this whenever the page changes shape.
+extern "C" EMSCRIPTEN_KEEPALIVE void pircis_resize(int w, int h) {
+  if (w >= 320 && h >= 240) { g_displayW = w; g_displayH = h; }
+}
+// One turn of the loop further down. A page cannot sit in a loop of its
+// own, so the browser calls this once a frame instead.
+static void webTurn() {
+  // The program's drawing waits on this loop to show each piece, and the
+  // browser calls here only once a frame. So pieces are taken for as long
+  // as they keep coming, up to most of a frame's time: a page of many
+  // pieces appears at once rather than over dozens of frames. A turn that
+  // found nothing waiting takes a millisecond, which is how one is told.
+  {
+    const double t0 = emscripten_get_now();
+    int idle = 0;
+    while (emscripten_get_now() - t0 < 10.0) {
+      const double t = emscripten_get_now();
+      if (lgfx::Panel_sdl::loop() != 0) return;
+      if (emscripten_get_now() - t >= 0.9) { if (++idle >= 2) break; } else idle = 0;
+    }
+  }
+  finishResizeIfParked();
+  int w, h;
+  if (app::takeSizeRequest(w, h)) resizeScreen(w, h);
+  SDL_Window* win = gfx.sdl().window();
+  if (!win) return;
+  int ww, wh;
+  SDL_GetWindowSize(win, &ww, &wh);
+  if (ww != g_displayW || wh != g_displayH) { SDL_SetWindowSize(win, g_displayW, g_displayH); ww = g_displayW; wh = g_displayH; }
+  if (!app::resizeBusy()) {
+    // The picture's scale is a whole number of the screen's own pixels, not
+    // of the page's: on a dense screen that allows one and a half, or two
+    // and a half, and the picture is still sharp.
+    const double dpr = std::max(1.0, EM_ASM_DOUBLE({ return window.devicePixelRatio || 1; }));
+    double k = std::floor(std::min(ww / 480.0, wh / 320.0) * dpr) / dpr;
+    if (k < 1) k = 1;
+    int pw = (int)(ww / k), ph = (int)(wh / k);
+    // The page asks for the board's own shape where it can, and a pixel
+    // lost to rounding must not make it some other screen.
+    if (std::abs(pw - 480) <= 2 && std::abs(ph - 320) <= 2) { pw = 480; ph = 320; }
+    if (pw >= 320 && ph >= 240 && (pw != screen::w || ph != screen::h)) resizeScreen(pw, ph);
+  }
+  gfx.sdl().keepFilled();
+}
+#endif
+
 static int userFunc(bool* running) {
+#if defined(__EMSCRIPTEN__)
+  // Someone who pressed RUN on a program came to see that program, not the
+  // welcome that would cover it; ABOUT pIRCIS says the same things.
+  if (access("/start.txt", F_OK) == 0) {
+    plat::kv::begin(); plat::kv::putBool("welcomed", true);
+  }
+#endif
   app::setup();
+#if defined(__EMSCRIPTEN__)
+  // A program the page was opened with, from a RUN button elsewhere on the
+  // site: the page leaves it here before the program starts.
+  if (FILE* f = std::fopen("/start.txt", "rb")) {
+    std::string text, name = "Pasted";
+    char buf[512]; size_t n;
+    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0 && text.size() < 16384) text.append(buf, n);
+    std::fclose(f);
+    if (FILE* g = std::fopen("/start-name.txt", "rb")) {
+      n = std::fread(buf, 1, 40, g); std::fclose(g);
+      if (n) name.assign(buf, n);
+    }
+    ui::loadProgramTextPublic(text, name.c_str());
+  }
+#endif
   while (*running) app::loop();
   return 0;
 }
@@ -174,6 +248,11 @@ int pircis_main(int argc, char** argv) {
   // Putting them behind the left alt key gives the characters back and keeps
   // the shortcuts for anyone who wants them.
   lgfx::Panel_sdl::setShortcutKeymod(KMOD_LALT);
+#if defined(__EMSCRIPTEN__)
+  // Keys are pIRCIS's while its picture has the focus and the page's the
+  // rest of the time, so the arrow keys still scroll the page around it.
+  SDL_SetHint(SDL_HINT_EMSCRIPTEN_KEYBOARD_ELEMENT, "#canvas");
+#endif
 #if TARGET_OS_IPHONE
   // The picture is scaled up several times to fill the screen. Smoothing
   // that turns a pixel font to fog; whole pixels keep it sharp.
@@ -202,7 +281,14 @@ int pircis_main(int argc, char** argv) {
     gfx.sdl().setFrame(screen::w, screen::h, 0, 0);
     bool keyboard, mouse;
     plat::probeInput(keyboard, mouse);
+#if defined(__EMSCRIPTEN__)
+    // A page on a phone: a finger and no keys. Anywhere else, keys and a
+    // pointer, as the page has no way to ask.
+    const bool touch = EM_ASM_INT({ return (navigator.maxTouchPoints > 0 && matchMedia("(pointer: coarse)").matches) ? 1 : 0; }) != 0;
+    keyboard = !touch; mouse = !touch;
+#else
     const bool touch = SDL_GetNumTouchDevices() > 0;
+#endif
     plat::setDeviceMode(true, touch, keyboard, mouse);
     // A finger on glass wants the phone's larger controls, where there is
     // the room: on a panel no taller than the board's they would not fit.
@@ -257,8 +343,12 @@ int pircis_main(int argc, char** argv) {
   if (!kiosk && scale >= 1 && scale != std::floor(scale)) gfx.sdl().fit(scale);
 #endif
 
-  bool running = true;
+  static bool running = true;
   SDL_Thread* thread = SDL_CreateThread((SDL_ThreadFunction)userFunc, "firmware", &running);
+#if defined(__EMSCRIPTEN__)
+  (void)thread; (void)placed; (void)cursor;
+  emscripten_set_main_loop(webTurn, 0, 1);    // does not return
+#endif
 
   while (!app::quitRequested()) {
 #if TARGET_OS_IPHONE
@@ -343,6 +433,7 @@ int pircis_main(int argc, char** argv) {
           }
         }
       }
+      plat::alignLayerScale();  // the drawing layer at the screen's own scale, whatever the fit
       gfx.sdl().keepFilled();
       if ((Sint32)(presentUntil - SDL_GetTicks()) > 0) gfx.sdl().present();
       plat::keepTextInput();    // on a Mac: the typed characters keep coming

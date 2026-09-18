@@ -3,8 +3,19 @@
 pIRCIS runs [IRCIS](https://github.com/batman-nair/IRCIS) programs and shows
 them running.
 
+<p align="center">
+  <img src="shots/motto.gif" alt="the motto program drawing IRCIS" width="480">
+</p>
+
+That is a real program running. A runner splits off at each letter and walks
+its shape, spelling out **IRCIS** as they go, and each of them prints its own
+word of what that stands for.
+
+You can **[try it in your browser](https://pircis.fisheggs.au/play/)** with
+nothing to install.
+
 The website, **[pircis.fisheggs.au](https://pircis.fisheggs.au)**, has all of
-this, the guide, and every program ready to copy.
+this, the guide, and every program ready to copy or run.
 
 IRCIS is a small programming language by Arjun Nair (batman-nair); the name
 stands for *I Run Chars I See*. A program is a grid of characters, and a
@@ -22,24 +33,21 @@ writing your own programs. Every example in it is a real program you can run.
 
 ## Three ways to run it
 
-- **App Store.** The app, for iPhone, iPad and Apple silicon Macs.
-  [About the app](#app-store).
-- **Board.** A cheap 4" ESP32 touchscreen, flashed over USB, that runs it on
-  its own. The `p` is for pocket. [Getting it on a board](#board).
-- **Emulator.** The same firmware in a window on your own macOS, Windows or
-  Linux computer. [Set it up](#emulator).
+The [browser version](https://pircis.fisheggs.au/play/) is there for a first
+look. To keep it, there are three ways:
+
+- **App Store.** The quickest way to try it. The app is free, for iPhone,
+  iPad and Apple silicon Macs. [About the app](#app-store).
+- **Board.** A cheap 4-inch touchscreen that you load pIRCIS onto over USB.
+  After that it runs on its own, with nothing else plugged in but power. The
+  `p` is for pocket. [Getting it on a board](#board).
+- **Emulator.** pIRCIS in a window on your own macOS, Windows or Linux
+  computer. It is free too, but it takes some setting up.
+  [Set it up](#emulator).
 
 <p align="center">
   <img src="shots/board.jpg" alt="pIRCIS running on the board" width="520">
 </p>
-
-<p align="center">
-  <img src="shots/motto.gif" alt="the motto program drawing IRCIS" width="480">
-</p>
-
-That is a real program running. A runner splits off at each letter and walks
-its shape, spelling out **IRCIS** as they go, and each of them prints its own
-word of what that stands for.
 
 ## App Store
 
@@ -49,6 +57,10 @@ The app's [privacy policy](https://pircis.fisheggs.au/privacy.html) and
 [support page](https://pircis.fisheggs.au/support.html) are on the website.
 
 ## Board
+
+The board is a small touchscreen with its own processor, sold ready made, so
+there is nothing to solder. You plug it into a computer once to load pIRCIS
+onto it, and after that it only needs power.
 
 You need:
 
@@ -124,11 +136,14 @@ under Ports.
 
 ## Emulator
 
-You don't need a board to try any of this. The emulator runs the real firmware
-in a window on your computer. Same interpreter, same screen, same programs. The
-mouse works as the touchscreen. The build asks your machine where SDL2 is
-rather than being told, so the last command is the same on all three systems;
-only the setup before it differs.
+You don't need a board to try any of this. The emulator is the same pIRCIS
+that runs on the board, in a window on your computer, with the same screen and
+the same programs. The mouse works as the touchscreen.
+
+There is nothing to download and double-click yet. You build it from the
+source with a few commands in a terminal, and they are all below. If you would
+rather not, the [app](#app-store) is the easier way in. The last command is
+the same on all three systems; only the setup before it differs.
 
 ### macOS
 
@@ -233,6 +248,12 @@ cd host && make
 ## Using it
 
 Five tabs along the bottom: **RUN**, **OUT**, **EDIT**, **PROG**, **SYS**.
+
+To get going you only need three of them. pIRCIS starts with a program already
+loaded, so tap **RUN** and watch it. Tap **PROG** to pick a different program
+from the ones that come with it. Tap **EDIT**, change a character, and run it
+again to see what that did. The rest of this page is there for when you want
+it.
 
 ### RUN — watch it go
 
@@ -394,9 +415,9 @@ Sixty-one of them. The full list is in [`programs/`](programs/).
 | | |
 |---|---|
 | ![dice](shots/gifs/dice.gif) | ![dumb clock](shots/gifs/clock.gif) |
-| **Dice Roll** — rolls, prints the number, then puts exactly that many runners into a ring, so you can count the answer going round. | **Dumb Clock** — invents a plausible time and reads it out in words. |
+| **Dice Roll.** It rolls, prints the number, then puts exactly that many runners into a ring, so you can count the answer going round. | **Dumb Clock.** It invents a plausible time and reads it out in words. |
 | ![racetrack](shots/gifs/racetrack.gif) | ![spiral](shots/spiral.gif) |
-| **Racetrack** — three runners, five random pit stops each. The finishing order determines the winner. | **Spiral** — one runner winding inward over every cell. Eight programs print nothing at all and are just worth watching. |
+| **Racetrack.** Three runners, five random pit stops each. The finishing order determines the winner. | **Spiral.** One runner winding inward over every cell. Eight programs print nothing at all and are just worth watching. |
 
 A few are hiding what they do until you run them:
 
@@ -512,10 +533,10 @@ connected to the same network, you can see the last run, an editable copy
 of the loaded program, both program stores, and the saved outputs. You can
 paste a program in from a browser and it runs on the device.
 
-**There is no password on any of it.** Anyone who can reach the board can read
-what is on the card and write a program onto it. That is fine for something on
-your own desk, but it should be your choice. Turn WiFi off on a network you
-share.
+> **There is no password on any of it.** Anyone who can reach the board can
+> read what is on the card and write a program onto it. That is fine for
+> something on your own desk, but it should be your choice. Turn WiFi off on a
+> network you share.
 
 ### Over serial
 

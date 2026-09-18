@@ -151,9 +151,42 @@ blockquote > :last-child { margin-bottom: 0; }
 }
 .ways li strong { display: block; font-family: var(--mono); font-size: 1rem; margin-bottom: .35rem; }
 
+/* The front page: a few of the programs, moving. */
+.show ul { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; list-style: none; padding: 0; }
+.show li { margin: 0; font-size: .9rem; color: var(--dim); }
+.show li a { display: block; text-decoration: none; color: var(--ink); }
+.show li img { display: block; width: 100%; border: 1px solid var(--line); margin-bottom: .4rem; }
+.show li a:hover img { border-color: var(--accent); }
+.show li strong { display: block; font-family: var(--mono); font-size: .95rem; }
+@media (max-width: 820px) { .show ul { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .show ul { grid-template-columns: 1fr; } }
+
+/* The browser build's page: the screen, centred, as wide as the page allows. */
+.wrap:not(.with-side) .body[data-page="play"] { margin-left: 0; max-width: none; }
+[data-page="play"] > p, [data-page="play"] > h1, #play-manual { max-width: 74ch; }
+#screen { display: flex; justify-content: center; background: var(--panel); border: 1px solid var(--line); margin: 0 0 .6rem; }
+#screen:fullscreen { border: 0; background: #000; align-items: center; }
+#canvas { display: block; image-rendering: pixelated; touch-action: none; outline: none; }
+.play-note { font: .85rem/1.4 var(--mono); color: var(--dim); }
+.play-note[hidden] { display: none; }
+.btn { font: 500 .78rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 3px; padding: .5rem .8rem; cursor: pointer; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn[hidden] { display: none; }
+a.btn { text-decoration: none; display: inline-block; }
+.btn.go { background: var(--accent); border-color: var(--accent); color: #fff; font-size: .9rem; padding: .7rem 1.1rem; }
+.btn.go:hover { color: #fff; filter: brightness(1.1); }
+.try { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; color: var(--dim); font-size: .95rem; }
+[data-page="play"] h1.title { position: absolute; left: -200vw; }
+.wrap:has([data-page="play"]) { padding-top: .75rem; }
+@media (max-width: 820px) { .wrap:has([data-page="play"]) { padding-top: 0; } }
+#play-box, #play-log { width: 100%; font: .85rem/1.35 var(--mono); background: var(--paper); color: var(--ink); border: 1px solid var(--line); padding: .6rem; }
+@media (max-width: 820px) { [data-page="play"] #screen { margin-left: -1.25rem; margin-right: -1.25rem; border-left: 0; border-right: 0; } }
+
 /* A program listing, with its copy button in the corner of the frame. */
 .frame { position: relative; }
-.frame pre { padding-right: 4.5rem; }
+.frame pre { padding-right: 7.5rem; }
+a.copy.run { right: 4.1rem; text-decoration: none; color: var(--accent); }
 .copy {
   position: absolute; top: .45rem; right: .45rem;
   font: 500 .68rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;

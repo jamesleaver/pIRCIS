@@ -1917,6 +1917,12 @@ int g_focus      = -1;             // control the keyboard is on, -1 for none
 // The cell the keyboard is on while RUN is set to do something with one. -1
 // until the arrows are used, so nothing is drawn over a program otherwise.
 int g_runCellRow = -1, g_runCellCol = 0;
+// A step button held down keeps stepping, the way a held f or b does: the
+// tap took the first step, and after a pause the hold takes the rest.
+int      g_holdStep  = 0;          // +1 forward, -1 back, 0 nothing held
+uint32_t g_holdSince = 0, g_holdLast = 0;
+constexpr uint32_t kHoldStepAfter = 350, kHoldStepEvery = 90;
+
 void typeIntoGrid(char k);         // defined with the editor, below
 
 // The grid band runs from under the header down to the keyboard.
@@ -5170,6 +5176,20 @@ Btn btnDlgDump()  {
 }
 
 void dumpGrid() {
+  if (plat::isApp()) {
+    // No console on a phone: the same dump goes out through the share
+    // sheet, as a text file named after the program.
+    std::string out = g_edit.text();
+    out += g_edit.isPacked() ? pack::str(pack::kStrDumpDiff) : "--- edits from the program as loaded ---";
+    out += "\n";
+    char line[64];
+    for (const prog::Diff& d : g_edit.diff()) {
+      snprintf(line, sizeof(line), "  row %2d col %2d  '%c' -> '%c'\n", d.row, d.col, g_edit.baselineCell(d.row, d.col), d.ch);
+      out += line;
+    }
+    plat::shareText(std::string(g_edit.programName()) + "-dump", out);
+    return;
+  }
   plat::logf("--- %s ---\n", g_edit.programName());
   plat::log(g_edit.text().c_str());
   plat::logln(g_edit.isPacked() ? pack::str(pack::kStrDumpDiff)
@@ -5526,7 +5546,7 @@ const char* const kDevice1Locked[] = {
   "itself, checked against the original",
   "build step for step.",
   "",
-  "  github.com/jamesleaver/pIRCIS",
+  "  pircis.fisheggs.au",
 };
 // The tab tour and the editing rules. A device with the pack open describes
 // more tabs than one without, so the unlocked forms come from the pack.
@@ -5622,15 +5642,38 @@ const char* const kApp1[] = {
   "the pIRCIS board, a small touch",
   "display you can build yourself: the",
   "firmware, the parts and the steps",
-  "are all on GitHub.",
+  "are all on the website.",
   "",
   "The interpreter is a port of IRCIS",
   "itself, checked against the original",
   "build step for step.",
   "",
-  "  github.com/jamesleaver/pIRCIS",
+  "  pircis.fisheggs.au",
 };
 const TextPage kAppPages[] = { SK_PAGE(kApp1, "what it is", 15) };
+// The same words over two pages, for a screen too short to hold them on
+// one: a browser window, or a small screen of its own.
+const char* const kApp1a[] = {
+  "pIRCIS - the p is for pocket - runs",
+  "IRCIS programs: choose one, edit it,",
+  "and watch the runners move through",
+  "it.",
+  "",
+  "It is the same program that runs on",
+  "the pIRCIS board, a small touch",
+  "display you can build yourself.",
+};
+const char* const kApp1b[] = {
+  "The firmware, the parts and the",
+  "steps are all on the website.",
+  "",
+  "The interpreter is a port of IRCIS",
+  "itself, checked against the original",
+  "build step for step.",
+  "",
+  "  pircis.fisheggs.au",
+};
+const TextPage kAppShortPages[] = { SK_PAGE(kApp1a, "what it is", -1), SK_PAGE(kApp1b, "what it is", 7) };
 const TextPage kDeviceLockedPages[] = {
   SK_PAGE(kDevice1Locked, "what it is",  9), SK_PAGE(kDevice2Locked, "the tabs",   -1),
   SK_PAGE(kDevice3Locked, "the tabs",   -1), SK_PAGE(kDevice4Locked, "editing",    -1),
@@ -5650,7 +5693,14 @@ int devicePageBase() {
   const int n = pack::pageCount(pack::kGroupDevice);
   return n > 0 ? n : kDeviceCount;
 }
-int devicePageCount() { return devicePageBase() + 1; }
+int flowedLines(const TextPage* pages, int count);
+// One more page where the app's opening page has to be split to fit.
+int appExtraPages() {
+  if (!plat::isApp() || Store::unlocked()) return 0;
+  const int room = dlgH() - 26 - 8 - dlgBtnH() - 6;
+  return flowedLines(kAppPages, 1) * kContentH > room ? 1 : 0;
+}
+int devicePageCount() { return devicePageBase() + 1 + appExtraPages(); }
 
 // How many pages the dialog that is open has. The touch handler and the
 // keyboard both page through them, so they ask the same question here.
@@ -5668,7 +5718,7 @@ int dialogPageCount() {
 // having to remember to say so.
 bool looksLikeLink(const char* s) {
   return std::strstr(s, "://") != nullptr || std::strstr(s, "github.com") != nullptr
-      || std::strstr(s, "x.com/") != nullptr;
+      || std::strstr(s, "x.com/") != nullptr || std::strstr(s, "fisheggs.au") != nullptr;
 }
 
 // The lines of a page, as written when they fit the width, and re-flowed
@@ -5846,15 +5896,33 @@ std::string linkUrl(const std::string& text) {
   std::string u = a == std::string::npos ? std::string() : text.substr(a, b - a + 1);
   return u.find("://") == std::string::npos ? "https://" + u : u;
 }
+void drawLinkLine(int y, const char* text, const std::string& url);
 void drawFlowed(int y, const std::vector<FlowLine>& flowed) {
   g_pageLinks.clear();
   for (const FlowLine& l : flowed) {
-    clabel(dlgTextX(), y, l.text.c_str(), l.colour, theme::panel);
     const std::string& whole = l.whole.empty() ? l.text : l.whole;
-    if (plat::canOpenUrl() && looksLikeLink(whole.c_str()))
-      g_pageLinks.push_back({ g_dlg.x, y - 2, g_dlg.w, kContentH, linkUrl(whole) });
+    if (looksLikeLink(whole.c_str())) drawLinkLine(y, l.text.c_str(), linkUrl(whole));
+    else clabel(dlgTextX(), y, l.text.c_str(), l.colour, theme::panel);
     y += kContentH;
   }
+}
+// The page's address as a button, in the row of buttons under it, where
+// LEARN IRCIS puts OPEN THE GUIDE: the three dialogs that carry an address
+// offer it the same way. Only where there is an address on the page, and a
+// browser to open it in.
+// An address on a page is a button, in the text where the address is
+// written, labelled with the address; a tap opens it. Every dialog that
+// carries one shows it this way. A board with no browser shows the
+// address as words instead.
+void drawLinkLine(int y, const char* text, const std::string& url) {
+  const char* t = text;
+  while (*t == ' ') ++t;
+  if (!plat::canOpenUrl()) { clabel(dlgTextX(), y, t, theme::accent, theme::panel); return; }
+  int w = (int)std::strlen(t) * 6 + 20;
+  if (w > g_dlg.w - 16) w = g_dlg.w - 16;
+  const Btn b = { g_dlg.x + (g_dlg.w - w) / 2, y - 3, w, kContentH + 4, t, theme::accent, theme::panel };
+  drawBtn(b, false, true, false);
+  g_pageLinks.push_back({ b.x, b.y, b.w, b.h, url });
 }
 // The address under a tap on the page that is showing, if any.
 const PageLink* pageLinkAt(int x, int y) {
@@ -5947,17 +6015,27 @@ void drawSplash() {
 // the first eight bytes of the app image hash, which is also what the device
 // watches to notice it has been reflashed.
 void drawFirmwarePage(int count) {
-  if (kScreenW != 480 && !g_dlgContentH) g_dlgContentH = 4 + (plat::isApp() ? 2 : 4) * kContentH + 6 + kContentH;
+  if (kScreenW != 480 && !g_dlgContentH) g_dlgContentH = 4 + (plat::isApp() ? 5 : 4) * kContentH + 6 + kContentH;
   int y = dlgFrame(aboutTitle(), plat::isApp() ? "this build" : "firmware", count);
   y += 4;
+  // An app has no board id or panel; it has a screen and a window, and
+  // what it makes of them is the first thing to know when it looks wrong.
+  char sw[48], sp[48];
+  {
+    plat::ScreenArea a;
+    if (plat::screenArea(a)) snprintf(sw, sizeof(sw), "%dx%d, use %dx%d at %d,%d", a.fullW, a.fullH, a.w, a.h, a.x, a.y);
+    else snprintf(sw, sizeof(sw), "unknown");
+    snprintf(sp, sizeof(sp), "%dx%d, ui %d%%%s", kScreenW, kScreenH, screen::ui, plat::onMac() ? ", mac" : "");
+  }
   struct { const char* k; std::string v; } rows[] = {
     { "version", PIRCIS_VERSION },
     { "built",   plat::firmwareBuilt() },
-    { "id",      plat::firmwareId() },
-    { "panel",   std::string(SK_PANEL_NAME) },
+    { plat::isApp() ? "window" : "id",    plat::isApp() ? std::string(sw) : plat::firmwareId() },
+    { plat::isApp() ? "panel"  : "panel", plat::isApp() ? std::string(sp) : std::string(SK_PANEL_NAME) },
+    { "keys",    plat::keyboardNote() },
   };
   char buf[96];
-  const int shown = plat::isApp() ? 2 : 4;     // an app has no board id or panel
+  const int shown = plat::isApp() ? 5 : 4;     // the board has no keyboard to report on
   for (int i = 0; i < shown; ++i) {
     const auto& r = rows[i];
     snprintf(buf, sizeof(buf), "%-8s %s", r.k, r.v.c_str());
@@ -5965,11 +6043,12 @@ void drawFirmwarePage(int count) {
     y += kContentH;
   }
   y += 6;
-  clabel(dlgTextX(), y, "github.com/jamesleaver/pIRCIS", theme::accent, theme::panel);
+  g_pageLinks.clear();
+  drawLinkLine(y, "pircis.fisheggs.au", "https://pircis.fisheggs.au");
 }
 
 // Where the guide lives, as text and as a code a phone can read.
-const char* const kLearnUrl = "https://github.com/jamesleaver/pIRCIS/blob/main/LEARN.md";
+const char* const kLearnUrl = "https://pircis.fisheggs.au/learn.html";
 
 // A QR code, w pixels square, in black on a white quiet zone whatever the
 // palette -- a phone wants the contrast. Drawn module by module from the
@@ -5995,10 +6074,6 @@ void drawQr(const char* text, int x, int y, int w) {
   }
 }
 int g_learnLines = 9;   // the guide's lines as flowed, for the button's place
-Btn btnLearnOpen() {
-  if (kScreenW != 480) return { g_dlg.x + (g_dlg.w - 148) / 2, g_dlg.y + 26 + g_learnLines * kContentH + 8, 148, kUi(36), "OPEN THE GUIDE", theme::accent, theme::panel };
-  return { kScreenW - 12 - 8 - 148, kDlgY + 32 + 56, 148, 36, "OPEN THE GUIDE", theme::accent, theme::panel };
-}
 // The guide, as the page says it. On the board the lines are drawn as
 // written beside the code; elsewhere they flow to the box and the button
 // sits under them.
@@ -6009,9 +6084,8 @@ const char* const kLearnLines[] = {
   "in twenty short sections.",
   "Every example in it runs.",
   "",
-  "Open it, or type:",
-  "github.com/jamesleaver/",
-  "pIRCIS/blob/main/LEARN.md",
+  "Open it:",
+  "pircis.fisheggs.au/learn.html",
 };
 constexpr int kLearnLineCount = (int)(sizeof(kLearnLines) / sizeof(char*));
 void drawLearn() {
@@ -6019,21 +6093,21 @@ void drawLearn() {
     std::vector<FlowLine> flowed;
     flowPage(kLearnLines, kLearnLineCount, -1, flowed);
     g_learnLines = (int)flowed.size();
-    g_dlgContentH = g_learnLines * kContentH + 8 + kUi(36);
+    g_dlgContentH = g_learnLines * kContentH;
     int y = dlgFrame("LEARN IRCIS", "", 1);
-    drawFlowed(y, flowed);
-    if (plat::canOpenUrl()) drawBtn(btnLearnOpen(), false, true, true);
+    drawFlowed(y, flowed);                 // the address line is the button
     return;
   }
   int y = dlgFrame("LEARN IRCIS", "", 1);
+  g_pageLinks.clear();
   for (int i = 0; i < kLearnLineCount; ++i) {
     const char* l = (i == 6 && !plat::canOpenUrl()) ? "Scan it, or type:" : kLearnLines[i];
-    clabel(dlgTextX(), y, l, theme::text, theme::panel); y += kContentH;
+    if (looksLikeLink(l)) drawLinkLine(y, l, kLearnUrl);
+    else clabel(dlgTextX(), y, l, theme::text, theme::panel);
+    y += kContentH;
   }
-  // Where there is a browser to hand the address to, a button does it; a
-  // board with none shows a code for a phone to scan instead.
-  if (plat::canOpenUrl()) drawBtn(btnLearnOpen(), false, true, true);
-  else drawQr(kLearnUrl, kScreenW - 12 - 8 - 148, kDlgY + 32, 148);
+  // A board with no browser shows a code for a phone to scan as well.
+  if (!plat::canOpenUrl()) drawQr(kLearnUrl, kScreenW - 12 - 8 - 148, kDlgY + 32, 148);
 }
 
 void drawDevice() {
@@ -6045,8 +6119,12 @@ void drawDevice() {
   }
   if (g_dialogPage >= count - 1) { drawFirmwarePage(count); return; }
   if (Store::unlocked() && drawPackPages(aboutTitle(), pack::kGroupDevice)) return;
-  if (plat::isApp() && g_dialogPage == 0) { drawTextPages(aboutTitle(), kAppPages, 1); return; }
-  drawTextPages(aboutTitle(), kDeviceLockedPages, kDeviceCount);
+  const int extra = appExtraPages();
+  if (plat::isApp() && g_dialogPage <= extra) {
+    drawOnePage(aboutTitle(), extra ? kAppShortPages[g_dialogPage] : kAppPages[0], count);
+    return;
+  }
+  drawOnePage(aboutTitle(), kDeviceLockedPages[std::min(g_dialogPage - extra, kDeviceCount - 1)], count);
 }
 
 // These buttons sit INSIDE the dialog panel, so they cannot use modalBtnX():
@@ -6359,6 +6437,7 @@ void handleTabs(int x, int y) {
     // is worse. OUT only shows what has been printed, so it keeps running.
     if (tabAt(i) == Tab::Edit && run::snapshot().running) run::cmdPause();
     carryViewAcross(g_tab, tabAt(i));
+    if (g_tab == Tab::Run && tabAt(i) != Tab::Run) g_runCellRow = -1;   // the ring does not outlive the page
     g_tab = tabAt(i);
     // The card is only read on entry, not on every repaint.
     if (g_tab == Tab::Prog) refreshProgFiles();
@@ -6426,8 +6505,12 @@ void handleRunTouch(int x, int y) {
     // trail had tinted past the new step are put back one by one.
     else if (steps() && hit(btnBack(), x, y) && run::snapshot().step > 0) {
       flushEdits(true); g_resetSameGrid = true; run::cmdStepBack();
+      g_holdStep = -1; g_holdSince = g_holdLast = plat::millis();   // held, it keeps stepping
     }
-    else if (steps() && hit(btnFwd(), x, y))  { flushEdits(true); run::cmdStep(1); }
+    else if (steps() && hit(btnFwd(), x, y)) {
+      flushEdits(true); run::cmdStep(1);
+      g_holdStep = 1; g_holdSince = g_holdLast = plat::millis();
+    }
     else if (hit(btnEnd(), x, y))   { flushEdits(true); run::cmdRunToEnd(); g_dirty = true; }
     else if (hit(btnSpeed(), x, y)) {
       int n = ((int)run::speed() + 1) % 4;
@@ -6511,6 +6594,7 @@ void runCellAction(int r, int c) {
       if (run::snapshot().running) run::cmdPause();
       carryViewAcross(Tab::Run, Tab::Edit);
       g_tab = Tab::Edit;
+      g_runCellRow = -1;               // the keyboard's cell on RUN is the editor's cursor now
       g_curRow = r; g_curCol = c;
       g_edManualScroll = false;
       edFollow();
@@ -7164,9 +7248,6 @@ void onTap(int x, int y) {
       const int pages = dialogPageCount();
       if (hit(btnDlgClose(), x, y)) { g_modal = Modal::None; wantAll(); }
       else if (kScreenW != 480 && !inDlg(x, y)) { g_modal = Modal::None; g_dialogPage = 0; wantAll(); }
-      else if (g_modal == Modal::Learn && plat::canOpenUrl() && hit(btnLearnOpen(), x, y)) plat::openUrl(kLearnUrl);
-      // The guide's address is broken over two lines: either line is it.
-      else if (g_modal == Modal::Learn && pageLinkAt(x, y)) plat::openUrl(kLearnUrl);
       else if (const PageLink* l = pageLinkAt(x, y)) plat::openUrl(l->url.c_str());
       else if (g_modal == Modal::Debug && hit(btnDlgDump(), x, y)) dumpGrid();
       else if (hit(btnDlgPrev(), x, y) && g_dialogPage > 0) { --g_dialogPage; wantModal(); }
@@ -7610,6 +7691,7 @@ void pollTypedKeys() {
     }
     if (g_modal != Modal::None) {
       if (k == 'd' && g_modal == Modal::Debug) { dumpGrid(); continue; }
+      if (k == 'o' && plat::canOpenUrl() && !g_pageLinks.empty()) { plat::openUrl(g_pageLinks.front().url.c_str()); continue; }
       const int pages = dialogPageCount();
       if      (k == plat::kKeyLeft  && g_dialogPage > 0)         { --g_dialogPage; wantModal(); }
       else if (k == plat::kKeyRight && g_dialogPage + 1 < pages) { ++g_dialogPage; wantModal(); }
@@ -7715,14 +7797,38 @@ void pollTypedKeys() {
     if (g_tab == Tab::Run && Store::gridTap() != Store::kTapNothing &&
         (k == plat::kKeyUp || k == plat::kKeyDown ||
          k == plat::kKeyLeft || k == plat::kKeyRight)) {
+      const int oldR = g_runCellRow, oldC = g_runCellCol;
       if (g_runCellRow < 0) { g_runCellRow = run::startRow(); g_runCellCol = run::startCol(); }
       else if (k == plat::kKeyUp   && g_runCellRow > 0) --g_runCellRow;
       else if (k == plat::kKeyDown && g_runCellRow < g_edit.rows() - 1) ++g_runCellRow;
       else if (k == plat::kKeyLeft && g_runCellCol > 0) --g_runCellCol;
       else if (k == plat::kKeyRight && g_runCellCol < g_edit.cols() - 1) ++g_runCellCol;
       g_follow = false;             // the keyboard is driving, not the runner
+      const int gr = g_gridRow, gc = g_gridCol;
       showRunCell();
-      repaintAll();
+      // The ring moved one cell: the old cell and its neighbours, over whose
+      // edges the ring was drawn, are put back and the ring drawn anew. Only
+      // a view that scrolled to keep up, or the zoomed view, which moves
+      // with the cell, needs the whole page.
+      if (g_view == View::Zoom || g_gridRow != gr || g_gridCol != gc || g_modal != Modal::None) { repaintAll(); continue; }
+      {
+        WriteBatch batch;
+        if (oldR >= 0) {
+          // The ring is drawn two pixels outside its cell: over the
+          // neighbours, or, at the grid's edge, over nothing at all. The
+          // band it covered is cleared first, then the cells put back.
+          int ox, oy;
+          if (cellPos(oldR, oldC, ox, oy)) gfx.fillRect(ox - 2, oy - 2, cellW() + 4, cellH() + 4, theme::bg);
+          for (int dr = -1; dr <= 1; ++dr)
+            for (int dc = -1; dc <= 1; ++dc) {
+              const int r = oldR + dr, c = oldC + dc;
+              if (r >= 0 && r < g_edit.rows() && c >= 0 && c < g_edit.cols()) restoreCell(r, c);
+            }
+        }
+        drawRunners(run::snapshot());   // a runner standing on one of them goes back on top
+        drawEdgeBars();
+        drawFocusRing();
+      }
       continue;
     }
     if (g_tab == Tab::Run && g_runCellRow >= 0 && (k == ' ' || k == '\r')) {
@@ -7960,6 +8066,8 @@ void tick() {
   // a saved program is, but it belongs to no store until it is saved.
   {
     std::string name, text;
+    // A keyboard attached or taken away: the page draws its own or not.
+    if (plat::takeKeyboardChange()) wantAll();
     if (plat::takePickedFile(name, text)) {
       // A program is printable ASCII in lines. Anything else -- a binary,
       // a document in another encoding -- is refused before it reaches
@@ -8033,7 +8141,18 @@ void tick() {
   else if (touched && g_wasTouched && g_dragging) {
     dragTo(tx, ty);
   }
-  else if (!touched && g_wasTouched && g_deferTap) {
+  else if (touched && g_wasTouched && g_holdStep) {
+    // Still on the same button, still held: another step every so often.
+    const Btn b = g_holdStep > 0 ? btnFwd() : btnBack();
+    if (g_modal != Modal::None || g_tab != Tab::Run || !hit(b, tx, ty)) g_holdStep = 0;
+    else if (now - g_holdSince > kHoldStepAfter && now - g_holdLast >= kHoldStepEvery) {
+      g_holdLast = now;
+      if (g_holdStep > 0) run::cmdStep(1);
+      else if (run::snapshot().step > 0) { g_resetSameGrid = true; run::cmdStepBack(); }
+    }
+  }
+  if (!touched) g_holdStep = 0;
+  if (!touched && g_wasTouched && g_deferTap) {
     if (now - g_lastTouchMs > 120) {
       g_lastTouchMs = now;
       // Press coordinates, not release: resistive touch gets noisy as the
@@ -8337,6 +8456,7 @@ void tick() {
         else                   drawHeaderStep(snap);
         drawRunners(snap);
         drawEdgeBars();       // runners near an edge paint over them
+        drawFocusRing();      // a runner passing the keyboard's cell put back part of its ring
         // The band is under the program in both views, so it refreshes in
         // both -- but only when it would actually look different.
         {

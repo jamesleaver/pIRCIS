@@ -211,6 +211,22 @@ namespace plat {
   // gives it the keyboard when it lacks it, and keeps its caret at the end,
   // where a typed character is read as one. Nothing elsewhere.
   void keepTextInput();
+  // Whether a real keyboard is attached right now: always on a computer,
+  // on a phone or tablet when one is connected (a Magic Keyboard, a
+  // Bluetooth one), and on a Mac. The device's pages decide from this
+  // whether to draw a keyboard of their own.
+  bool hardwareKeyboard();
+  // Once, after a keyboard was attached or taken away, so the page can be
+  // laid out again.
+  bool takeKeyboardChange();
+  // For ABOUT THIS DEVICE on the app: whether a keyboard is attached, whether
+  // the hidden field holds it, and whether text is being passed on.
+  std::string keyboardNote();
+  // Main thread, once the window is up. The layer the picture is drawn on
+  // is made to use the screen's own scale: SDL sizes it from the panel's
+  // native pixels, and on an iPad set to show more space the two differ,
+  // which left the picture smaller than the screen with black around it.
+  void alignLayerScale();
 
   // A desktop build that is the whole of a screen -- a Raspberry Pi with a
   // display -- rather than a window on someone's desktop. Set once at start

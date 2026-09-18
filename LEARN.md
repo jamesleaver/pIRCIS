@@ -4,31 +4,35 @@
 the program is a **grid of characters**, and a **runner** walks around it doing
 what it steps on.
 
-This guide starts from nothing and builds up. Every example is a real program.
-You can type any of them into [pIRCIS](https://github.com/jamesleaver/pIRCIS)
-and press play, on the board, on a phone, or on a computer.
-By the end you will be able to write your own.
+This guide starts from nothing and builds up. You do not need to have written
+a program before. Every example is a real program, and the best way to read the
+guide is with [pIRCIS](https://pircis.fisheggs.au) open beside it, running
+each one as you come to it and then changing it to see what happens. By the end
+you will be able to write your own.
 
-> **Finding a program.** Programs are named here as the device names them, and
-> the folder in brackets is the one they sit in under **PROG**. The link goes
-> to the same file in this repository, which is laid out the same way:
-> [Dice Roll](programs/Watching/Dice-Roll.txt) (Watching) is
-> `programs/Watching/Dice-Roll.txt`.
-
-> **You do not need the hardware.** There are two other ways to run pIRCIS,
-> and both are the same interpreter, the same screen and the same programs:
+> **Where to run the examples.** Any of these will do, and they all behave the
+> same way:
 >
+> - **In your browser**, at
+>   [pircis.fisheggs.au/play](https://pircis.fisheggs.au/play/), with nothing
+>   to install. On the website every example in this guide has a **run**
+>   button that opens it there.
+> - **The app, on an iPhone, iPad or Apple silicon Mac**, free from
+>   [the App Store](https://apps.apple.com/app/id6809655892). Copy a program
+>   from this guide and the PASTE button under **PROG > New program** puts it
+>   in the grid.
 > - **The emulator, on your own computer.** It runs in a window on macOS,
->   Windows or Linux, and
->   [setting it up](README.md#emulator) takes a few
->   commands. In there, set `SYS > KEYBOARD` to `REAL` and you can type
->   straight into the grid with your own keyboard, which makes working through
->   this guide much quicker. Ctrl/Cmd-V pastes a program copied from this
->   guide straight in.
-> - **The app, on an iPhone, iPad or Apple silicon Mac**, from
->   [the App Store](https://apps.apple.com/app/id6809655892). A program copied
->   from this guide lands in the grid through the PASTE button under
->   **PROG > New program**.
+>   Windows or Linux, and [setting it up](README.md#emulator) takes a few
+>   commands. Set `SYS > KEYBOARD` to `REAL` and you can type straight into
+>   the grid with your own keyboard. Ctrl/Cmd-V pastes in a program copied
+>   from this guide.
+> - **The board**, if you have built one.
+
+> **Finding a program.** Most of the programs this guide mentions already come
+> with pIRCIS. They are named here the way **PROG** names them, with their
+> folder in brackets, and the link goes to the program itself:
+> [Dice Roll](programs/Watching/Dice-Roll.txt) (Watching) is in the Watching
+> folder under **PROG**.
 
 **Contents**
 
